@@ -28,6 +28,7 @@ const menuSections = [
     title: 'Laporan',
     items: [
       { href: '/laporan/harian', icon: '📊', label: 'Laporan Harian' },
+      { href: '/laporan/petani', icon: '👤', label: 'Laporan per Petani' },
       { href: '/laporan/laba-rugi', icon: '💰', label: 'Laba / Rugi', ownerOnly: true },
     ],
   },

@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import AppShell from '@/components/layout/AppShell';
 import { supabase } from '@/lib/supabase';
 import { formatRupiah, getTodayISO } from '@/lib/utils';
+import { exportToExcel } from '@/lib/export';
 
 export default function HutangPage() {
   const [petaniList, setPetaniList] = useState([]);
@@ -136,6 +137,19 @@ export default function HutangPage() {
 
   const jenisLabel = { kasbon: 'Kasbon', panjar: 'Panjar', pupuk: 'Bon Pupuk', lainnya: 'Lainnya' };
 
+  function exportHutang() {
+    const data = petaniList.filter(p => p.saldo > 0).map(p => ({
+      nama: p.nama, no_hp: p.no_hp || '-', saldo: p.saldo,
+      batas: p.batas_hutang || 0,
+    }));
+    exportToExcel(data, [
+      { key: 'nama', label: 'Nama Petani' },
+      { key: 'no_hp', label: 'No HP' },
+      { key: 'saldo', label: 'Saldo Hutang' },
+      { key: 'batas', label: 'Batas Hutang' },
+    ], 'Daftar_Hutang_Petani', 'Hutang');
+  }
+
   return (
     <AppShell title="Hutang Petani" subtitle="Kelola kasbon, panjar, dan hutang petani">
       {toast && (
@@ -149,6 +163,7 @@ export default function HutangPage() {
 
       <div className="page-header">
         <h2 className="page-title">💳 Hutang Petani</h2>
+        <button className="btn btn-outline btn-sm" onClick={exportHutang}>📥 Export Excel</button>
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: selectedPetani ? '1fr 1.5fr' : '1fr', gap: 'var(--space-xl)' }}>

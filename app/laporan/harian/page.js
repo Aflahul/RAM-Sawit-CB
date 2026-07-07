@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import AppShell from '@/components/layout/AppShell';
 import { supabase } from '@/lib/supabase';
 import { formatRupiah, formatNumber, getTodayISO } from '@/lib/utils';
+import { exportLaporanHarian } from '@/lib/export';
 
 export default function LaporanHarianPage() {
   const [tanggal, setTanggal] = useState(getTodayISO());
@@ -46,8 +47,15 @@ export default function LaporanHarianPage() {
     <AppShell title="Laporan Harian" subtitle="Rekap operasional per hari">
       <div className="page-header">
         <h2 className="page-title">📊 Laporan Harian</h2>
-        <input type="date" className="form-input" style={{ maxWidth: 200 }}
-          value={tanggal} onChange={e => setTanggal(e.target.value)} />
+        <div className="flex gap-sm items-center">
+          <input type="date" className="form-input" style={{ maxWidth: 200 }}
+            value={tanggal} onChange={e => setTanggal(e.target.value)} />
+          {data && (
+            <button className="btn btn-outline btn-sm" onClick={() => exportLaporanHarian(tanggal, data)}>
+              📥 Export Excel
+            </button>
+          )}
+        </div>
       </div>
 
       {loading ? (

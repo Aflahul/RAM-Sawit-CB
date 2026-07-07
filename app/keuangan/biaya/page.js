@@ -2,8 +2,10 @@
 
 import { useState, useEffect } from 'react';
 import AppShell from '@/components/layout/AppShell';
+import ConfirmDialog from '@/components/ui/ConfirmDialog';
 import { supabase } from '@/lib/supabase';
 import { formatRupiah, getTodayISO } from '@/lib/utils';
+import { exportToExcel } from '@/lib/export';
 
 const KATEGORI = [
   { value: 'solar', label: '⛽ Solar / BBM' },
@@ -86,7 +88,17 @@ export default function BiayaPage() {
 
       <div className="page-header">
         <h2 className="page-title">🔧 Biaya Operasional</h2>
-        <button className="btn btn-primary" onClick={() => setShowModal(true)}>+ Tambah Biaya</button>
+        <div className="flex gap-sm">
+          <button className="btn btn-outline btn-sm" onClick={() => {
+            exportToExcel(filtered, [
+              { key: 'tanggal', label: 'Tanggal', format: v => new Date(v).toLocaleDateString('id-ID') },
+              { key: 'kategori', label: 'Kategori', format: v => kategoriLabel(v) },
+              { key: 'jumlah', label: 'Jumlah (Rp)' },
+              { key: 'keterangan', label: 'Keterangan' },
+            ], `Biaya_Operasional_${filterTanggal}`, 'Biaya');
+          }}>📥 Export Excel</button>
+          <button className="btn btn-primary" onClick={() => setShowModal(true)}>+ Tambah Biaya</button>
+        </div>
       </div>
 
       {/* Toolbar */}

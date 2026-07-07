@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import AppShell from '@/components/layout/AppShell';
+import ConfirmDialog from '@/components/ui/ConfirmDialog';
 import { supabase } from '@/lib/supabase';
 import {
   formatRupiah, formatNumber, formatTanggal, formatTanggalPendek,
@@ -16,6 +17,9 @@ export default function InputTBSPage() {
   const [saving, setSaving] = useState(false);
   const [showStruk, setShowStruk] = useState(null);
   const [toast, setToast] = useState(null);
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [editTarget, setEditTarget] = useState(null);
+  const [editForm, setEditForm] = useState({ berat_kotor: '', persen_potongan: '' });
   const strukRef = useRef(null);
 
   const [form, setForm] = useState({
@@ -150,6 +154,41 @@ export default function InputTBSPage() {
   function showToast(message, type = 'success') {
     setToast({ message, type });
     setTimeout(() => setToast(null), 3000);
+  }
+
+  function openEdit(t) {
+    setEditTarget(t);
+    setEditForm({ berat_kotor: t.berat_kotor.toString(), persen_potongan: t.persen_potongan.toString() });
+  }
+
+  async function handleEditSave() {
+    if (!editTarget) return;
+    const bk = parseFloat(editForm.berat_kotor) || 0;
+    const pp = parseFloat(editForm.persen_potongan) || 0;
+    const bb = hitungBeratBersih(bk, pp);
+    const th = hitungTotalHarga(bb, editTarget.harga_per_kg);
+    const tunai = th - (editTarget.potongan_hutang || 0);
+
+    await supabase.from('transaksi_beli').update({
+      berat_kotor: bk, persen_potongan: pp, berat_bersih: bb,
+      total_harga: th, total_bayar_tunai: Math.max(tunai, 0),
+    }).eq('id', editTarget.id);
+
+    setEditTarget(null);
+    showToast('Transaksi berhasil diperbarui!');
+    loadInitialData();
+  }
+
+  async function handleDelete() {
+    if (!deleteTarget) return;
+    // Jika ada potongan hutang, kembalikan ke hutang_log
+    if (deleteTarget.potongan_hutang > 0) {
+      await supabase.from('hutang_log').delete().eq('transaksi_beli_id', deleteTarget.id);
+    }
+    await supabase.from('transaksi_beli').delete().eq('id', deleteTarget.id);
+    setDeleteTarget(null);
+    showToast('Transaksi berhasil dihapus!');
+    loadInitialData();
   }
 
   return (
@@ -364,9 +403,11 @@ export default function InputTBSPage() {
                       <td className="table-mono" style={{ textAlign: 'right' }}>{formatRupiah(t.total_harga)}</td>
                       <td className="table-mono" style={{ textAlign: 'right' }}>{formatRupiah(t.total_bayar_tunai)}</td>
                       <td>
-                        <button className="btn btn-ghost btn-sm" onClick={() => { setShowStruk(t); setTimeout(() => window.print(), 300); }}>
-                          🖨️
-                        </button>
+                        <div className="flex gap-xs">
+                          <button className="btn btn-ghost btn-sm" onClick={() => openEdit(t)} title="Edit">✏️</button>
+                          <button className="btn btn-ghost btn-sm" onClick={() => { setShowStruk(t); setTimeout(() => window.print(), 300); }} title="Cetak">🖨️</button>
+                          <button className="btn btn-ghost btn-sm" onClick={() => setDeleteTarget(t)} title="Hapus">🗑️</button>
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -424,6 +465,55 @@ export default function InputTBSPage() {
           <div className="struk-center" style={{ fontSize: 10, marginTop: 4 }}>Sawit CB - Sistem Pencatatan RAM</div>
         </div>
       )}
+
+      {/* Edit Modal */}
+      {editTarget && (
+        <div className="modal-overlay" onClick={() => setEditTarget(null)}>
+          <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 450 }}>
+            <div className="modal-header">
+              <h3 style={{ fontSize: 'var(--text-lg)', fontWeight: 700 }}>✏️ Edit Transaksi</h3>
+              <button className="btn btn-ghost btn-sm" onClick={() => setEditTarget(null)}>✕</button>
+            </div>
+            <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-md)' }}>
+              <div className="text-tertiary text-sm" style={{ marginBottom: 'var(--space-sm)' }}>
+                Struk: <strong>{editTarget.no_struk}</strong> • Petani: <strong>{editTarget.petani?.nama}</strong>
+              </div>
+              <div>
+                <label className="form-label">Berat Kotor (kg)</label>
+                <input type="number" className="form-input form-input-mono"
+                  value={editForm.berat_kotor}
+                  onChange={e => setEditForm({ ...editForm, berat_kotor: e.target.value })} />
+              </div>
+              <div>
+                <label className="form-label">Potongan (%)</label>
+                <input type="number" step="0.1" className="form-input form-input-mono"
+                  value={editForm.persen_potongan}
+                  onChange={e => setEditForm({ ...editForm, persen_potongan: e.target.value })} />
+              </div>
+              <div style={{ padding: 'var(--space-sm)', background: 'var(--bg-surface)', borderRadius: 'var(--radius-md)', fontSize: 'var(--text-sm)' }}>
+                <div>Berat Bersih: <strong className="text-mono">{formatNumber(hitungBeratBersih(parseFloat(editForm.berat_kotor) || 0, parseFloat(editForm.persen_potongan) || 0))} kg</strong></div>
+                <div>Total: <strong className="text-mono">{formatRupiah(hitungTotalHarga(hitungBeratBersih(parseFloat(editForm.berat_kotor) || 0, parseFloat(editForm.persen_potongan) || 0), editTarget.harga_per_kg))}</strong></div>
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button className="btn btn-outline" onClick={() => setEditTarget(null)}>Batal</button>
+              <button className="btn btn-primary" onClick={handleEditSave}>💾 Simpan Perubahan</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Confirm */}
+      <ConfirmDialog
+        open={!!deleteTarget}
+        title="Hapus Transaksi?"
+        message={deleteTarget ? `Yakin hapus transaksi ${deleteTarget.no_struk} (${deleteTarget.petani?.nama})? ${deleteTarget.potongan_hutang > 0 ? 'Potongan hutang juga akan dikembalikan.' : ''} Tindakan ini tidak bisa dibatalkan.` : ''}
+        confirmText="🗑️ Ya, Hapus"
+        cancelText="Batal"
+        variant="danger"
+        onConfirm={handleDelete}
+        onCancel={() => setDeleteTarget(null)}
+      />
     </AppShell>
   );
 }

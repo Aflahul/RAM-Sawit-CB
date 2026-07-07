@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import AppShell from '@/components/layout/AppShell';
 import { supabase } from '@/lib/supabase';
 import { formatRupiah } from '@/lib/utils';
+import { exportLabaRugi } from '@/lib/export';
 
 export default function LabaRugiPage() {
   const [periode, setPeriode] = useState('bulanan');
@@ -149,6 +150,14 @@ export default function LabaRugiPage() {
           <select className="form-input form-select" value={tahun} onChange={e => setTahun(parseInt(e.target.value))} style={{ width: 100 }}>
             {[2024, 2025, 2026, 2027].map(y => <option key={y} value={y}>{y}</option>)}
           </select>
+          {data && (
+            <button className="btn btn-outline btn-sm" onClick={() => {
+              const periodeStr = periode === 'bulanan' ? `${bulanNama[bulan]}_${tahun}` : `Tahun_${tahun}`;
+              exportLabaRugi(periodeStr, data);
+            }}>
+              📥 Export Excel
+            </button>
+          )}
         </div>
       </div>
 

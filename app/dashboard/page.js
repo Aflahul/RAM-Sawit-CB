@@ -5,23 +5,24 @@ import AppShell from '@/components/layout/AppShell';
 import { supabase } from '@/lib/supabase';
 import { formatRupiah, formatNumber, getTodayISO } from '@/lib/utils';
 import Link from 'next/link';
+import {
+  AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid,
+  Tooltip, ResponsiveContainer, PieChart, Pie, Cell,
+} from 'recharts';
+
+const CHART_COLORS = ['#2ecc71', '#f1c40f', '#e74c3c', '#3498db', '#9b59b6', '#1abc9c'];
 
 export default function DashboardPage() {
   const [stats, setStats] = useState({
-    tbsMasukKg: 0,
-    tbsMasukRp: 0,
-    jumlahTransaksi: 0,
-    hutangAktif: 0,
-    jumlahPetaniHutang: 0,
-    totalBiaya: 0,
-    pengirimanPending: 0,
+    tbsMasukKg: 0, tbsMasukRp: 0, jumlahTransaksi: 0,
+    hutangAktif: 0, jumlahPetaniHutang: 0, totalBiaya: 0, pengirimanPending: 0,
   });
   const [recentTransactions, setRecentTransactions] = useState([]);
+  const [chartTBS, setChartTBS] = useState([]);
+  const [chartBiaya, setChartBiaya] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    loadDashboard();
-  }, []);
+  useEffect(() => { loadDashboard(); }, []);
 
   async function loadDashboard() {
     try {
@@ -36,52 +37,78 @@ export default function DashboardPage() {
       const tbsMasukKg = tbsData?.reduce((sum, t) => sum + (t.berat_bersih || 0), 0) || 0;
       const tbsMasukRp = tbsData?.reduce((sum, t) => sum + (t.total_harga || 0), 0) || 0;
 
-      // Hutang aktif - sum semua hutang dikurangi semua pembayaran
-      const { data: hutangData } = await supabase
-        .from('hutang')
-        .select('jumlah, petani_id');
-
-      const { data: hutangLogData } = await supabase
-        .from('hutang_log')
-        .select('jumlah_bayar');
-
+      // Hutang aktif
+      const { data: hutangData } = await supabase.from('hutang').select('jumlah, petani_id');
+      const { data: hutangLogData } = await supabase.from('hutang_log').select('jumlah_bayar');
       const totalHutang = hutangData?.reduce((sum, h) => sum + (h.jumlah || 0), 0) || 0;
       const totalBayar = hutangLogData?.reduce((sum, h) => sum + (h.jumlah_bayar || 0), 0) || 0;
       const hutangAktif = totalHutang - totalBayar;
-
       const uniquePetaniHutang = new Set(hutangData?.map(h => h.petani_id) || []);
 
       // Biaya hari ini
       const { data: biayaData } = await supabase
-        .from('biaya_operasional')
-        .select('jumlah')
-        .eq('tanggal', today);
-
+        .from('biaya_operasional').select('jumlah').eq('tanggal', today);
       const totalBiaya = biayaData?.reduce((sum, b) => sum + (b.jumlah || 0), 0) || 0;
 
       // Pengiriman pending
       const { count: pengirimanPending } = await supabase
-        .from('pengiriman')
-        .select('*', { count: 'exact', head: true })
+        .from('pengiriman').select('*', { count: 'exact', head: true })
         .in('status', ['dikirim', 'diterima']);
 
       // Transaksi terbaru
       const { data: recent } = await supabase
+        .from('transaksi_beli').select('*, petani:petani_id(nama)')
+        .order('created_at', { ascending: false }).limit(5);
+
+      // ---- CHART DATA: TBS 7 hari terakhir ----
+      const days = [];
+      for (let i = 6; i >= 0; i--) {
+        const d = new Date();
+        d.setDate(d.getDate() - i);
+        days.push(d.toISOString().split('T')[0]);
+      }
+
+      const { data: tbsWeek } = await supabase
         .from('transaksi_beli')
-        .select('*, petani:petani_id(nama)')
-        .order('created_at', { ascending: false })
-        .limit(5);
+        .select('tanggal, berat_bersih, total_harga')
+        .gte('tanggal', days[0])
+        .lte('tanggal', days[6]);
+
+      const tbsChart = days.map(d => {
+        const dayData = (tbsWeek || []).filter(t => t.tanggal === d);
+        const dayName = new Date(d).toLocaleDateString('id-ID', { weekday: 'short' });
+        return {
+          name: dayName,
+          kg: dayData.reduce((s, t) => s + (t.berat_bersih || 0), 0),
+          rp: dayData.reduce((s, t) => s + (t.total_harga || 0), 0),
+        };
+      });
+      setChartTBS(tbsChart);
+
+      // ---- CHART DATA: Biaya per kategori (bulan ini) ----
+      const firstDay = `${today.slice(0, 7)}-01`;
+      const { data: biayaBulan } = await supabase
+        .from('biaya_operasional')
+        .select('kategori, jumlah')
+        .gte('tanggal', firstDay)
+        .lte('tanggal', today);
+
+      const biayaMap = {};
+      const kategoriLabel = {
+        solar: 'Solar', gaji_sopir: 'Gaji Sopir', kuli: 'Kuli',
+        retribusi: 'Retribusi', perawatan: 'Perawatan', lainnya: 'Lainnya',
+      };
+      (biayaBulan || []).forEach(b => {
+        const label = kategoriLabel[b.kategori] || b.kategori;
+        biayaMap[label] = (biayaMap[label] || 0) + (b.jumlah || 0);
+      });
+      setChartBiaya(Object.entries(biayaMap).map(([name, value]) => ({ name, value })));
 
       setStats({
-        tbsMasukKg,
-        tbsMasukRp,
-        jumlahTransaksi: tbsData?.length || 0,
-        hutangAktif,
-        jumlahPetaniHutang: uniquePetaniHutang.size,
-        totalBiaya,
-        pengirimanPending: pengirimanPending || 0,
+        tbsMasukKg, tbsMasukRp, jumlahTransaksi: tbsData?.length || 0,
+        hutangAktif, jumlahPetaniHutang: uniquePetaniHutang.size,
+        totalBiaya, pengirimanPending: pengirimanPending || 0,
       });
-
       setRecentTransactions(recent || []);
     } catch (err) {
       console.error('Error loading dashboard:', err);
@@ -90,11 +117,27 @@ export default function DashboardPage() {
     }
   }
 
+  const CustomTooltip = ({ active, payload, label }) => {
+    if (!active || !payload?.length) return null;
+    return (
+      <div style={{
+        background: 'var(--bg-elevated)', border: '1px solid var(--border-default)',
+        borderRadius: 8, padding: '8px 12px', fontSize: 'var(--text-xs)',
+      }}>
+        <div style={{ fontWeight: 600, marginBottom: 4 }}>{label}</div>
+        {payload.map((p, i) => (
+          <div key={i} style={{ color: p.color }}>
+            {p.name === 'kg' ? `${formatNumber(p.value)} kg` : formatRupiah(p.value)}
+          </div>
+        ))}
+      </div>
+    );
+  };
+
   return (
     <AppShell title="Dashboard" subtitle="Ringkasan operasional hari ini">
       {/* Stats Grid */}
       <div className="stats-grid">
-        {/* TBS Masuk */}
         <div className="card">
           <div className="card-header">
             <span className="card-title">TBS Masuk Hari Ini</span>
@@ -109,13 +152,10 @@ export default function DashboardPage() {
             </>
           )}
           <div className="card-footer">
-            <Link href="/transaksi/beli" className="btn btn-ghost btn-sm">
-              + Input TBS
-            </Link>
+            <Link href="/transaksi/beli" className="btn btn-ghost btn-sm">+ Input TBS</Link>
           </div>
         </div>
 
-        {/* Hutang Aktif */}
         <div className="card">
           <div className="card-header">
             <span className="card-title">Hutang Aktif Petani</span>
@@ -130,13 +170,10 @@ export default function DashboardPage() {
             </>
           )}
           <div className="card-footer">
-            <Link href="/keuangan/hutang" className="btn btn-ghost btn-sm">
-              Lihat Detail →
-            </Link>
+            <Link href="/keuangan/hutang" className="btn btn-ghost btn-sm">Lihat Detail →</Link>
           </div>
         </div>
 
-        {/* Biaya Hari Ini */}
         <div className="card">
           <div className="card-header">
             <span className="card-title">Biaya Hari Ini</span>
@@ -151,13 +188,10 @@ export default function DashboardPage() {
             </>
           )}
           <div className="card-footer">
-            <Link href="/keuangan/biaya" className="btn btn-ghost btn-sm">
-              + Input Biaya
-            </Link>
+            <Link href="/keuangan/biaya" className="btn btn-ghost btn-sm">+ Input Biaya</Link>
           </div>
         </div>
 
-        {/* Pengiriman Pending */}
         <div className="card">
           <div className="card-header">
             <span className="card-title">Pengiriman Pending</span>
@@ -172,57 +206,106 @@ export default function DashboardPage() {
             </>
           )}
           <div className="card-footer">
-            <Link href="/transaksi/kirim" className="btn btn-ghost btn-sm">
-              Lihat Pengiriman →
-            </Link>
+            <Link href="/transaksi/kirim" className="btn btn-ghost btn-sm">Lihat Pengiriman →</Link>
           </div>
         </div>
+      </div>
+
+      {/* Charts Row */}
+      <div style={{ display: 'grid', gridTemplateColumns: chartBiaya.length > 0 ? '2fr 1fr' : '1fr', gap: 'var(--space-lg)', marginTop: 'var(--space-lg)' }}>
+        {/* TBS 7 Hari */}
+        <div className="card">
+          <div className="card-header">
+            <span className="card-title">📈 TBS Masuk (7 Hari Terakhir)</span>
+          </div>
+          {loading ? (
+            <div className="skeleton" style={{ height: 220 }}></div>
+          ) : chartTBS.every(d => d.kg === 0) ? (
+            <div className="empty-state" style={{ padding: 'var(--space-xl)' }}>
+              <div className="empty-state-icon">📈</div>
+              <div className="empty-state-title">Belum ada data</div>
+              <div className="empty-state-text">Grafik akan muncul setelah ada transaksi TBS</div>
+            </div>
+          ) : (
+            <div style={{ width: '100%', height: 240 }}>
+              <ResponsiveContainer>
+                <AreaChart data={chartTBS} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+                  <defs>
+                    <linearGradient id="gradTBS" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#2ecc71" stopOpacity={0.3} />
+                      <stop offset="95%" stopColor="#2ecc71" stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
+                  <XAxis dataKey="name" tick={{ fill: 'var(--text-tertiary)', fontSize: 12 }} axisLine={false} tickLine={false} />
+                  <YAxis tick={{ fill: 'var(--text-tertiary)', fontSize: 11 }} axisLine={false} tickLine={false} width={50} />
+                  <Tooltip content={<CustomTooltip />} />
+                  <Area type="monotone" dataKey="kg" name="kg" stroke="#2ecc71" fill="url(#gradTBS)" strokeWidth={2.5} dot={{ r: 4, fill: '#2ecc71' }} />
+                </AreaChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+        </div>
+
+        {/* Biaya Pie Chart */}
+        {chartBiaya.length > 0 && (
+          <div className="card">
+            <div className="card-header">
+              <span className="card-title">🔧 Biaya Bulan Ini</span>
+            </div>
+            <div style={{ width: '100%', height: 240 }}>
+              <ResponsiveContainer>
+                <PieChart>
+                  <Pie data={chartBiaya} cx="50%" cy="50%" innerRadius={55} outerRadius={85}
+                    paddingAngle={3} dataKey="value" nameKey="name"
+                    label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                    labelLine={false}
+                  >
+                    {chartBiaya.map((_, i) => (
+                      <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />
+                    ))}
+                  </Pie>
+                  <Tooltip formatter={(v) => formatRupiah(v)} />
+                </PieChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Recent Transactions */}
       <div className="card" style={{ marginTop: 'var(--space-lg)' }}>
         <div className="card-header">
           <span className="card-title">Transaksi Terakhir</span>
-          <Link href="/transaksi/beli" className="btn btn-outline btn-sm">
-            Lihat Semua
-          </Link>
+          <Link href="/transaksi/beli" className="btn btn-outline btn-sm">Lihat Semua</Link>
         </div>
         {loading ? (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-            {[1, 2, 3].map((i) => (
-              <div key={i} className="skeleton" style={{ height: 44 }}></div>
-            ))}
+            {[1, 2, 3].map(i => <div key={i} className="skeleton" style={{ height: 44 }}></div>)}
           </div>
         ) : recentTransactions.length === 0 ? (
           <div className="empty-state">
             <div className="empty-state-icon">📦</div>
             <div className="empty-state-title">Belum ada transaksi</div>
-            <div className="empty-state-text">
-              Mulai input pembelian TBS dari petani
-            </div>
+            <div className="empty-state-text">Mulai input pembelian TBS dari petani</div>
           </div>
         ) : (
           <div className="table-container" style={{ border: 'none' }}>
             <table className="table">
               <thead>
                 <tr>
-                  <th>No. Struk</th>
-                  <th>Petani</th>
+                  <th>No. Struk</th><th>Petani</th>
                   <th style={{ textAlign: 'right' }}>Berat (kg)</th>
                   <th style={{ textAlign: 'right' }}>Total</th>
                 </tr>
               </thead>
               <tbody>
-                {recentTransactions.map((t) => (
+                {recentTransactions.map(t => (
                   <tr key={t.id}>
                     <td className="table-mono">{t.no_struk || '-'}</td>
                     <td>{t.petani?.nama || '-'}</td>
-                    <td className="table-mono" style={{ textAlign: 'right' }}>
-                      {formatNumber(t.berat_bersih)}
-                    </td>
-                    <td className="table-mono" style={{ textAlign: 'right' }}>
-                      {formatRupiah(t.total_harga)}
-                    </td>
+                    <td className="table-mono" style={{ textAlign: 'right' }}>{formatNumber(t.berat_bersih)}</td>
+                    <td className="table-mono" style={{ textAlign: 'right' }}>{formatRupiah(t.total_harga)}</td>
                   </tr>
                 ))}
               </tbody>
