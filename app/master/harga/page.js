@@ -12,6 +12,11 @@ export default function HargaTBSPage() {
   const [saving, setSaving] = useState(false);
   const [todayHarga, setTodayHarga] = useState(null);
 
+  // State untuk edit riwayat harga
+  const [editingId, setEditingId] = useState(null);
+  const [editHargaVal, setEditHargaVal] = useState('');
+  const [editSaving, setEditSaving] = useState(false);
+
   useEffect(() => { loadHarga(); }, []);
 
   async function loadHarga() {
@@ -45,6 +50,20 @@ export default function HargaTBSPage() {
       await loadHarga();
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function saveEditRiwayat(e, id) {
+    e.preventDefault();
+    const nilai = parseFloat(editHargaVal);
+    if (!nilai || nilai <= 0) return;
+    setEditSaving(true);
+    try {
+      await supabase.from('harga_tbs').update({ harga_per_kg: nilai }).eq('id', id);
+      await loadHarga();
+      setEditingId(null);
+    } finally {
+      setEditSaving(false);
     }
   }
 
@@ -148,6 +167,7 @@ export default function HargaTBSPage() {
                   <th>Tanggal</th>
                   <th style={{ textAlign: 'right' }}>Harga /kg</th>
                   <th style={{ textAlign: 'right' }}>Perubahan</th>
+                  <th style={{ textAlign: 'right' }}>Aksi</th>
                 </tr>
               </thead>
               <tbody>
@@ -168,7 +188,29 @@ export default function HargaTBSPage() {
                         )}
                       </td>
                       <td className="table-mono" style={{ textAlign: 'right', fontWeight: 600 }}>
-                        {formatRupiah(h.harga_per_kg)}
+                        {editingId === h.id ? (
+                          <form onSubmit={(e) => saveEditRiwayat(e, h.id)} style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+                            <input
+                              type="number"
+                              className="form-input form-input-mono"
+                              value={editHargaVal}
+                              onChange={e => setEditHargaVal(e.target.value)}
+                              min={1}
+                              step={10}
+                              required
+                              style={{ width: 120, padding: '6px 10px' }}
+                              autoFocus
+                            />
+                            <button type="submit" className="btn btn-primary btn-sm" disabled={editSaving} style={{ padding: '6px 12px' }}>
+                              {editSaving ? '⏳' : '✅'}
+                            </button>
+                            <button type="button" className="btn btn-ghost btn-sm" onClick={() => setEditingId(null)} style={{ padding: '6px 12px' }}>
+                              ❌
+                            </button>
+                          </form>
+                        ) : (
+                          formatRupiah(h.harga_per_kg)
+                        )}
                       </td>
                       <td style={{ textAlign: 'right' }}>
                         {delta !== null ? (
@@ -186,6 +228,16 @@ export default function HargaTBSPage() {
                           </span>
                         ) : (
                           <span style={{ color: 'var(--text-tertiary)' }}>—</span>
+                        )}
+                      </td>
+                      <td style={{ textAlign: 'right' }}>
+                        {editingId !== h.id && (
+                          <button
+                            className="btn btn-outline btn-sm"
+                            onClick={() => { setEditingId(h.id); setEditHargaVal(h.harga_per_kg.toString()); }}
+                          >
+                            ✏️ Edit
+                          </button>
                         )}
                       </td>
                     </tr>
