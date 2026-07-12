@@ -5,7 +5,21 @@ import Link from 'next/link';
 import AppShell from '@/components/layout/AppShell';
 import { supabase } from '@/lib/supabase';
 import { formatRupiah, formatNumber, getTodayISO } from '@/lib/utils';
+import { exportLaporanHarian } from '@/lib/export';
 import { Factory, Users, Scale, Box, CreditCard, Calculator } from 'lucide-react';
+
+function LockedWrapper({ children }) {
+  return (
+    <div style={{ position: 'relative', height: '100%' }}>
+      <div style={{ position: 'absolute', inset: -4, zIndex: 10, background: 'rgba(2, 6, 23, 0.4)', backdropFilter: 'blur(2px)', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 12 }}>
+         <div style={{ background: 'var(--bg-card)', padding: '4px 12px', borderRadius: 20, fontSize: 'var(--text-xs)', color: 'var(--color-gold-400)', border: '1px solid var(--color-gold-500)', fontWeight: 600 }}>Tahap 2</div>
+      </div>
+      <div style={{ opacity: 0.3, pointerEvents: 'none', filter: 'grayscale(1)', height: '100%' }}>
+        {children}
+      </div>
+    </div>
+  );
+}
 
 function getLastSevenDays() {
   const days = [];
@@ -317,7 +331,8 @@ export default function DashboardPage() {
         </div>
 
         {/* Harga TBS Lokal (Tahap 2) */}
-        <div className="card">
+        <LockedWrapper>
+        <div className="card" style={{ height: '100%' }}>
           <div className="card-header" style={{ marginBottom: hargaEditing ? 'var(--space-md)' : 0 }}>
             <div>
               <div className="card-title">Harga Beli Lokal (Tahap 2)</div>
@@ -360,6 +375,7 @@ export default function DashboardPage() {
             </form>
           )}
         </div>
+        </LockedWrapper>
       </div>
 
       <h3 style={{ fontSize: 'var(--text-lg)', fontWeight: 600, marginBottom: 'var(--space-md)', color: 'var(--text-primary)' }}>
@@ -403,6 +419,7 @@ export default function DashboardPage() {
       <h3 style={{ fontSize: 'var(--text-lg)', fontWeight: 600, marginBottom: 'var(--space-md)', color: 'var(--text-primary)' }}>
         Ringkasan Operasional Lokal (Tahap 2)
       </h3>
+      <LockedWrapper>
       <div className="stats-grid">
         <div className="card">
           <div className="card-header">
@@ -473,8 +490,10 @@ export default function DashboardPage() {
           </div>
         </div>
       </div>
+      </LockedWrapper>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', gap: 'var(--space-lg)', marginTop: 'var(--space-lg)' }}>
+        <LockedWrapper>
         <div className="card">
           <div className="card-header">
             <span className="card-title">TBS Lokal Masuk 7 Hari</span>
@@ -500,9 +519,12 @@ export default function DashboardPage() {
             </div>
           )}
         </div>
+        </LockedWrapper>
       </div>
 
-      <div className="card" style={{ marginTop: 'var(--space-lg)' }}>
+      <div style={{ marginTop: 'var(--space-lg)' }}>
+        <LockedWrapper>
+        <div className="card">
         <div className="card-header">
           <span className="card-title">Transaksi Terakhir</span>
           <Link href="/transaksi/beli" className="btn btn-outline btn-sm">Lihat Semua</Link>
@@ -540,6 +562,8 @@ export default function DashboardPage() {
             </table>
           </div>
         )}
+        </div>
+        </LockedWrapper>
       </div>
 
       <div style={{ marginTop: 'var(--space-xl)' }}>
@@ -547,22 +571,28 @@ export default function DashboardPage() {
           Aksi Cepat
         </h3>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 'var(--space-md)' }}>
-          <Link href="/transaksi/beli" className="card" style={{ textAlign: 'center', textDecoration: 'none' }}>
+          <LockedWrapper>
+          <div className="card" style={{ textAlign: 'center', textDecoration: 'none' }}>
             <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>Input TBS Lokal</div>
             <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', marginTop: 4 }}>Pembelian dari petani</div>
-          </Link>
-          <Link href="/master/harga" className="card" style={{ textAlign: 'center', textDecoration: 'none' }}>
+          </div>
+          </LockedWrapper>
+          <LockedWrapper>
+          <div className="card" style={{ textAlign: 'center', textDecoration: 'none' }}>
             <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>Harga TBS</div>
             <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', marginTop: 4 }}>{hargaAktif ? `${formatRupiah(hargaAktif.harga_per_kg)}/kg` : 'Belum diset'}</div>
-          </Link>
+          </div>
+          </LockedWrapper>
           <Link href="/admin/input-timbangan" className="card spring-transition" style={{ textAlign: 'center', textDecoration: 'none' }}>
             <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>Pengiriman Mitra</div>
             <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', marginTop: 4 }}>Input ke pabrik</div>
           </Link>
-          <Link href="/keuangan/biaya" className="card" style={{ textAlign: 'center', textDecoration: 'none' }}>
+          <LockedWrapper>
+          <div className="card" style={{ textAlign: 'center', textDecoration: 'none' }}>
             <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>Biaya Operasional</div>
             <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', marginTop: 4 }}>Solar, gaji, retribusi</div>
-          </Link>
+          </div>
+          </LockedWrapper>
         </div>
       </div>
     </AppShell>
