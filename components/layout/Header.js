@@ -4,7 +4,7 @@ import { supabase } from '@/lib/supabase';
 import { useRouter } from 'next/navigation';
 import { formatTanggal } from '@/lib/utils';
 
-export default function Header({ title, subtitle, onMenuToggle, user }) {
+export default function Header({ title, subtitle, onMenuToggle }) {
   const router = useRouter();
 
   async function handleLogout() {
@@ -21,7 +21,7 @@ export default function Header({ title, subtitle, onMenuToggle, user }) {
           onClick={onMenuToggle}
           aria-label="Toggle menu"
         >
-          ☰
+          Menu
         </button>
         <div>
           <h1 className="header-title">{title || 'Dashboard'}</h1>
@@ -36,7 +36,7 @@ export default function Header({ title, subtitle, onMenuToggle, user }) {
           onClick={handleLogout}
           title="Keluar"
         >
-          🚪 Keluar
+          Keluar
         </button>
       </div>
     </header>

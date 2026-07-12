@@ -2,54 +2,74 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { canViewProfit, getRoleLabel, normalizeRole } from '@/lib/roles';
+import { 
+  LayoutDashboard, Truck, ReceiptText, Database, Store, 
+  Wallet, Calculator, FileText, Users, Box, TrendingUp, MapPin, Tag 
+} from 'lucide-react';
 
 const menuSections = [
   {
-    title: 'Utama',
+    title: 'MVP Utama',
     items: [
-      { href: '/dashboard', icon: '🏠', label: 'Dashboard' },
+      { href: '/dashboard', icon: <LayoutDashboard size={20} />, label: 'Dashboard' },
+      { href: '/admin/input-timbangan', icon: <Truck size={20} />, label: 'Pengiriman Mitra' },
+      { href: '/owner/kwitansi-mitra', icon: <ReceiptText size={20} />, label: 'Kwitansi Mitra' },
+      { href: '/owner/panjar-mitra', icon: <Wallet size={20} />, label: 'Panjar Mitra' },
+      { href: '/owner/laporan-mitra', icon: <FileText size={20} />, label: 'Laporan Mitra' },
     ],
   },
   {
-    title: 'Operasional',
+    title: 'Master Data MVP',
     items: [
-      { href: '/transaksi/beli', icon: '📦', label: 'Input TBS' },
-      { href: '/transaksi/kirim', icon: '🚚', label: 'Pengiriman' },
+      { href: '/owner/master-data', icon: <Database size={20} />, label: 'Master Mitra & Sopir' },
     ],
   },
   {
-    title: 'Keuangan',
+    title: 'Operasional (coming soon)',
     items: [
-      { href: '/keuangan/hutang', icon: '💳', label: 'Hutang Petani' },
-      { href: '/keuangan/biaya', icon: '🔧', label: 'Biaya Operasional' },
+      { href: '/transaksi/beli', icon: <Store size={20} />, label: 'Input TBS Lokal', badge: 'comingsoon' },
+      { href: '/transaksi/kirim', icon: <Truck size={20} />, label: 'Pengiriman Lokal', badge: 'comingsoon' },
     ],
   },
   {
-    title: 'Laporan',
+    title: 'Keuangan (coming soon)',
     items: [
-      { href: '/laporan/harian', icon: '📊', label: 'Laporan Harian' },
-      { href: '/laporan/petani', icon: '👤', label: 'Laporan per Petani' },
-      { href: '/laporan/laba-rugi', icon: '💰', label: 'Laba / Rugi', ownerOnly: true },
+      { href: '/keuangan/hutang', icon: <Wallet size={20} />, label: 'Hutang Petani', badge: 'comingsoon' },
+      { href: '/keuangan/biaya', icon: <Calculator size={20} />, label: 'Biaya Operasional', badge: 'comingsoon' },
     ],
   },
   {
-    title: 'Master Data',
+    title: 'Laporan (coming soon)',
     items: [
-      { href: '/master/petani', icon: '👥', label: 'Petani / Mitra' },
-      { href: '/master/armada', icon: '🚛', label: 'Armada & Sopir' },
-      { href: '/master/pabrik', icon: '🏭', label: 'Pabrik Tujuan' },
-      { href: '/master/harga', icon: '💲', label: 'Harga TBS' },
+      { href: '/laporan/harian', icon: <FileText size={20} />, label: 'Laporan Harian' },
+      { href: '/laporan/petani', icon: <Users size={20} />, label: 'Laporan Petani', badge: 'comingsoon' },
+      { href: '/laporan/stok', icon: <Box size={20} />, label: 'Stok Lokal', badge: 'comingsoon' },
+      { href: '/laporan/laba-rugi', icon: <TrendingUp size={20} />, label: 'Laba / Rugi', profitOnly: true, badge: 'comingsoon' },
+    ],
+  },
+  {
+    title: 'Master Data (coming soon)',
+    items: [
+      { href: '/master/petani', icon: <Users size={20} />, label: 'Petani Lokal', badge: 'comingsoon' },
+      { href: '/master/armada', icon: <Truck size={20} />, label: 'Armada & Sopir', badge: 'comingsoon' },
+      { href: '/master/pabrik', icon: <MapPin size={20} />, label: 'Pabrik Tujuan', badge: 'comingsoon' },
+      { href: '/master/harga', icon: <Tag size={20} />, label: 'Harga TBS', badge: 'comingsoon' },
     ],
   },
 ];
 
+function canSeeMenuItem(item, role) {
+  if (item.profitOnly) return canViewProfit(role);
+  return true;
+}
+
 export default function Sidebar({ isOpen, onClose, user }) {
   const pathname = usePathname();
-  const userRole = user?.role || 'admin';
+  const userRole = normalizeRole(user?.role);
 
   return (
     <>
-      {/* Overlay for mobile */}
       {isOpen && (
         <div
           className="modal-overlay"
@@ -59,22 +79,22 @@ export default function Sidebar({ isOpen, onClose, user }) {
       )}
 
       <aside className={`sidebar ${isOpen ? 'open' : ''}`}>
-        {/* Logo */}
         <div className="sidebar-logo">
-          <div className="sidebar-logo-icon">🌿</div>
+          <div className="sidebar-logo-icon">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19 2c1 2 2 4.18 2 8 0 5.5-4.78 10-10 10Z"/><path d="M2 21c0-3 1.85-5.36 5.08-6C9.5 14.52 12 13 13 12"/></svg>
+          </div>
           <div>
             <div className="sidebar-logo-text">SAWIT CB</div>
             <div className="sidebar-logo-sub">Manajemen RAM</div>
           </div>
         </div>
 
-        {/* Navigation */}
         <nav className="sidebar-nav">
           {menuSections.map((section) => (
             <div className="sidebar-section" key={section.title}>
               <div className="sidebar-section-title">{section.title}</div>
               {section.items
-                .filter((item) => !item.ownerOnly || userRole === 'owner')
+                .filter((item) => canSeeMenuItem(item, userRole))
                 .map((item) => (
                   <Link
                     key={item.href}
@@ -85,7 +105,12 @@ export default function Sidebar({ isOpen, onClose, user }) {
                     <span className="sidebar-link-icon">{item.icon}</span>
                     <span>{item.label}</span>
                     {item.badge && (
-                      <span className="sidebar-link-badge">{item.badge}</span>
+                      <span 
+                        className="sidebar-link-badge" 
+                        style={item.badge === 'comingsoon' ? { fontSize: '0.65rem', fontStyle: 'italic', background: 'transparent', color: '#94a3b8', border: '1px solid #475569', padding: '2px 6px' } : {}}
+                      >
+                        {item.badge}
+                      </span>
                     )}
                   </Link>
                 ))}
@@ -93,16 +118,13 @@ export default function Sidebar({ isOpen, onClose, user }) {
           ))}
         </nav>
 
-        {/* User */}
         <div className="sidebar-user">
           <div className="sidebar-avatar">
             {user?.nama ? user.nama.charAt(0).toUpperCase() : 'U'}
           </div>
           <div>
             <div className="sidebar-user-name">{user?.nama || 'User'}</div>
-            <div className="sidebar-user-role">
-              {userRole === 'owner' ? '👑 Owner' : '📋 Admin'}
-            </div>
+            <div className="sidebar-user-role">{getRoleLabel(userRole)}</div>
           </div>
         </div>
       </aside>

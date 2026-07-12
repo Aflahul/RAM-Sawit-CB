@@ -138,7 +138,7 @@ export default function ArmadaPage() {
           <div className="empty-state">
             <div className="empty-state-icon">🚛</div>
             <div className="empty-state-title">Belum ada kendaraan</div>
-            <div className="empty-state-text">Klik "Kendaraan" untuk menambahkan</div>
+            <div className="empty-state-text">Klik tombol Kendaraan untuk menambahkan</div>
           </div>
         ) : (
           <div className="table-container">
@@ -178,7 +178,7 @@ export default function ArmadaPage() {
           <div className="empty-state">
             <div className="empty-state-icon">👤</div>
             <div className="empty-state-title">Belum ada sopir</div>
-            <div className="empty-state-text">Klik "Sopir" untuk menambahkan</div>
+            <div className="empty-state-text">Klik tombol Sopir untuk menambahkan</div>
           </div>
         ) : (
           <div className="table-container">

@@ -1,25 +1,42 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import AppShell from '@/components/layout/AppShell';
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
 import { supabase } from '@/lib/supabase';
 import {
-  formatRupiah, formatNumber, formatTanggal, formatTanggalPendek,
-  formatWaktu, hitungBeratBersih, hitungTotalHarga, getTodayISO, generateNoStruk,
+  formatRupiah,
+  formatNumber,
+  formatTanggal,
+  formatTanggalPendek,
+  formatWaktu,
+  hitungBeratBersih,
+  hitungTotalHarga,
+  getTodayISO,
 } from '@/lib/utils';
+
+function toPrintableTransaction(transaction, selectedPetani) {
+  if (!transaction) return null;
+
+  return {
+    ...transaction,
+    petani: {
+      nama: transaction.petani?.nama || transaction.petani_nama || selectedPetani?.nama || '-',
+    },
+  };
+}
 
 export default function InputTBSPage() {
   const [petaniList, setPetaniList] = useState([]);
-  const [hargaHariIni, setHargaHariIni] = useState(0);
+  const [hargaAktif, setHargaAktif] = useState(null);
   const [transaksiHariIni, setTransaksiHariIni] = useState([]);
+  const [selectedPetani, setSelectedPetani] = useState(null);
+  const [saldoHutang, setSaldoHutang] = useState(0);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [showStruk, setShowStruk] = useState(null);
   const [toast, setToast] = useState(null);
-  const [deleteTarget, setDeleteTarget] = useState(null);
-  const [editTarget, setEditTarget] = useState(null);
-  const [editForm, setEditForm] = useState({ berat_kotor: '', persen_potongan: '' });
+  const [showStruk, setShowStruk] = useState(null);
+  const [cancelTarget, setCancelTarget] = useState(null);
   const strukRef = useRef(null);
 
   const [form, setForm] = useState({
@@ -30,125 +47,60 @@ export default function InputTBSPage() {
     jumlah_potong: '',
   });
 
-  const [selectedPetani, setSelectedPetani] = useState(null);
-  const [saldoHutang, setSaldoHutang] = useState(0);
-
-  useEffect(() => { loadInitialData(); }, []);
-
-  async function loadInitialData() {
+  const loadInitialData = useCallback(async () => {
     setLoading(true);
     const today = getTodayISO();
 
-    const [{ data: petani }, { data: harga }, { data: transaksi }] = await Promise.all([
+    const [{ data: petani }, { data: harga }, { data: transaksi, error: transaksiError }] = await Promise.all([
       supabase.from('petani').select('*').eq('aktif', true).order('nama'),
-      supabase.from('harga_tbs').select('*').eq('tanggal', today).single(),
-      supabase.from('transaksi_beli').select('*, petani:petani_id(nama)').eq('tanggal', today).order('created_at', { ascending: false }),
+      supabase
+        .from('harga_tbs_lokal')
+        .select('*')
+        .eq('aktif', true)
+        .order('berlaku_mulai', { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+      supabase
+        .from('transaksi_beli_tbs')
+        .select('*, petani:petani_id(nama)')
+        .eq('tanggal', today)
+        .neq('status', 'dibatalkan')
+        .order('created_at', { ascending: false }),
     ]);
+
+    if (transaksiError) {
+      setToast({ type: 'error', message: transaksiError.message });
+    }
 
     setPetaniList(petani || []);
-    setHargaHariIni(harga?.harga_per_kg || 0);
+    setHargaAktif(harga || null);
     setTransaksiHariIni(transaksi || []);
     setLoading(false);
-  }
+  }, []);
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    loadInitialData();
+  }, [loadInitialData]);
 
   async function loadSaldoHutang(petaniId) {
-    const [{ data: hutangData }, { data: logData }] = await Promise.all([
-      supabase.from('hutang').select('jumlah').eq('petani_id', petaniId),
-      supabase.from('hutang_log').select('jumlah_bayar').eq('petani_id', petaniId),
-    ]);
-    const totalHutang = hutangData?.reduce((s, h) => s + (h.jumlah || 0), 0) || 0;
-    const totalBayar = logData?.reduce((s, h) => s + (h.jumlah_bayar || 0), 0) || 0;
-    setSaldoHutang(totalHutang - totalBayar);
-  }
+    const { data, error } = await supabase
+      .from('hutang_ledger')
+      .select('tipe, jumlah')
+      .eq('pihak_type', 'petani')
+      .eq('petani_id', petaniId);
 
-  function handlePetaniChange(petaniId) {
-    setForm({ ...form, petani_id: petaniId, potong_hutang: false, jumlah_potong: '' });
-    const petani = petaniList.find(p => p.id === petaniId);
-    setSelectedPetani(petani || null);
-    if (petaniId) loadSaldoHutang(petaniId);
-    else setSaldoHutang(0);
-  }
-
-  // Calculations
-  const beratKotor = parseFloat(form.berat_kotor) || 0;
-  const persenPot = parseFloat(form.persen_potongan) || 0;
-  const beratBersih = hitungBeratBersih(beratKotor, persenPot);
-  const totalHarga = hitungTotalHarga(beratBersih, hargaHariIni);
-  const potonganHutang = form.potong_hutang ? Math.min(parseFloat(form.jumlah_potong) || saldoHutang, saldoHutang, totalHarga) : 0;
-  const bayarTunai = totalHarga - potonganHutang;
-
-  async function handleSubmit(e, cetak = false) {
-    e.preventDefault();
-    if (!form.petani_id || beratKotor <= 0 || hargaHariIni <= 0) return;
-
-    setSaving(true);
-    const today = getTodayISO();
-
-    // Get sequence for struk number
-    const { count } = await supabase
-      .from('transaksi_beli')
-      .select('*', { count: 'exact', head: true })
-      .eq('tanggal', today);
-
-    const noStruk = generateNoStruk('TBS', (count || 0) + 1);
-
-    // Get user
-    const { data: { session } } = await supabase.auth.getSession();
-
-    const transaksiPayload = {
-      tanggal: today,
-      petani_id: form.petani_id,
-      berat_kotor: beratKotor,
-      persen_potongan: persenPot,
-      berat_bersih: beratBersih,
-      harga_per_kg: hargaHariIni,
-      total_harga: totalHarga,
-      potongan_hutang: potonganHutang,
-      total_bayar_tunai: bayarTunai,
-      no_struk: noStruk,
-      created_by: session?.user?.id || null,
-    };
-
-    const { data: savedTrx, error: trxError } = await supabase
-      .from('transaksi_beli')
-      .insert(transaksiPayload)
-      .select('*, petani:petani_id(nama)')
-      .single();
-
-    if (trxError) {
-      showToast('Gagal menyimpan transaksi: ' + trxError.message, 'error');
-      setSaving(false);
+    if (error) {
+      setSaldoHutang(0);
+      setToast({ type: 'error', message: `Gagal membaca saldo hutang: ${error.message}` });
       return;
     }
 
-    // Jika ada potongan hutang, catat di hutang_log
-    if (potonganHutang > 0) {
-      await supabase.from('hutang_log').insert({
-        petani_id: form.petani_id,
-        tanggal: today,
-        jumlah_bayar: potonganHutang,
-        sumber: 'potong_tbs',
-        transaksi_beli_id: savedTrx.id,
-        keterangan: `Potong dari ${noStruk}`,
-      });
-    }
+    const saldo = (data || []).reduce((total, row) => {
+      return total + (row.tipe === 'debit' ? Number(row.jumlah || 0) : -Number(row.jumlah || 0));
+    }, 0);
 
-    showToast('Transaksi berhasil disimpan!', 'success');
-    setSaving(false);
-
-    // Reset form
-    setForm({ petani_id: '', berat_kotor: '', persen_potongan: '2', potong_hutang: false, jumlah_potong: '' });
-    setSelectedPetani(null);
-    setSaldoHutang(0);
-
-    // Reload transaksi hari ini
-    loadInitialData();
-
-    // Cetak struk
-    if (cetak && savedTrx) {
-      setShowStruk(savedTrx);
-      setTimeout(() => window.print(), 500);
-    }
+    setSaldoHutang(Math.max(saldo, 0));
   }
 
   function showToast(message, type = 'success') {
@@ -156,78 +108,116 @@ export default function InputTBSPage() {
     setTimeout(() => setToast(null), 3000);
   }
 
-  function openEdit(t) {
-    setEditTarget(t);
-    setEditForm({ berat_kotor: t.berat_kotor.toString(), persen_potongan: t.persen_potongan.toString() });
+  function handlePetaniChange(petaniId) {
+    setForm({ ...form, petani_id: petaniId, potong_hutang: false, jumlah_potong: '' });
+    const petani = petaniList.find((item) => item.id === petaniId);
+    setSelectedPetani(petani || null);
+    if (petaniId) loadSaldoHutang(petaniId);
+    else setSaldoHutang(0);
   }
 
-  async function handleEditSave() {
-    if (!editTarget) return;
-    const bk = parseFloat(editForm.berat_kotor) || 0;
-    const pp = parseFloat(editForm.persen_potongan) || 0;
-    const bb = hitungBeratBersih(bk, pp);
-    const th = hitungTotalHarga(bb, editTarget.harga_per_kg);
-    const tunai = th - (editTarget.potongan_hutang || 0);
+  const hargaPerKg = Number(hargaAktif?.harga_per_kg || 0);
+  const beratKotor = Number(form.berat_kotor) || 0;
+  const persenPot = Number(form.persen_potongan) || 0;
+  const beratBersih = hitungBeratBersih(beratKotor, persenPot);
+  const totalHarga = hitungTotalHarga(beratBersih, hargaPerKg);
+  const potonganHutang = form.potong_hutang
+    ? Math.min(Number(form.jumlah_potong) || saldoHutang, saldoHutang, totalHarga)
+    : 0;
+  const bayarTunai = totalHarga - potonganHutang;
 
-    await supabase.from('transaksi_beli').update({
-      berat_kotor: bk, persen_potongan: pp, berat_bersih: bb,
-      total_harga: th, total_bayar_tunai: Math.max(tunai, 0),
-    }).eq('id', editTarget.id);
+  async function handleSubmit(e, cetak = false) {
+    e.preventDefault();
+    if (!form.petani_id || beratKotor <= 0 || hargaPerKg <= 0) return;
 
-    setEditTarget(null);
-    showToast('Transaksi berhasil diperbarui!');
-    loadInitialData();
-  }
+    setSaving(true);
+    const { data, error } = await supabase.rpc('create_transaksi_beli_tbs', {
+      p_petani_id: form.petani_id,
+      p_berat_kotor_kg: beratKotor,
+      p_potongan_percent: persenPot,
+      p_potongan_hutang: potonganHutang,
+      p_keterangan: null,
+      p_tanggal: getTodayISO(),
+    });
 
-  async function handleDelete() {
-    if (!deleteTarget) return;
-    // Jika ada potongan hutang, kembalikan ke hutang_log
-    if (deleteTarget.potongan_hutang > 0) {
-      await supabase.from('hutang_log').delete().eq('transaksi_beli_id', deleteTarget.id);
+    if (error) {
+      showToast(`Gagal menyimpan transaksi: ${error.message}`, 'error');
+      setSaving(false);
+      return;
     }
-    await supabase.from('transaksi_beli').delete().eq('id', deleteTarget.id);
-    setDeleteTarget(null);
-    showToast('Transaksi berhasil dihapus!');
-    loadInitialData();
+
+    const saved = Array.isArray(data) ? data[0] : data;
+    const printable = toPrintableTransaction(saved, selectedPetani);
+
+    showToast('Transaksi berhasil disimpan.');
+    setForm({ petani_id: '', berat_kotor: '', persen_potongan: '2', potong_hutang: false, jumlah_potong: '' });
+    setSelectedPetani(null);
+    setSaldoHutang(0);
+    await loadInitialData();
+    setSaving(false);
+
+    if (cetak && printable) {
+      setShowStruk(printable);
+      setTimeout(() => window.print(), 500);
+    }
+  }
+
+  async function handleCancelTransaction() {
+    if (!cancelTarget) return;
+
+    const alasan = window.prompt(`Alasan pembatalan transaksi ${cancelTarget.no_struk}:`);
+    if (!alasan || !alasan.trim()) return;
+
+    const { error } = await supabase.rpc('cancel_transaksi_beli_tbs', {
+      p_transaksi_id: cancelTarget.id,
+      p_alasan: alasan.trim(),
+    });
+
+    if (error) {
+      showToast(`Gagal membatalkan transaksi: ${error.message}`, 'error');
+      setCancelTarget(null);
+      return;
+    }
+
+    showToast('Transaksi berhasil dibatalkan dengan reversal ledger.');
+    setCancelTarget(null);
+    await loadInitialData();
   }
 
   return (
-    <AppShell title="Input TBS" subtitle="Catat pembelian TBS dari petani">
-      {/* Toast */}
+    <AppShell title="Input TBS Lokal" subtitle="Catat pembelian TBS dari petani lokal">
       {toast && (
         <div className="toast-container">
           <div className={`toast toast-${toast.type}`}>
-            <span>{toast.type === 'success' ? '✅' : '❌'}</span>
             <span>{toast.message}</span>
           </div>
         </div>
       )}
 
-      {/* Harga Hari Ini Banner */}
-      {hargaHariIni > 0 ? (
+      {hargaPerKg > 0 ? (
         <div className="alert alert-success" style={{ marginBottom: 'var(--space-lg)' }}>
-          <span className="alert-icon">💲</span>
-          <span>Harga TBS hari ini: <strong className="text-mono">{formatRupiah(hargaHariIni)}/kg</strong></span>
+          <span>
+            Harga TBS aktif: <strong className="text-mono">{formatRupiah(hargaPerKg)}/kg</strong>
+          </span>
         </div>
       ) : (
         <div className="alert alert-warning" style={{ marginBottom: 'var(--space-lg)' }}>
-          <span className="alert-icon">⚠️</span>
-          <span>Harga TBS hari ini belum diset! <a href="/master/harga" style={{ textDecoration: 'underline' }}>Set harga →</a></span>
+          <span>
+            Harga TBS lokal aktif belum diset. Buka <a href="/master/harga" style={{ textDecoration: 'underline' }}>Harga TBS</a>.
+          </span>
         </div>
       )}
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 'var(--space-xl)' }}>
-        {/* Form Input */}
         <div className="card">
           <div className="card-header">
-            <span className="card-title">📦 Form Input Timbangan</span>
+            <span className="card-title">Form Timbangan Petani Lokal</span>
             <span className="text-tertiary text-sm">{formatTanggal(new Date())}</span>
           </div>
 
           <form onSubmit={(e) => handleSubmit(e, false)}>
-            {/* Pilih Petani */}
             <div className="form-group">
-              <label className="form-label form-label-required">Petani / Mitra</label>
+              <label className="form-label form-label-required">Petani lokal</label>
               <select
                 className="form-input form-select"
                 value={form.petani_id}
@@ -235,18 +225,16 @@ export default function InputTBSPage() {
                 required
               >
                 <option value="">-- Pilih Petani --</option>
-                {petaniList.map(p => (
-                  <option key={p.id} value={p.id}>{p.nama}</option>
+                {petaniList.map((petani) => (
+                  <option key={petani.id} value={petani.id}>{petani.nama}</option>
                 ))}
               </select>
             </div>
 
-            {/* Info Hutang */}
             {selectedPetani && saldoHutang > 0 && (
               <div className="alert alert-warning">
-                <span className="alert-icon">💳</span>
                 <div>
-                  <strong>{selectedPetani.nama}</strong> memiliki saldo hutang:{' '}
+                  <strong>{selectedPetani.nama}</strong> memiliki saldo hutang{' '}
                   <strong className="text-mono">{formatRupiah(saldoHutang)}</strong>
                   {selectedPetani.batas_hutang > 0 && (
                     <span className="text-tertiary"> / Batas: {formatRupiah(selectedPetani.batas_hutang)}</span>
@@ -255,10 +243,9 @@ export default function InputTBSPage() {
               </div>
             )}
 
-            {/* Input Berat */}
             <div className="form-grid">
               <div className="form-group">
-                <label className="form-label form-label-required">Berat Kotor (kg)</label>
+                <label className="form-label form-label-required">Berat kotor (kg)</label>
                 <input
                   type="number"
                   className="form-input form-input-mono"
@@ -284,11 +271,10 @@ export default function InputTBSPage() {
               </div>
             </div>
 
-            {/* Kalkulasi */}
-            {beratKotor > 0 && hargaHariIni > 0 && (
+            {beratKotor > 0 && hargaPerKg > 0 && (
               <div className="calc-result">
                 <div className="calc-result-row">
-                  <span className="calc-result-label">Berat Kotor</span>
+                  <span className="calc-result-label">Berat kotor</span>
                   <span className="calc-result-value">{formatNumber(beratKotor)} kg</span>
                 </div>
                 <div className="calc-result-row">
@@ -296,21 +282,20 @@ export default function InputTBSPage() {
                   <span className="calc-result-value text-danger">-{formatNumber(beratKotor * persenPot / 100)} kg</span>
                 </div>
                 <div className="calc-result-row">
-                  <span className="calc-result-label">Berat Bersih</span>
+                  <span className="calc-result-label">Berat bersih</span>
                   <span className="calc-result-value">{formatNumber(beratBersih)} kg</span>
                 </div>
                 <div className="calc-result-row">
                   <span className="calc-result-label">Harga /kg</span>
-                  <span className="calc-result-value">{formatRupiah(hargaHariIni)}</span>
+                  <span className="calc-result-value">{formatRupiah(hargaPerKg)}</span>
                 </div>
                 <div className="calc-result-row">
-                  <span className="calc-result-label" style={{ fontWeight: 600 }}>Total Harga</span>
+                  <span className="calc-result-label" style={{ fontWeight: 600 }}>Total harga</span>
                   <span className="calc-result-value calc-result-total">{formatRupiah(totalHarga)}</span>
                 </div>
               </div>
             )}
 
-            {/* Potong Hutang */}
             {selectedPetani && saldoHutang > 0 && totalHarga > 0 && (
               <div className="form-group" style={{ background: 'var(--bg-surface)', padding: 'var(--space-md)', borderRadius: 'var(--radius-md)' }}>
                 <label className="toggle" style={{ marginBottom: 'var(--space-sm)' }}>
@@ -323,11 +308,11 @@ export default function InputTBSPage() {
                   <span className="toggle-track">
                     <span className="toggle-thumb"></span>
                   </span>
-                  <span className="toggle-label">Potong Hutang Otomatis</span>
+                  <span className="toggle-label">Potong hutang dari pembayaran</span>
                 </label>
                 {form.potong_hutang && (
                   <div style={{ marginTop: 'var(--space-sm)' }}>
-                    <label className="form-label">Jumlah Potong (Rp)</label>
+                    <label className="form-label">Jumlah potong (Rp)</label>
                     <input
                       type="number"
                       className="form-input form-input-mono"
@@ -339,7 +324,7 @@ export default function InputTBSPage() {
                     <div className="form-hint">Maks: {formatRupiah(Math.min(saldoHutang, totalHarga))}</div>
                     {potonganHutang > 0 && (
                       <div style={{ marginTop: 8, fontWeight: 600, color: 'var(--color-primary-400)' }}>
-                        💰 Bayar Tunai: <span className="text-mono">{formatRupiah(bayarTunai)}</span>
+                        Bayar tunai: <span className="text-mono">{formatRupiah(bayarTunai)}</span>
                       </div>
                     )}
                   </div>
@@ -347,38 +332,41 @@ export default function InputTBSPage() {
               </div>
             )}
 
-            {/* Actions */}
             <div className="form-actions">
               <button
                 type="submit"
                 className="btn btn-primary btn-lg"
-                disabled={saving || beratKotor <= 0 || !form.petani_id || hargaHariIni <= 0}
+                disabled={saving || beratKotor <= 0 || !form.petani_id || hargaPerKg <= 0}
               >
-                {saving ? 'Menyimpan...' : '💾 Simpan'}
+                {saving ? 'Menyimpan...' : 'Simpan'}
               </button>
               <button
                 type="button"
                 className="btn btn-gold btn-lg"
-                disabled={saving || beratKotor <= 0 || !form.petani_id || hargaHariIni <= 0}
+                disabled={saving || beratKotor <= 0 || !form.petani_id || hargaPerKg <= 0}
                 onClick={(e) => handleSubmit(e, true)}
               >
-                🖨️ Simpan & Cetak
+                Simpan & Cetak
               </button>
             </div>
           </form>
         </div>
 
-        {/* Transaksi Hari Ini */}
         <div className="card">
           <div className="card-header">
             <span className="card-title">Transaksi Hari Ini ({transaksiHariIni.length})</span>
             <span className="text-mono text-secondary">
-              {formatNumber(transaksiHariIni.reduce((s, t) => s + (t.berat_bersih || 0), 0))} kg
+              {formatNumber(transaksiHariIni.reduce((sum, item) => sum + Number(item.berat_bersih_kg || 0), 0))} kg
             </span>
           </div>
-          {transaksiHariIni.length === 0 ? (
+          {loading ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {[1, 2, 3].map((item) => (
+                <div key={item} className="skeleton" style={{ height: 44 }} />
+              ))}
+            </div>
+          ) : transaksiHariIni.length === 0 ? (
             <div className="empty-state" style={{ padding: 'var(--space-xl)' }}>
-              <div className="empty-state-icon">📦</div>
               <div className="empty-state-title">Belum ada transaksi hari ini</div>
             </div>
           ) : (
@@ -395,18 +383,29 @@ export default function InputTBSPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {transaksiHariIni.map(t => (
-                    <tr key={t.id}>
-                      <td className="table-mono" style={{ fontSize: 'var(--text-xs)' }}>{t.no_struk}</td>
-                      <td>{t.petani?.nama || '-'}</td>
-                      <td className="table-mono" style={{ textAlign: 'right' }}>{formatNumber(t.berat_bersih)}</td>
-                      <td className="table-mono" style={{ textAlign: 'right' }}>{formatRupiah(t.total_harga)}</td>
-                      <td className="table-mono" style={{ textAlign: 'right' }}>{formatRupiah(t.total_bayar_tunai)}</td>
+                  {transaksiHariIni.map((transaksi) => (
+                    <tr key={transaksi.id}>
+                      <td className="table-mono" style={{ fontSize: 'var(--text-xs)' }}>{transaksi.no_struk}</td>
+                      <td>{transaksi.petani?.nama || '-'}</td>
+                      <td className="table-mono" style={{ textAlign: 'right' }}>{formatNumber(transaksi.berat_bersih_kg)}</td>
+                      <td className="table-mono" style={{ textAlign: 'right' }}>{formatRupiah(transaksi.total_harga)}</td>
+                      <td className="table-mono" style={{ textAlign: 'right' }}>{formatRupiah(transaksi.total_bayar_tunai)}</td>
                       <td>
                         <div className="flex gap-xs">
-                          <button className="btn btn-ghost btn-sm" onClick={() => openEdit(t)} title="Edit">✏️</button>
-                          <button className="btn btn-ghost btn-sm" onClick={() => { setShowStruk(t); setTimeout(() => window.print(), 300); }} title="Cetak">🖨️</button>
-                          <button className="btn btn-ghost btn-sm" onClick={() => setDeleteTarget(t)} title="Hapus">🗑️</button>
+                          <button
+                            className="btn btn-ghost btn-sm"
+                            onClick={() => { setShowStruk(toPrintableTransaction(transaksi)); setTimeout(() => window.print(), 300); }}
+                            title="Cetak"
+                          >
+                            Cetak
+                          </button>
+                          <button
+                            className="btn btn-ghost btn-sm"
+                            onClick={() => setCancelTarget(transaksi)}
+                            title="Batalkan"
+                          >
+                            Batalkan
+                          </button>
                         </div>
                       </td>
                     </tr>
@@ -418,28 +417,27 @@ export default function InputTBSPage() {
         </div>
       </div>
 
-      {/* Struk Thermal (hidden, only visible on print) */}
       {showStruk && (
         <div ref={strukRef} className="struk-thermal">
           <div className="struk-center struk-bold struk-lg">SAWIT CB</div>
           <div className="struk-center">RAM Kelapa Sawit</div>
           <hr className="struk-separator" />
           <div>No: {showStruk.no_struk}</div>
-          <div>Tgl: {formatTanggalPendek(showStruk.tanggal)}  {formatWaktu(showStruk.created_at)}</div>
+          <div>Tgl: {formatTanggalPendek(showStruk.tanggal)} {formatWaktu(showStruk.created_at)}</div>
           <br />
           <div>Petani: {showStruk.petani?.nama || '-'}</div>
           <hr className="struk-separator" />
           <div className="struk-row">
             <span>Berat Kotor</span>
-            <span>{formatNumber(showStruk.berat_kotor)} kg</span>
+            <span>{formatNumber(showStruk.berat_kotor_kg)} kg</span>
           </div>
           <div className="struk-row">
-            <span>Potongan {showStruk.persen_potongan}%</span>
-            <span>{formatNumber(showStruk.berat_kotor * showStruk.persen_potongan / 100)} kg</span>
+            <span>Potongan {showStruk.potongan_value}%</span>
+            <span>{formatNumber(showStruk.berat_kotor_kg * showStruk.potongan_value / 100)} kg</span>
           </div>
           <div className="struk-row">
             <span>Berat Bersih</span>
-            <span>{formatNumber(showStruk.berat_bersih)} kg</span>
+            <span>{formatNumber(showStruk.berat_bersih_kg)} kg</span>
           </div>
           <div className="struk-row">
             <span>Harga /kg</span>
@@ -466,53 +464,15 @@ export default function InputTBSPage() {
         </div>
       )}
 
-      {/* Edit Modal */}
-      {editTarget && (
-        <div className="modal-overlay" onClick={() => setEditTarget(null)}>
-          <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 450 }}>
-            <div className="modal-header">
-              <h3 style={{ fontSize: 'var(--text-lg)', fontWeight: 700 }}>✏️ Edit Transaksi</h3>
-              <button className="btn btn-ghost btn-sm" onClick={() => setEditTarget(null)}>✕</button>
-            </div>
-            <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-md)' }}>
-              <div className="text-tertiary text-sm" style={{ marginBottom: 'var(--space-sm)' }}>
-                Struk: <strong>{editTarget.no_struk}</strong> • Petani: <strong>{editTarget.petani?.nama}</strong>
-              </div>
-              <div>
-                <label className="form-label">Berat Kotor (kg)</label>
-                <input type="number" className="form-input form-input-mono"
-                  value={editForm.berat_kotor}
-                  onChange={e => setEditForm({ ...editForm, berat_kotor: e.target.value })} />
-              </div>
-              <div>
-                <label className="form-label">Potongan (%)</label>
-                <input type="number" step="0.1" className="form-input form-input-mono"
-                  value={editForm.persen_potongan}
-                  onChange={e => setEditForm({ ...editForm, persen_potongan: e.target.value })} />
-              </div>
-              <div style={{ padding: 'var(--space-sm)', background: 'var(--bg-surface)', borderRadius: 'var(--radius-md)', fontSize: 'var(--text-sm)' }}>
-                <div>Berat Bersih: <strong className="text-mono">{formatNumber(hitungBeratBersih(parseFloat(editForm.berat_kotor) || 0, parseFloat(editForm.persen_potongan) || 0))} kg</strong></div>
-                <div>Total: <strong className="text-mono">{formatRupiah(hitungTotalHarga(hitungBeratBersih(parseFloat(editForm.berat_kotor) || 0, parseFloat(editForm.persen_potongan) || 0), editTarget.harga_per_kg))}</strong></div>
-              </div>
-            </div>
-            <div className="modal-footer">
-              <button className="btn btn-outline" onClick={() => setEditTarget(null)}>Batal</button>
-              <button className="btn btn-primary" onClick={handleEditSave}>💾 Simpan Perubahan</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Delete Confirm */}
       <ConfirmDialog
-        open={!!deleteTarget}
-        title="Hapus Transaksi?"
-        message={deleteTarget ? `Yakin hapus transaksi ${deleteTarget.no_struk} (${deleteTarget.petani?.nama})? ${deleteTarget.potongan_hutang > 0 ? 'Potongan hutang juga akan dikembalikan.' : ''} Tindakan ini tidak bisa dibatalkan.` : ''}
-        confirmText="🗑️ Ya, Hapus"
-        cancelText="Batal"
+        open={!!cancelTarget}
+        title="Batalkan Transaksi?"
+        message={cancelTarget ? `Transaksi ${cancelTarget.no_struk} akan dibatalkan dengan reversal stok dan hutang. Lanjutkan?` : ''}
+        confirmText="Ya, Batalkan"
+        cancelText="Kembali"
         variant="danger"
-        onConfirm={handleDelete}
-        onCancel={() => setDeleteTarget(null)}
+        onConfirm={handleCancelTransaction}
+        onCancel={() => setCancelTarget(null)}
       />
     </AppShell>
   );

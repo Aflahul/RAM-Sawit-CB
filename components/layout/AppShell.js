@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
+import { normalizeRole } from '@/lib/roles';
 import Sidebar from '@/components/layout/Sidebar';
 import Header from '@/components/layout/Header';
 import BottomNav from '@/components/layout/BottomNav';
@@ -29,7 +30,11 @@ export default function AppShell({ children, title, subtitle }) {
           .eq('id', session.user.id)
           .single();
 
-        setUser(userData || { nama: session.user.email, role: 'admin' });
+        setUser(
+          userData
+            ? { ...userData, role: normalizeRole(userData.role) }
+            : { nama: session.user.email, role: 'admin_operasional' }
+        );
       } catch (err) {
         console.error('Error fetching user:', err);
         router.push('/login');
@@ -41,7 +46,7 @@ export default function AppShell({ children, title, subtitle }) {
     getUser();
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (event, session) => {
+      (event) => {
         if (event === 'SIGNED_OUT') {
           router.push('/login');
         }
@@ -82,7 +87,6 @@ export default function AppShell({ children, title, subtitle }) {
           title={title}
           subtitle={subtitle}
           onMenuToggle={() => setSidebarOpen(!sidebarOpen)}
-          user={user}
         />
         <main className="page-content animate-fadeIn">
           {children}

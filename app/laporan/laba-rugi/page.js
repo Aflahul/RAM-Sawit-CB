@@ -1,10 +1,15 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import AppShell from '@/components/layout/AppShell';
 import { supabase } from '@/lib/supabase';
+import { canViewProfit, normalizeRole } from '@/lib/roles';
 import { formatRupiah } from '@/lib/utils';
 import { exportLabaRugi } from '@/lib/export';
+
+function getNilaiPabrik(row) {
+  return Number(row.total_pembayaran_pabrik ?? row.total_harga_pabrik ?? 0);
+}
 
 export default function LabaRugiPage() {
   const [periode, setPeriode] = useState('bulanan');
@@ -13,27 +18,21 @@ export default function LabaRugiPage() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [userRole, setUserRole] = useState(null);
+  const [toast, setToast] = useState(null);
 
-  useEffect(() => {
-    checkRole();
-  }, []);
-
-  useEffect(() => {
-    if (userRole === 'owner') loadData();
-  }, [bulan, tahun, periode, userRole]);
-
-  async function checkRole() {
+  const checkRole = useCallback(async () => {
     const { data: { session } } = await supabase.auth.getSession();
     if (session) {
       const { data: user } = await supabase.from('users').select('role').eq('id', session.user.id).single();
-      setUserRole(user?.role || 'admin');
+      setUserRole(normalizeRole(user?.role));
     }
-  }
+  }, []);
 
-  async function loadData() {
+  const loadData = useCallback(async () => {
     setLoading(true);
 
-    let startDate, endDate;
+    let startDate;
+    let endDate;
     if (periode === 'bulanan') {
       startDate = `${tahun}-${bulan.toString().padStart(2, '0')}-01`;
       const lastDay = new Date(tahun, bulan, 0).getDate();
@@ -43,58 +42,99 @@ export default function LabaRugiPage() {
       endDate = `${tahun}-12-31`;
     }
 
-    // Pendapatan: Pengiriman yang sudah dibayar
-    const { data: pendapatan } = await supabase
-      .from('pengiriman')
-      .select('total_harga_pabrik')
-      .eq('status', 'dibayar')
-      .gte('tanggal_bayar', startDate)
-      .lte('tanggal_bayar', endDate);
+    const [
+      { data: pendapatanKas, error: pendapatanKasError },
+      { data: pendapatanTransaksi, error: pendapatanTransaksiError },
+      { data: pembelian, error: pembelianError },
+      { data: biaya, error: biayaError },
+    ] = await Promise.all([
+      supabase
+        .from('pengiriman')
+        .select('sumber, total_pembayaran_pabrik, total_harga_pabrik, tanggal_bayar, status')
+        .in('status', ['dibayar', 'dibayar_pabrik', 'selesai'])
+        .gte('tanggal_bayar', startDate)
+        .lte('tanggal_bayar', endDate),
+      supabase
+        .from('pengiriman')
+        .select('sumber, total_pembayaran_pabrik, total_harga_pabrik, tanggal, status')
+        .neq('status', 'dibatalkan')
+        .gte('tanggal', startDate)
+        .lte('tanggal', endDate),
+      supabase
+        .from('transaksi_beli_tbs')
+        .select('total_harga, total_bayar_tunai')
+        .eq('status', 'aktif')
+        .gte('tanggal', startDate)
+        .lte('tanggal', endDate),
+      supabase
+        .from('biaya_operasional')
+        .select('kategori, jumlah')
+        .gte('tanggal', startDate)
+        .lte('tanggal', endDate),
+    ]);
 
-    const totalPendapatan = (pendapatan || []).reduce((s, p) => s + (p.total_harga_pabrik || 0), 0);
+    const firstError = pendapatanKasError || pendapatanTransaksiError || pembelianError || biayaError;
+    if (firstError) {
+      setToast({ type: 'error', message: firstError.message });
+    }
 
-    // Pengeluaran: Pembelian TBS
-    const { data: pembelian } = await supabase
-      .from('transaksi_beli')
-      .select('total_harga')
-      .gte('tanggal', startDate)
-      .lte('tanggal', endDate);
+    const totalPendapatanKas = (pendapatanKas || []).reduce((sum, row) => sum + getNilaiPabrik(row), 0);
+    const totalPendapatanTransaksi = (pendapatanTransaksi || []).reduce((sum, row) => sum + getNilaiPabrik(row), 0);
 
-    const totalPembelian = (pembelian || []).reduce((s, t) => s + (t.total_harga || 0), 0);
-
-    // Pengeluaran: Biaya Operasional
-    const { data: biaya } = await supabase
-      .from('biaya_operasional')
-      .select('kategori, jumlah')
-      .gte('tanggal', startDate)
-      .lte('tanggal', endDate);
+    const totalPembelianKas = (pembelian || []).reduce((sum, row) => sum + Number(row.total_bayar_tunai || 0), 0);
+    const totalPembelianTransaksi = (pembelian || []).reduce((sum, row) => sum + Number(row.total_harga || 0), 0);
 
     const biayaPerKategori = {};
-    (biaya || []).forEach(b => {
-      biayaPerKategori[b.kategori] = (biayaPerKategori[b.kategori] || 0) + (b.jumlah || 0);
+    (biaya || []).forEach((row) => {
+      biayaPerKategori[row.kategori] = (biayaPerKategori[row.kategori] || 0) + Number(row.jumlah || 0);
     });
-    const totalBiaya = (biaya || []).reduce((s, b) => s + (b.jumlah || 0), 0);
+    const totalBiaya = (biaya || []).reduce((sum, row) => sum + Number(row.jumlah || 0), 0);
 
-    const totalPengeluaran = totalPembelian + totalBiaya;
-    const labaBersih = totalPendapatan - totalPengeluaran;
+    const totalPengeluaranKas = totalPembelianKas + totalBiaya;
+    const totalPengeluaranTransaksi = totalPembelianTransaksi + totalBiaya;
+    const labaKas = totalPendapatanKas - totalPengeluaranKas;
+    const labaTransaksi = totalPendapatanTransaksi - totalPengeluaranTransaksi;
 
     setData({
-      totalPendapatan,
-      totalPembelian,
+      totalPendapatan: totalPendapatanKas,
+      totalPembelian: totalPembelianKas,
       biayaPerKategori,
       totalBiaya,
-      totalPengeluaran,
-      labaBersih,
-      jumlahTxPendapatan: pendapatan?.length || 0,
+      totalPengeluaran: totalPengeluaranKas,
+      labaBersih: labaKas,
+      totalPendapatanKas,
+      totalPendapatanTransaksi,
+      totalPembelianKas,
+      totalPembelianTransaksi,
+      totalPengeluaranKas,
+      totalPengeluaranTransaksi,
+      labaKas,
+      labaTransaksi,
+      jumlahTxPendapatanKas: pendapatanKas?.length || 0,
+      jumlahTxPendapatanTransaksi: pendapatanTransaksi?.filter((row) => getNilaiPabrik(row) > 0).length || 0,
       jumlahTxPembelian: pembelian?.length || 0,
     });
 
     setLoading(false);
-  }
+  }, [bulan, tahun, periode]);
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    checkRole();
+  }, [checkRole]);
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (canViewProfit(userRole)) loadData();
+  }, [loadData, userRole]);
 
   const kategoriLabel = {
-    solar: '⛽ Solar / BBM', gaji_sopir: '👤 Gaji Sopir', kuli: '💪 Kuli Bongkar',
-    retribusi: '📋 Retribusi', perawatan: '🔧 Perawatan', lainnya: '📦 Lainnya',
+    solar: 'Solar / BBM',
+    gaji_sopir: 'Gaji Sopir',
+    kuli: 'Kuli Bongkar',
+    retribusi: 'Retribusi',
+    perawatan: 'Perawatan',
+    lainnya: 'Lainnya',
   };
 
   const bulanNama = [
@@ -102,16 +142,13 @@ export default function LabaRugiPage() {
     'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember',
   ];
 
-  // Block admin
-  if (userRole === 'admin') {
+  if (userRole !== null && !canViewProfit(userRole)) {
     return (
       <AppShell title="Laba / Rugi" subtitle="Akses terbatas">
         <div className="empty-state" style={{ marginTop: 'var(--space-3xl)' }}>
-          <div className="empty-state-icon">🔒</div>
           <div className="empty-state-title">Akses Ditolak</div>
           <div className="empty-state-text">
-            Halaman Laba/Rugi hanya dapat diakses oleh Owner.
-            Hubungi pemilik untuk informasi keuangan.
+            Halaman Laba/Rugi hanya dapat diakses oleh Owner dan Super Admin.
           </div>
         </div>
       </AppShell>
@@ -122,40 +159,48 @@ export default function LabaRugiPage() {
     return (
       <AppShell title="Laba / Rugi">
         <div style={{ textAlign: 'center', padding: 'var(--space-3xl)' }}>
-          <div className="spinner spinner-lg" style={{ margin: '0 auto' }}></div>
+          <div className="spinner spinner-lg" style={{ margin: '0 auto' }} />
         </div>
       </AppShell>
     );
   }
 
   return (
-    <AppShell title="Laba / Rugi" subtitle="Laporan keuangan — Owner Only">
+    <AppShell title="Laba / Rugi" subtitle="Laporan keuangan owner dan super admin">
+      {toast && (
+        <div className="toast-container">
+          <div className={`toast toast-${toast.type}`}>
+            <span>{toast.message}</span>
+          </div>
+        </div>
+      )}
+
       <div className="page-header">
         <div>
-          <h2 className="page-title">💰 Laporan Laba / Rugi</h2>
+          <h2 className="page-title">Laporan Laba / Rugi</h2>
           <p className="page-description">
             {periode === 'bulanan' ? `${bulanNama[bulan]} ${tahun}` : `Tahun ${tahun}`}
           </p>
         </div>
         <div className="flex gap-sm items-center" style={{ flexWrap: 'wrap' }}>
-          <select className="form-input form-select" value={periode} onChange={e => setPeriode(e.target.value)} style={{ width: 140 }}>
+          <select className="form-input form-select" value={periode} onChange={(e) => setPeriode(e.target.value)} style={{ width: 140 }}>
             <option value="bulanan">Bulanan</option>
             <option value="tahunan">Tahunan</option>
           </select>
           {periode === 'bulanan' && (
-            <select className="form-input form-select" value={bulan} onChange={e => setBulan(parseInt(e.target.value))} style={{ width: 150 }}>
-              {bulanNama.slice(1).map((n, i) => <option key={i + 1} value={i + 1}>{n}</option>)}
+            <select className="form-input form-select" value={bulan} onChange={(e) => setBulan(Number(e.target.value))} style={{ width: 150 }}>
+              {bulanNama.slice(1).map((nama, index) => <option key={index + 1} value={index + 1}>{nama}</option>)}
             </select>
           )}
-          <select className="form-input form-select" value={tahun} onChange={e => setTahun(parseInt(e.target.value))} style={{ width: 100 }}>
-            {[2024, 2025, 2026, 2027].map(y => <option key={y} value={y}>{y}</option>)}
+          <select className="form-input form-select" value={tahun} onChange={(e) => setTahun(Number(e.target.value))} style={{ width: 100 }}>
+            {[2024, 2025, 2026, 2027].map((item) => <option key={item} value={item}>{item}</option>)}
           </select>
           {data && (
             <button className="btn btn-outline btn-sm" onClick={() => {
               const periodeStr = periode === 'bulanan' ? `${bulanNama[bulan]}_${tahun}` : `Tahun_${tahun}`;
               exportLabaRugi(periodeStr, data);
             }}>
-              📥 Export Excel
+              Export Excel
             </button>
           )}
         </div>
@@ -163,102 +208,97 @@ export default function LabaRugiPage() {
 
       {loading ? (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-          {[1, 2, 3].map(i => <div key={i} className="skeleton" style={{ height: 100 }}></div>)}
+          {[1, 2, 3].map((item) => <div key={item} className="skeleton" style={{ height: 100 }} />)}
         </div>
       ) : !data ? null : (
         <>
-          {/* Summary Cards */}
-          <div className="stats-grid" style={{ gridTemplateColumns: 'repeat(3, 1fr)' }}>
+          <div className="alert alert-info" style={{ marginBottom: 'var(--space-lg)' }}>
+            Laba Bersih Kas adalah angka utama karena memakai uang yang sudah diterima/dikeluarkan. Laba Estimasi Transaksi memakai transaksi final yang sudah tercatat.
+          </div>
+
+          <div className="stats-grid" style={{ gridTemplateColumns: 'repeat(4, 1fr)' }}>
             <div className="card">
               <div className="card-header">
-                <span className="card-title">Pendapatan</span>
-                <div className="card-icon card-icon-green">📈</div>
+                <span className="card-title">Pendapatan Kas</span>
               </div>
-              <div className="card-value" style={{ color: 'var(--color-success)' }}>{formatRupiah(data.totalPendapatan)}</div>
-              <div className="card-label">{data.jumlahTxPendapatan} pengiriman dibayar</div>
+              <div className="card-value" style={{ color: 'var(--color-success)' }}>{formatRupiah(data.totalPendapatanKas)}</div>
+              <div className="card-label">{data.jumlahTxPendapatanKas} DO dibayar</div>
             </div>
             <div className="card">
               <div className="card-header">
-                <span className="card-title">Pengeluaran</span>
-                <div className="card-icon card-icon-red">📉</div>
+                <span className="card-title">Pengeluaran Kas</span>
               </div>
-              <div className="card-value" style={{ color: 'var(--color-danger)' }}>{formatRupiah(data.totalPengeluaran)}</div>
-              <div className="card-label">Pembelian TBS + Biaya Ops</div>
+              <div className="card-value" style={{ color: 'var(--color-danger)' }}>{formatRupiah(data.totalPengeluaranKas)}</div>
+              <div className="card-label">Bayar petani + biaya</div>
             </div>
-            <div className="card" style={{ border: data.labaBersih >= 0 ? '1px solid rgba(46,204,113,0.3)' : '1px solid rgba(231,76,60,0.3)' }}>
+            <div className="card" style={{ border: data.labaKas >= 0 ? '1px solid rgba(46,204,113,0.3)' : '1px solid rgba(231,76,60,0.3)' }}>
               <div className="card-header">
-                <span className="card-title">{data.labaBersih >= 0 ? 'LABA BERSIH' : 'RUGI BERSIH'}</span>
-                <div className={`card-icon ${data.labaBersih >= 0 ? 'card-icon-green' : 'card-icon-red'}`}>
-                  {data.labaBersih >= 0 ? '🎉' : '⚠️'}
-                </div>
+                <span className="card-title">Laba Bersih Kas</span>
               </div>
-              <div className="card-value" style={{ color: data.labaBersih >= 0 ? 'var(--color-success)' : 'var(--color-danger)' }}>
-                {formatRupiah(Math.abs(data.labaBersih))}
+              <div className="card-value" style={{ color: data.labaKas >= 0 ? 'var(--color-success)' : 'var(--color-danger)' }}>
+                {formatRupiah(data.labaKas)}
               </div>
-              <div className="card-label">Pendapatan - Pengeluaran</div>
+              <div className="card-label">Angka utama owner</div>
+            </div>
+            <div className="card">
+              <div className="card-header">
+                <span className="card-title">Estimasi Transaksi</span>
+              </div>
+              <div className="card-value" style={{ color: data.labaTransaksi >= 0 ? 'var(--color-success)' : 'var(--color-danger)' }}>
+                {formatRupiah(data.labaTransaksi)}
+              </div>
+              <div className="card-label">{data.jumlahTxPendapatanTransaksi} DO bernilai final</div>
             </div>
           </div>
 
-          {/* Detail Breakdown */}
           <div className="card" style={{ marginTop: 'var(--space-lg)' }}>
             <div className="card-header">
-              <span className="card-title">Rincian</span>
+              <span className="card-title">Rincian Basis Kas</span>
             </div>
-
-            {/* Pendapatan */}
-            <div style={{ marginBottom: 'var(--space-lg)' }}>
-              <h4 style={{ fontSize: 'var(--text-sm)', fontWeight: 600, color: 'var(--color-success)', marginBottom: 'var(--space-sm)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                📈 PENDAPATAN
-              </h4>
-              <div className="calc-result" style={{ background: 'var(--color-success-bg)', borderColor: 'rgba(46,204,113,0.2)' }}>
-                <div className="calc-result-row">
-                  <span className="calc-result-label">Penjualan ke Pabrik ({data.jumlahTxPendapatan} pengiriman)</span>
-                  <span className="calc-result-value text-success">{formatRupiah(data.totalPendapatan)}</span>
+            <div className="calc-result" style={{ marginBottom: 'var(--space-lg)' }}>
+              <div className="calc-result-row">
+                <span className="calc-result-label">Pendapatan pabrik diterima</span>
+                <span className="calc-result-value text-success">{formatRupiah(data.totalPendapatanKas)}</span>
+              </div>
+              <div className="calc-result-row">
+                <span className="calc-result-label">Pembayaran tunai TBS petani</span>
+                <span className="calc-result-value text-danger">{formatRupiah(data.totalPembelianKas)}</span>
+              </div>
+              {Object.entries(data.biayaPerKategori).map(([kategori, jumlah]) => (
+                <div key={kategori} className="calc-result-row">
+                  <span className="calc-result-label">{kategoriLabel[kategori] || kategori}</span>
+                  <span className="calc-result-value text-danger">{formatRupiah(jumlah)}</span>
                 </div>
+              ))}
+              <div className="calc-result-row" style={{ fontWeight: 700, borderTop: '2px solid rgba(255,255,255,0.08)', paddingTop: 12 }}>
+                <span className="calc-result-label" style={{ fontWeight: 700 }}>Laba Bersih Kas</span>
+                <span className={data.labaKas >= 0 ? 'calc-result-value text-success' : 'calc-result-value text-danger'}>
+                  {formatRupiah(data.labaKas)}
+                </span>
               </div>
             </div>
 
-            {/* Pengeluaran */}
-            <div>
-              <h4 style={{ fontSize: 'var(--text-sm)', fontWeight: 600, color: 'var(--color-danger)', marginBottom: 'var(--space-sm)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                📉 PENGELUARAN
-              </h4>
-              <div className="calc-result" style={{ background: 'var(--color-danger-bg)', borderColor: 'rgba(231,76,60,0.2)' }}>
-                <div className="calc-result-row">
-                  <span className="calc-result-label">Pembelian TBS ({data.jumlahTxPembelian} transaksi)</span>
-                  <span className="calc-result-value text-danger">{formatRupiah(data.totalPembelian)}</span>
-                </div>
-                {Object.entries(data.biayaPerKategori).map(([kat, jml]) => (
-                  <div key={kat} className="calc-result-row">
-                    <span className="calc-result-label">{kategoriLabel[kat] || kat}</span>
-                    <span className="calc-result-value text-danger">{formatRupiah(jml)}</span>
-                  </div>
-                ))}
-                <div className="calc-result-row" style={{ fontWeight: 700, borderTop: '2px solid rgba(231,76,60,0.2)', paddingTop: 12 }}>
-                  <span className="calc-result-label" style={{ fontWeight: 700 }}>Total Pengeluaran</span>
-                  <span className="calc-result-value text-danger">{formatRupiah(data.totalPengeluaran)}</span>
-                </div>
-              </div>
+            <div className="card-header" style={{ paddingLeft: 0, paddingRight: 0 }}>
+              <span className="card-title">Rincian Basis Transaksi</span>
             </div>
-
-            {/* LABA BERSIH FINAL */}
-            <div style={{
-              marginTop: 'var(--space-xl)', padding: 'var(--space-lg)',
-              background: data.labaBersih >= 0
-                ? 'linear-gradient(135deg, rgba(46,204,113,0.1), rgba(46,204,113,0.03))'
-                : 'linear-gradient(135deg, rgba(231,76,60,0.1), rgba(231,76,60,0.03))',
-              borderRadius: 'var(--radius-lg)',
-              border: `1px solid ${data.labaBersih >= 0 ? 'rgba(46,204,113,0.3)' : 'rgba(231,76,60,0.3)'}`,
-              textAlign: 'center',
-            }}>
-              <div style={{ fontSize: 'var(--text-sm)', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 4 }}>
-                {data.labaBersih >= 0 ? '🎉 LABA BERSIH' : '⚠️ RUGI BERSIH'}
+            <div className="calc-result">
+              <div className="calc-result-row">
+                <span className="calc-result-label">Nilai DO/pengiriman final</span>
+                <span className="calc-result-value text-success">{formatRupiah(data.totalPendapatanTransaksi)}</span>
               </div>
-              <div className="text-mono" style={{
-                fontSize: 'var(--text-4xl)', fontWeight: 800,
-                color: data.labaBersih >= 0 ? 'var(--color-success)' : 'var(--color-danger)',
-              }}>
-                {data.labaBersih >= 0 ? '+' : '-'} {formatRupiah(Math.abs(data.labaBersih))}
+              <div className="calc-result-row">
+                <span className="calc-result-label">Nilai pembelian TBS lokal</span>
+                <span className="calc-result-value text-danger">{formatRupiah(data.totalPembelianTransaksi)}</span>
+              </div>
+              <div className="calc-result-row">
+                <span className="calc-result-label">Biaya operasional tercatat</span>
+                <span className="calc-result-value text-danger">{formatRupiah(data.totalBiaya)}</span>
+              </div>
+              <div className="calc-result-row" style={{ fontWeight: 700, borderTop: '2px solid rgba(255,255,255,0.08)', paddingTop: 12 }}>
+                <span className="calc-result-label" style={{ fontWeight: 700 }}>Laba Estimasi Transaksi</span>
+                <span className={data.labaTransaksi >= 0 ? 'calc-result-value text-success' : 'calc-result-value text-danger'}>
+                  {formatRupiah(data.labaTransaksi)}
+                </span>
               </div>
             </div>
           </div>

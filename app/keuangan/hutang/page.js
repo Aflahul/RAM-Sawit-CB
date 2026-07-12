@@ -1,147 +1,202 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import AppShell from '@/components/layout/AppShell';
 import { supabase } from '@/lib/supabase';
 import { formatRupiah, getTodayISO } from '@/lib/utils';
 import { exportToExcel } from '@/lib/export';
 
+function hitungSaldoLedger(rows = []) {
+  return rows.reduce((total, row) => {
+    const jumlah = Number(row.jumlah || 0);
+    return total + (row.tipe === 'debit' ? jumlah : -jumlah);
+  }, 0);
+}
+
+function getLedgerLabel(row) {
+  const labels = {
+    kasbon: 'Kasbon',
+    panjar: 'Panjar',
+    pupuk: 'Bon Pupuk',
+    lainnya: 'Lainnya',
+    bayar_tunai: 'Bayar Tunai',
+    potong_tbs: 'Potong TBS',
+    koreksi: 'Koreksi',
+    reversal: 'Reversal',
+  };
+
+  return labels[row.sumber] || row.sumber || '-';
+}
+
 export default function HutangPage() {
   const [petaniList, setPetaniList] = useState([]);
   const [selectedPetani, setSelectedPetani] = useState(null);
-  const [hutangList, setHutangList] = useState([]);
-  const [logList, setLogList] = useState([]);
+  const [ledgerList, setLedgerList] = useState([]);
   const [saldo, setSaldo] = useState(0);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState(null);
-
-  const [form, setForm] = useState({
-    jenis: 'kasbon', jumlah: '', keterangan: '',
-  });
-
-  // Summary per petani
   const [petaniSummary, setPetaniSummary] = useState([]);
 
-  useEffect(() => { loadData(); }, []);
+  const [form, setForm] = useState({
+    jenis: 'kasbon',
+    jumlah: '',
+    keterangan: '',
+  });
 
-  async function loadData() {
+  const loadData = useCallback(async () => {
     setLoading(true);
-    const { data: petani } = await supabase.from('petani').select('*').eq('aktif', true).order('nama');
-    setPetaniList(petani || []);
 
-    // Load all hutang and logs to calculate summary
-    const { data: allHutang } = await supabase.from('hutang').select('petani_id, jumlah');
-    const { data: allLogs } = await supabase.from('hutang_log').select('petani_id, jumlah_bayar');
+    const [{ data: petani }, { data: ledger, error: ledgerError }] = await Promise.all([
+      supabase.from('petani').select('*').eq('aktif', true).order('nama'),
+      supabase
+        .from('hutang_ledger')
+        .select('petani_id, tipe, jumlah')
+        .eq('pihak_type', 'petani'),
+    ]);
+
+    if (ledgerError) {
+      setToast({ message: `Gagal membaca ledger hutang: ${ledgerError.message}`, type: 'error' });
+    }
 
     const summary = {};
-    (allHutang || []).forEach(h => {
-      if (!summary[h.petani_id]) summary[h.petani_id] = { hutang: 0, bayar: 0 };
-      summary[h.petani_id].hutang += h.jumlah || 0;
-    });
-    (allLogs || []).forEach(l => {
-      if (!summary[l.petani_id]) summary[l.petani_id] = { hutang: 0, bayar: 0 };
-      summary[l.petani_id].bayar += l.jumlah_bayar || 0;
+    (ledger || []).forEach((row) => {
+      if (!summary[row.petani_id]) summary[row.petani_id] = [];
+      summary[row.petani_id].push(row);
     });
 
     const summaryArr = (petani || [])
-      .map(p => ({
-        ...p,
-        saldo: (summary[p.id]?.hutang || 0) - (summary[p.id]?.bayar || 0),
+      .map((item) => ({
+        ...item,
+        saldo: Math.max(hitungSaldoLedger(summary[item.id] || []), 0),
       }))
-      .filter(p => p.saldo > 0)
+      .filter((item) => item.saldo > 0)
       .sort((a, b) => b.saldo - a.saldo);
 
+    setPetaniList(petani || []);
     setPetaniSummary(summaryArr);
     setLoading(false);
-  }
+  }, []);
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    loadData();
+  }, [loadData]);
 
   async function selectPetani(petaniId) {
-    const petani = petaniList.find(p => p.id === petaniId);
-    setSelectedPetani(petani);
+    const petani = petaniList.find((item) => item.id === petaniId);
+    setSelectedPetani(petani || null);
 
-    // Load hutang entries
-    const { data: hutang } = await supabase
-      .from('hutang')
+    const { data, error } = await supabase
+      .from('hutang_ledger')
       .select('*')
+      .eq('pihak_type', 'petani')
       .eq('petani_id', petaniId)
-      .order('tanggal', { ascending: false });
+      .order('created_at', { ascending: false });
 
-    const { data: logs } = await supabase
-      .from('hutang_log')
-      .select('*')
-      .eq('petani_id', petaniId)
-      .order('tanggal', { ascending: false });
+    if (error) {
+      setToast({ message: `Gagal membaca riwayat hutang: ${error.message}`, type: 'error' });
+      setLedgerList([]);
+      setSaldo(0);
+      return;
+    }
 
-    setHutangList(hutang || []);
-    setLogList(logs || []);
-
-    const totalH = (hutang || []).reduce((s, h) => s + (h.jumlah || 0), 0);
-    const totalL = (logs || []).reduce((s, l) => s + (l.jumlah_bayar || 0), 0);
-    setSaldo(totalH - totalL);
+    const rows = data || [];
+    setLedgerList(rows);
+    setSaldo(Math.max(hitungSaldoLedger(rows), 0));
   }
 
   async function handleTambahHutang(e) {
     e.preventDefault();
     if (!selectedPetani) return;
-    setSaving(true);
 
-    const jumlah = parseFloat(form.jumlah);
+    const jumlah = Number(form.jumlah);
+    if (!jumlah || jumlah <= 0) return;
+
+    setSaving(true);
     const { data: { session } } = await supabase.auth.getSession();
 
-    // Cek batas hutang
     if (selectedPetani.batas_hutang > 0 && (saldo + jumlah) > selectedPetani.batas_hutang) {
-      if (!confirm(`⚠️ PERINGATAN: Hutang akan melebihi batas (${formatRupiah(selectedPetani.batas_hutang)}).\n\nSaldo saat ini: ${formatRupiah(saldo)}\nTambahan: ${formatRupiah(jumlah)}\nTotal: ${formatRupiah(saldo + jumlah)}\n\nLanjutkan?`)) {
+      const lanjut = window.confirm(
+        `Hutang akan melebihi batas ${formatRupiah(selectedPetani.batas_hutang)}.\n\n` +
+        `Saldo saat ini: ${formatRupiah(saldo)}\n` +
+        `Tambahan: ${formatRupiah(jumlah)}\n` +
+        `Total: ${formatRupiah(saldo + jumlah)}\n\n` +
+        'Lanjutkan?'
+      );
+
+      if (!lanjut) {
         setSaving(false);
         return;
       }
     }
 
-    await supabase.from('hutang').insert({
+    const { error } = await supabase.from('hutang_ledger').insert({
+      pihak_type: 'petani',
       petani_id: selectedPetani.id,
       tanggal: getTodayISO(),
-      jenis: form.jenis,
+      tipe: 'debit',
+      sumber: form.jenis,
       jumlah,
       keterangan: form.keterangan || null,
       created_by: session?.user?.id || null,
     });
 
     setSaving(false);
+
+    if (error) {
+      setToast({ message: `Gagal menambah hutang: ${error.message}`, type: 'error' });
+      return;
+    }
+
     setShowModal(false);
     setForm({ jenis: 'kasbon', jumlah: '', keterangan: '' });
-    setToast({ message: 'Hutang berhasil ditambahkan!', type: 'success' });
+    setToast({ message: 'Hutang berhasil ditambahkan.', type: 'success' });
     setTimeout(() => setToast(null), 3000);
 
-    selectPetani(selectedPetani.id);
-    loadData();
+    await selectPetani(selectedPetani.id);
+    await loadData();
   }
 
   async function handleBayarTunai() {
-    const jumlah = prompt('Masukkan jumlah pembayaran tunai (Rp):');
-    if (!jumlah || parseFloat(jumlah) <= 0) return;
+    if (!selectedPetani) return;
 
-    await supabase.from('hutang_log').insert({
+    const jumlah = window.prompt('Masukkan jumlah pembayaran tunai (Rp):');
+    const jumlahNumber = Number(jumlah);
+    if (!jumlahNumber || jumlahNumber <= 0) return;
+
+    const { data: { session } } = await supabase.auth.getSession();
+    const { error } = await supabase.from('hutang_ledger').insert({
+      pihak_type: 'petani',
       petani_id: selectedPetani.id,
       tanggal: getTodayISO(),
-      jumlah_bayar: parseFloat(jumlah),
+      tipe: 'kredit',
       sumber: 'bayar_tunai',
+      jumlah: jumlahNumber,
       keterangan: 'Pembayaran tunai',
+      created_by: session?.user?.id || null,
     });
 
-    setToast({ message: 'Pembayaran berhasil dicatat!', type: 'success' });
+    if (error) {
+      setToast({ message: `Gagal mencatat pembayaran: ${error.message}`, type: 'error' });
+      return;
+    }
+
+    setToast({ message: 'Pembayaran berhasil dicatat.', type: 'success' });
     setTimeout(() => setToast(null), 3000);
-    selectPetani(selectedPetani.id);
-    loadData();
+    await selectPetani(selectedPetani.id);
+    await loadData();
   }
 
-  const jenisLabel = { kasbon: 'Kasbon', panjar: 'Panjar', pupuk: 'Bon Pupuk', lainnya: 'Lainnya' };
-
   function exportHutang() {
-    const data = petaniList.filter(p => p.saldo > 0).map(p => ({
-      nama: p.nama, no_hp: p.no_hp || '-', saldo: p.saldo,
-      batas: p.batas_hutang || 0,
+    const data = petaniSummary.map((petani) => ({
+      nama: petani.nama,
+      no_hp: petani.no_hp || '-',
+      saldo: petani.saldo,
+      batas: petani.batas_hutang || 0,
     }));
+
     exportToExcel(data, [
       { key: 'nama', label: 'Nama Petani' },
       { key: 'no_hp', label: 'No HP' },
@@ -151,33 +206,29 @@ export default function HutangPage() {
   }
 
   return (
-    <AppShell title="Hutang Petani" subtitle="Kelola kasbon, panjar, dan hutang petani">
+    <AppShell title="Hutang Petani" subtitle="Kelola kasbon, panjar, dan hutang petani lokal">
       {toast && (
         <div className="toast-container">
           <div className={`toast toast-${toast.type}`}>
-            <span>{toast.type === 'success' ? '✅' : '❌'}</span>
             <span>{toast.message}</span>
           </div>
         </div>
       )}
 
       <div className="page-header">
-        <h2 className="page-title">💳 Hutang Petani</h2>
-        <button className="btn btn-outline btn-sm" onClick={exportHutang}>📥 Export Excel</button>
+        <h2 className="page-title">Hutang Petani</h2>
+        <button className="btn btn-outline btn-sm" onClick={exportHutang}>Export Excel</button>
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: selectedPetani ? '1fr 1.5fr' : '1fr', gap: 'var(--space-xl)' }}>
-        {/* Daftar Petani dengan Hutang */}
         <div>
-          {/* Pilih Petani */}
           <div className="form-group">
-            <select className="form-input form-select" onChange={e => e.target.value && selectPetani(e.target.value)} defaultValue="">
+            <select className="form-input form-select" onChange={(e) => e.target.value && selectPetani(e.target.value)} defaultValue="">
               <option value="">-- Pilih Petani --</option>
-              {petaniList.map(p => <option key={p.id} value={p.id}>{p.nama}</option>)}
+              {petaniList.map((petani) => <option key={petani.id} value={petani.id}>{petani.nama}</option>)}
             </select>
           </div>
 
-          {/* Summary */}
           <div className="card">
             <div className="card-header">
               <span className="card-title">Petani dengan Hutang Aktif</span>
@@ -185,28 +236,29 @@ export default function HutangPage() {
             </div>
             {loading ? (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                {[1, 2, 3].map(i => <div key={i} className="skeleton" style={{ height: 44 }}></div>)}
+                {[1, 2, 3].map((item) => <div key={item} className="skeleton" style={{ height: 44 }} />)}
               </div>
             ) : petaniSummary.length === 0 ? (
               <div className="empty-state" style={{ padding: 'var(--space-lg)' }}>
-                <div className="empty-state-icon">✅</div>
                 <div className="empty-state-title">Tidak ada hutang aktif</div>
               </div>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                {petaniSummary.map(p => (
+                {petaniSummary.map((petani) => (
                   <div
-                    key={p.id}
-                    onClick={() => selectPetani(p.id)}
+                    key={petani.id}
+                    onClick={() => selectPetani(petani.id)}
                     className="flex items-center justify-between"
                     style={{
-                      padding: '10px 12px', borderRadius: 'var(--radius-md)', cursor: 'pointer',
-                      background: selectedPetani?.id === p.id ? 'var(--color-primary-700)' : 'transparent',
+                      padding: '10px 12px',
+                      borderRadius: 'var(--radius-md)',
+                      cursor: 'pointer',
+                      background: selectedPetani?.id === petani.id ? 'var(--color-primary-700)' : 'transparent',
                       transition: 'background var(--transition-fast)',
                     }}
                   >
-                    <span style={{ fontWeight: 500 }}>{p.nama}</span>
-                    <span className="text-mono text-warning" style={{ fontWeight: 600 }}>{formatRupiah(p.saldo)}</span>
+                    <span style={{ fontWeight: 500 }}>{petani.nama}</span>
+                    <span className="text-mono text-warning" style={{ fontWeight: 600 }}>{formatRupiah(petani.saldo)}</span>
                   </div>
                 ))}
               </div>
@@ -214,10 +266,8 @@ export default function HutangPage() {
           </div>
         </div>
 
-        {/* Detail Petani */}
         {selectedPetani && (
           <div>
-            {/* Info */}
             <div className="card" style={{ marginBottom: 'var(--space-lg)' }}>
               <div className="flex items-center justify-between" style={{ marginBottom: 'var(--space-md)' }}>
                 <div>
@@ -225,8 +275,8 @@ export default function HutangPage() {
                   <p className="text-tertiary text-sm">{selectedPetani.no_hp || 'No HP tidak tersedia'}</p>
                 </div>
                 <div className="flex gap-sm">
-                  <button className="btn btn-primary btn-sm" onClick={() => setShowModal(true)}>+ Kasbon</button>
-                  <button className="btn btn-outline btn-sm" onClick={handleBayarTunai}>💵 Bayar Tunai</button>
+                  <button className="btn btn-primary btn-sm" onClick={() => setShowModal(true)}>Tambah Kasbon</button>
+                  <button className="btn btn-outline btn-sm" onClick={handleBayarTunai}>Bayar Tunai</button>
                 </div>
               </div>
               <div className="stats-grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))' }}>
@@ -247,12 +297,11 @@ export default function HutangPage() {
               </div>
             </div>
 
-            {/* Riwayat */}
             <div className="card">
               <div className="card-header">
-                <span className="card-title">Riwayat Hutang & Pembayaran</span>
+                <span className="card-title">Riwayat Hutang dan Pembayaran</span>
               </div>
-              {hutangList.length === 0 && logList.length === 0 ? (
+              {ledgerList.length === 0 ? (
                 <div className="empty-state" style={{ padding: 'var(--space-lg)' }}>
                   <div className="empty-state-title">Belum ada riwayat</div>
                 </div>
@@ -260,28 +309,28 @@ export default function HutangPage() {
                 <div className="table-container" style={{ border: 'none' }}>
                   <table className="table">
                     <thead>
-                      <tr><th>Tanggal</th><th>Keterangan</th><th style={{ textAlign: 'right' }}>Debit</th><th style={{ textAlign: 'right' }}>Kredit</th></tr>
+                      <tr>
+                        <th>Tanggal</th>
+                        <th>Keterangan</th>
+                        <th style={{ textAlign: 'right' }}>Debit</th>
+                        <th style={{ textAlign: 'right' }}>Kredit</th>
+                      </tr>
                     </thead>
                     <tbody>
-                      {/* Combine and sort by date */}
-                      {[
-                        ...hutangList.map(h => ({ ...h, _type: 'hutang', _date: h.tanggal, _sort: new Date(h.created_at) })),
-                        ...logList.map(l => ({ ...l, _type: 'bayar', _date: l.tanggal, _sort: new Date(l.created_at) })),
-                      ].sort((a, b) => b._sort - a._sort).map((item, i) => (
-                        <tr key={i}>
-                          <td>{new Date(item._date).toLocaleDateString('id-ID')}</td>
+                      {ledgerList.map((item) => (
+                        <tr key={item.id}>
+                          <td>{new Date(item.tanggal).toLocaleDateString('id-ID')}</td>
                           <td>
-                            {item._type === 'hutang'
-                              ? <span className="badge badge-danger">{jenisLabel[item.jenis] || item.jenis}</span>
-                              : <span className="badge badge-success">{item.sumber === 'potong_tbs' ? 'Potong TBS' : 'Bayar Tunai'}</span>
-                            }
+                            <span className={`badge ${item.tipe === 'debit' ? 'badge-danger' : 'badge-success'}`}>
+                              {getLedgerLabel(item)}
+                            </span>
                             {' '}{item.keterangan || ''}
                           </td>
                           <td className="table-mono text-danger" style={{ textAlign: 'right' }}>
-                            {item._type === 'hutang' ? formatRupiah(item.jumlah) : ''}
+                            {item.tipe === 'debit' ? formatRupiah(item.jumlah) : ''}
                           </td>
                           <td className="table-mono text-success" style={{ textAlign: 'right' }}>
-                            {item._type === 'bayar' ? formatRupiah(item.jumlah_bayar) : ''}
+                            {item.tipe === 'kredit' ? formatRupiah(item.jumlah) : ''}
                           </td>
                         </tr>
                       ))}
@@ -294,20 +343,22 @@ export default function HutangPage() {
         )}
       </div>
 
-      {/* Modal Tambah Hutang */}
       {showModal && (
         <div className="modal-overlay" onClick={() => setShowModal(false)}>
-          <div className="modal" onClick={e => e.stopPropagation()}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
-              <h3 className="modal-title">Tambah Hutang — {selectedPetani?.nama}</h3>
-              <button className="modal-close" onClick={() => setShowModal(false)}>✕</button>
+              <h3 className="modal-title">Tambah Hutang - {selectedPetani?.nama}</h3>
+              <button className="modal-close" onClick={() => setShowModal(false)}>x</button>
             </div>
             <form onSubmit={handleTambahHutang}>
               <div className="modal-body">
                 <div className="form-group">
                   <label className="form-label form-label-required">Jenis</label>
-                  <select className="form-input form-select" value={form.jenis}
-                    onChange={e => setForm({ ...form, jenis: e.target.value })}>
+                  <select
+                    className="form-input form-select"
+                    value={form.jenis}
+                    onChange={(e) => setForm({ ...form, jenis: e.target.value })}
+                  >
                     <option value="kasbon">Kasbon</option>
                     <option value="panjar">Panjar / Uang Muka</option>
                     <option value="pupuk">Bon Pupuk</option>
@@ -316,13 +367,23 @@ export default function HutangPage() {
                 </div>
                 <div className="form-group">
                   <label className="form-label form-label-required">Jumlah (Rp)</label>
-                  <input type="number" className="form-input form-input-mono" value={form.jumlah}
-                    onChange={e => setForm({ ...form, jumlah: e.target.value })} min={1} required />
+                  <input
+                    type="number"
+                    className="form-input form-input-mono"
+                    value={form.jumlah}
+                    onChange={(e) => setForm({ ...form, jumlah: e.target.value })}
+                    min={1}
+                    required
+                  />
                 </div>
                 <div className="form-group">
                   <label className="form-label">Keterangan</label>
-                  <input className="form-input" value={form.keterangan}
-                    onChange={e => setForm({ ...form, keterangan: e.target.value })} placeholder="Opsional" />
+                  <input
+                    className="form-input"
+                    value={form.keterangan}
+                    onChange={(e) => setForm({ ...form, keterangan: e.target.value })}
+                    placeholder="Opsional"
+                  />
                 </div>
               </div>
               <div className="modal-footer">

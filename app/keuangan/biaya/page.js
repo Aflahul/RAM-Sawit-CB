@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import AppShell from '@/components/layout/AppShell';
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
 import { supabase } from '@/lib/supabase';
@@ -29,9 +29,7 @@ export default function BiayaPage() {
     tanggal: getTodayISO(), kategori: 'solar', jumlah: '', keterangan: '',
   });
 
-  useEffect(() => { loadData(); }, [filterTanggal]);
-
-  async function loadData() {
+  const loadData = useCallback(async () => {
     setLoading(true);
     let query = supabase.from('biaya_operasional').select('*').order('created_at', { ascending: false });
 
@@ -42,7 +40,12 @@ export default function BiayaPage() {
     const { data } = await query.limit(100);
     setList(data || []);
     setLoading(false);
-  }
+  }, [filterTanggal]);
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    loadData();
+  }, [loadData]);
 
   async function handleSave(e) {
     e.preventDefault();
@@ -126,7 +129,7 @@ export default function BiayaPage() {
         <div className="empty-state">
           <div className="empty-state-icon">🔧</div>
           <div className="empty-state-title">Belum ada biaya dicatat</div>
-          <div className="empty-state-text">Klik "Tambah Biaya" untuk mencatat pengeluaran</div>
+          <div className="empty-state-text">Klik tombol Tambah Biaya untuk mencatat pengeluaran</div>
         </div>
       ) : (
         <div className="table-container">

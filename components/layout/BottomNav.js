@@ -4,11 +4,11 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 
 const navItems = [
-  { href: '/dashboard', icon: '🏠', label: 'Home' },
-  { href: '/transaksi/beli', icon: '📦', label: 'TBS' },
-  { href: '/transaksi/kirim', icon: '🚚', label: 'Kirim' },
-  { href: '/keuangan/hutang', icon: '💳', label: 'Hutang' },
-  { href: '/laporan/harian', icon: '📊', label: 'Laporan' },
+  { href: '/dashboard', icon: 'DB', label: 'Home' },
+  { href: '/transaksi/beli', icon: 'TB', label: 'TBS' },
+  { href: '/transaksi/kirim', icon: 'DO', label: 'Kirim' },
+  { href: '/keuangan/hutang', icon: 'HK', label: 'Hutang' },
+  { href: '/laporan/harian', icon: 'LH', label: 'Laporan' },
 ];
 
 export default function BottomNav() {

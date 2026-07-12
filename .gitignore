@@ -45,6 +45,7 @@ next-env.d.ts
 # AI agent files (tidak perlu di repo)
 AGENTS.md
 CLAUDE.md
+.codex-logs/
 
 # IDE / Editor
 .vscode/
@@ -52,3 +53,9 @@ CLAUDE.md
 *.swp
 *.swo
 *~
+
+# Script & Data files (tidak perlu di push ke repo web)
+*.py
+*.xlsx
+*.xlsm
+*.gs
