@@ -128,7 +128,7 @@ export default function MasterDataMVPPage() {
               className={`btn ${activeTab === 'mitra' ? 'btn-primary' : 'btn-outline'}`}
               onClick={() => setActiveTab('mitra')}
             >
-              👥 Mitra Pabrik
+              👥 Mitra
             </button>
             <button 
               className={`btn ${activeTab === 'sopir' ? 'btn-primary' : 'btn-outline'}`}
