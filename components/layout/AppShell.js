@@ -7,6 +7,7 @@ import { normalizeRole } from '@/lib/roles';
 import Sidebar from '@/components/layout/Sidebar';
 import Header from '@/components/layout/Header';
 import BottomNav from '@/components/layout/BottomNav';
+import { motion, AnimatePresence } from 'motion/react';
 
 export default function AppShell({ children, title, subtitle }) {
   const router = useRouter();
@@ -76,7 +77,7 @@ export default function AppShell({ children, title, subtitle }) {
   }
 
   return (
-    <div className="app-shell">
+    <div className="app-shell cinematic-bg">
       <Sidebar
         isOpen={sidebarOpen}
         onClose={() => setSidebarOpen(false)}
@@ -88,9 +89,18 @@ export default function AppShell({ children, title, subtitle }) {
           subtitle={subtitle}
           onMenuToggle={() => setSidebarOpen(!sidebarOpen)}
         />
-        <main className="page-content animate-fadeIn">
-          {children}
-        </main>
+        <AnimatePresence mode="wait">
+          <motion.main
+            key={title}
+            className="page-content"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
+          >
+            {children}
+          </motion.main>
+        </AnimatePresence>
       </div>
       <BottomNav />
     </div>

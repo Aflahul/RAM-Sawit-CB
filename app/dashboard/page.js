@@ -5,6 +5,7 @@ import Link from 'next/link';
 import AppShell from '@/components/layout/AppShell';
 import { supabase } from '@/lib/supabase';
 import { formatRupiah, formatNumber, getTodayISO } from '@/lib/utils';
+import { Factory, Users, Scale, Box, CreditCard, Calculator } from 'lucide-react';
 
 function getLastSevenDays() {
   const days = [];
@@ -299,8 +300,8 @@ export default function DashboardPage() {
                   className="form-input form-input-mono"
                   value={hargaPabrikEdit}
                   onChange={(event) => setHargaPabrikEdit(event.target.value)}
-                  min={1}
-                  step={10}
+                  min={0}
+                  step={1}
                   required
                   autoFocus
                 />
@@ -345,8 +346,8 @@ export default function DashboardPage() {
                   className="form-input form-input-mono"
                   value={hargaEdit}
                   onChange={(event) => setHargaEdit(event.target.value)}
-                  min={1}
-                  step={10}
+                  min={0}
+                  step={1}
                   required
                 />
               </div>
@@ -368,7 +369,7 @@ export default function DashboardPage() {
         <div className="card">
           <div className="card-header">
             <span className="card-title">Total Pengiriman ke Pabrik</span>
-            <div className="card-icon card-icon-green">PB</div>
+            <div className="card-icon card-icon-green"><Factory size={20} /></div>
           </div>
           {loading ? (
             <div className="skeleton" style={{ height: 48, width: '60%', marginBottom: 8 }} />
@@ -383,7 +384,7 @@ export default function DashboardPage() {
         <div className="card">
           <div className="card-header">
             <span className="card-title">Mitra Terdaftar</span>
-            <div className="card-icon card-icon-blue">MT</div>
+            <div className="card-icon card-icon-blue"><Users size={20} /></div>
           </div>
           {loading ? (
             <div className="skeleton" style={{ height: 48, width: '60%', marginBottom: 8 }} />
@@ -406,7 +407,7 @@ export default function DashboardPage() {
         <div className="card">
           <div className="card-header">
             <span className="card-title">TBS Lokal Masuk</span>
-            <div className="card-icon card-icon-green">TB</div>
+            <div className="card-icon card-icon-green"><Scale size={20} /></div>
           </div>
           {loading ? (
             <div className="skeleton" style={{ height: 48, width: '60%', marginBottom: 8 }} />
@@ -424,7 +425,7 @@ export default function DashboardPage() {
         <div className="card">
           <div className="card-header">
             <span className="card-title">Stok Lokal Sementara</span>
-            <div className="card-icon card-icon-blue">ST</div>
+            <div className="card-icon card-icon-blue"><Box size={20} /></div>
           </div>
           {loading ? (
             <div className="skeleton" style={{ height: 48, width: '60%', marginBottom: 8 }} />
@@ -439,7 +440,7 @@ export default function DashboardPage() {
         <div className="card">
           <div className="card-header">
             <span className="card-title">Hutang Petani Aktif</span>
-            <div className="card-icon card-icon-gold">HK</div>
+            <div className="card-icon card-icon-gold"><CreditCard size={20} /></div>
           </div>
           {loading ? (
             <div className="skeleton" style={{ height: 48, width: '70%', marginBottom: 8 }} />
@@ -457,7 +458,7 @@ export default function DashboardPage() {
         <div className="card">
           <div className="card-header">
             <span className="card-title">Biaya Hari Ini</span>
-            <div className="card-icon card-icon-red">BO</div>
+            <div className="card-icon card-icon-red"><Calculator size={20} /></div>
           </div>
           {loading ? (
             <div className="skeleton" style={{ height: 48, width: '50%', marginBottom: 8 }} />
@@ -554,9 +555,9 @@ export default function DashboardPage() {
             <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>Harga TBS</div>
             <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', marginTop: 4 }}>{hargaAktif ? `${formatRupiah(hargaAktif.harga_per_kg)}/kg` : 'Belum diset'}</div>
           </Link>
-          <Link href="/transaksi/kirim" className="card" style={{ textAlign: 'center', textDecoration: 'none' }}>
-            <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>Pengiriman</div>
-            <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', marginTop: 4 }}>{stats.pengirimanPending} pending</div>
+          <Link href="/admin/input-timbangan" className="card spring-transition" style={{ textAlign: 'center', textDecoration: 'none' }}>
+            <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>Pengiriman Mitra</div>
+            <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', marginTop: 4 }}>Input ke pabrik</div>
           </Link>
           <Link href="/keuangan/biaya" className="card" style={{ textAlign: 'center', textDecoration: 'none' }}>
             <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>Biaya Operasional</div>

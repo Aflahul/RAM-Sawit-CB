@@ -374,7 +374,8 @@ Acceptance:
 
 ### P0C.6 Encoding and UI Cleanup
 
-- [ ] Perbaiki teks/icon yang rusak encoding di sidebar, dashboard, dan halaman transaksi.
+- [x] Perbaiki teks/icon yang rusak encoding di sidebar, dashboard, dan halaman transaksi (mengganti ikon huruf statis PB, MT, TB dengan lucide-react SVGs).
+- [x] Perbaikan layout responsive khusus mode HP dan Tablet (tabel overflow, padding form input, date filter side-by-side).
 - [ ] Pastikan label UI memakai istilah final: petani lokal, mitra, DO, settlement, kasbon, laba kas, laba estimasi.
 - [ ] Pastikan menu dan judul halaman mengikuti role baru.
 

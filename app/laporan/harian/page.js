@@ -5,6 +5,7 @@ import AppShell from '@/components/layout/AppShell';
 import { supabase } from '@/lib/supabase';
 import { formatRupiah, formatNumber, getTodayISO } from '@/lib/utils';
 import { exportLaporanHarian } from '@/lib/export';
+import { Scale, Banknote, Box, Truck } from 'lucide-react';
 
 const kategoriLabel = {
   solar: 'Solar',
@@ -151,7 +152,7 @@ export default function LaporanHarianPage() {
             <div className="card">
               <div className="card-header">
                 <span className="card-title">TBS Lokal Masuk</span>
-                <div className="card-icon card-icon-green">TB</div>
+                <div className="card-icon card-icon-green"><Scale size={20} /></div>
               </div>
               <div className="card-value">{formatNumber(data.totalTBSKg)} <span style={{ fontSize: 'var(--text-sm)', fontWeight: 400 }}>kg</span></div>
               <div className="card-label">{data.tbs.length} transaksi / Harga acuan {formatRupiah(data.harga)}/kg</div>
@@ -159,7 +160,7 @@ export default function LaporanHarianPage() {
             <div className="card">
               <div className="card-header">
                 <span className="card-title">Total Pembelian</span>
-                <div className="card-icon card-icon-gold">RP</div>
+                <div className="card-icon card-icon-gold"><Banknote size={20} /></div>
               </div>
               <div className="card-value">{formatRupiah(data.totalTBSRp)}</div>
               <div className="card-label">Tunai {formatRupiah(data.totalBayarTunai)} / Potong hutang {formatRupiah(data.totalPotongHutang)}</div>
@@ -167,7 +168,7 @@ export default function LaporanHarianPage() {
             <div className="card">
               <div className="card-header">
                 <span className="card-title">Stok Lokal Hari Ini</span>
-                <div className="card-icon card-icon-blue">ST</div>
+                <div className="card-icon card-icon-blue"><Box size={20} /></div>
               </div>
               <div className="card-value">{formatNumber(data.stokMasukKg - data.stokKeluarKg + data.stokKoreksiKg)} <span style={{ fontSize: 'var(--text-sm)', fontWeight: 400 }}>kg</span></div>
               <div className="card-label">Masuk {formatNumber(data.stokMasukKg)} / Keluar {formatNumber(data.stokKeluarKg)}</div>
@@ -175,7 +176,7 @@ export default function LaporanHarianPage() {
             <div className="card">
               <div className="card-header">
                 <span className="card-title">Total Uang Keluar</span>
-                <div className="card-icon card-icon-red">OUT</div>
+                <div className="card-icon card-icon-red"><Truck size={20} /></div>
               </div>
               <div className="card-value" style={{ color: 'var(--color-danger)' }}>{formatRupiah(data.totalKeluar)}</div>
               <div className="card-label">Bayar TBS tunai + biaya operasional</div>

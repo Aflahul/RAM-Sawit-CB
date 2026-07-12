@@ -129,7 +129,7 @@ export default function InputTimbanganPage() {
         </div>
       </div>
 
-      <div className="card" style={{ maxWidth: 600, margin: '0 auto', padding: 'var(--space-2xl)' }}>
+      <div className="card" style={{ maxWidth: 480, margin: '0 auto', padding: 'var(--space-xl)' }}>
         {successMsg && (
           <div style={{ background: 'var(--color-success-bg)', color: 'var(--color-success)', padding: 'var(--space-md)', borderRadius: 'var(--radius-md)', marginBottom: 'var(--space-lg)', fontWeight: 500 }}>
             ✅ {successMsg}

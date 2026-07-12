@@ -21,7 +21,9 @@ export default function Header({ title, subtitle, onMenuToggle }) {
           onClick={onMenuToggle}
           aria-label="Toggle menu"
         >
-          Menu
+          <svg width="24" height="24" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+          </svg>
         </button>
         <div>
           <h1 className="header-title">{title || 'Dashboard'}</h1>

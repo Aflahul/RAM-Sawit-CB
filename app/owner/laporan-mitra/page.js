@@ -60,18 +60,18 @@ export default function LaporanMitraPage() {
         </button>
       </div>
 
-      <div className="toolbar no-print card" style={{ padding: 'var(--space-md)', marginBottom: 'var(--space-lg)', display: 'flex', gap: 16, flexWrap: 'wrap' }}>
-        <div>
-          <label style={{ display: 'block', fontSize: 14, fontWeight: 500, marginBottom: 8 }}>Dari Tanggal</label>
-          <input type="date" className="form-input" value={dateFrom} onChange={e => setDateFrom(e.target.value)} />
+      <div className="no-print card date-filter-container">
+        <div className="date-filter-item">
+          <label className="date-filter-label">Dari Tanggal</label>
+          <input type="date" className="form-input date-filter-input" value={dateFrom} onChange={e => setDateFrom(e.target.value)} />
         </div>
-        <div>
-          <label style={{ display: 'block', fontSize: 14, fontWeight: 500, marginBottom: 8 }}>Sampai Tanggal</label>
-          <input type="date" className="form-input" value={dateTo} onChange={e => setDateTo(e.target.value)} />
+        <div className="date-filter-item">
+          <label className="date-filter-label">Sampai Tanggal</label>
+          <input type="date" className="form-input date-filter-input" value={dateTo} onChange={e => setDateTo(e.target.value)} />
         </div>
       </div>
 
-      <div className="print-area card" style={{ padding: 'var(--space-2xl)' }}>
+      <div className="print-area card" style={{ padding: 0, overflow: 'hidden' }}>
         <div className="only-print" style={{ textAlign: 'center', marginBottom: 24, borderBottom: '2px solid var(--border-default)', paddingBottom: 16 }}>
           <h2 style={{ margin: 0, fontSize: 22 }}>LAPORAN HARIAN PENGIRIMAN MITRA</h2>
           <p style={{ margin: '4px 0 0', color: 'var(--text-secondary)' }}>Periode: {dateFrom} s/d {dateTo}</p>
@@ -80,17 +80,17 @@ export default function LaporanMitraPage() {
         {loading ? (
           <div style={{ textAlign: 'center', padding: 40 }}>Memuat laporan...</div>
         ) : (
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+          <div className="table-container">
+            <table className="table">
               <thead>
-                <tr style={{ background: 'var(--bg-surface)', borderBottom: '2px solid var(--border-default)' }}>
-                  <th style={{ padding: 12, textAlign: 'left' }}>Tanggal</th>
-                  <th style={{ padding: 12, textAlign: 'left' }}>Mitra / Afiliasi</th>
-                  <th style={{ padding: 12, textAlign: 'left' }}>Sopir</th>
-                  <th style={{ padding: 12, textAlign: 'left' }}>Plat Nomor</th>
-                  <th style={{ padding: 12, textAlign: 'right' }}>Tonase (Kg)</th>
-                  <th style={{ padding: 12, textAlign: 'right' }}>Hrg Bersih</th>
-                  <th style={{ padding: 12, textAlign: 'right' }}>Total (Rp)</th>
+                <tr>
+                  <th>Tanggal</th>
+                  <th>Mitra / Afiliasi</th>
+                  <th>Sopir</th>
+                  <th>Plat Nomor</th>
+                  <th style={{ textAlign: 'right' }}>Tonase (Kg)</th>
+                  <th style={{ textAlign: 'right' }}>Hrg Bersih</th>
+                  <th style={{ textAlign: 'right' }}>Total (Rp)</th>
                 </tr>
               </thead>
               <tbody>
@@ -98,25 +98,25 @@ export default function LaporanMitraPage() {
                   <tr><td colSpan={7} style={{ padding: 24, textAlign: 'center', color: 'var(--text-tertiary)' }}>Tidak ada transaksi pada periode ini</td></tr>
                 ) : (
                   transaksi.map((t, i) => (
-                    <tr key={i} style={{ borderBottom: '1px solid var(--border-default)' }}>
-                      <td style={{ padding: '12px 12px' }}>{t.tanggal}</td>
-                      <td style={{ padding: '12px 12px', fontWeight: 600 }}>{t.master_mitra?.nama}</td>
-                      <td style={{ padding: '12px 12px' }}>{t.sopir?.nama || '-'}</td>
-                      <td style={{ padding: '12px 12px' }} className="table-mono">{t.plat_nomor || '-'}</td>
-                      <td style={{ padding: '12px 12px', textAlign: 'right', fontWeight: 'bold', color: 'var(--text-primary)' }}>{Number(t.tonase).toLocaleString('id-ID')}</td>
-                      <td style={{ padding: '12px 12px', textAlign: 'right' }} className="table-mono">{formatRupiah(t.harga_harian)}</td>
-                      <td style={{ padding: '12px 12px', textAlign: 'right' }} className="table-mono">{formatRupiah(t.total_kotor)}</td>
+                    <tr key={i}>
+                      <td>{t.tanggal}</td>
+                      <td style={{ fontWeight: 600 }}>{t.master_mitra?.nama}</td>
+                      <td>{t.sopir?.nama || '-'}</td>
+                      <td className="table-mono">{t.plat_nomor || '-'}</td>
+                      <td style={{ textAlign: 'right', fontWeight: 'bold', color: 'var(--text-primary)' }}>{Number(t.tonase).toLocaleString('id-ID')}</td>
+                      <td style={{ textAlign: 'right' }} className="table-mono">{formatRupiah(t.harga_harian)}</td>
+                      <td style={{ textAlign: 'right' }} className="table-mono">{formatRupiah(t.total_kotor)}</td>
                     </tr>
                   ))
                 )}
               </tbody>
               {transaksi.length > 0 && (
                 <tfoot>
-                  <tr style={{ background: 'var(--bg-surface)', borderTop: '2px solid var(--border-default)' }}>
-                    <td colSpan={4} style={{ padding: 16, textAlign: 'right', fontWeight: 'bold' }}>GRAND TOTAL:</td>
-                    <td style={{ padding: 16, textAlign: 'right', fontWeight: 'bold', color: 'var(--color-success)' }}>{totalTonase.toLocaleString('id-ID')} Kg</td>
+                  <tr>
+                    <td colSpan={4} style={{ textAlign: 'right', fontWeight: 'bold' }}>GRAND TOTAL:</td>
+                    <td style={{ textAlign: 'right', fontWeight: 'bold', color: 'var(--color-success)' }}>{totalTonase.toLocaleString('id-ID')} Kg</td>
                     <td></td>
-                    <td style={{ padding: 16, textAlign: 'right', fontWeight: 'bold' }}>{formatRupiah(grandTotal)}</td>
+                    <td style={{ textAlign: 'right', fontWeight: 'bold' }}>{formatRupiah(grandTotal)}</td>
                   </tr>
                 </tfoot>
               )}
@@ -126,6 +126,54 @@ export default function LaporanMitraPage() {
       </div>
 
       <style jsx global>{`
+        .date-filter-container {
+          margin: 0 auto var(--space-lg) auto;
+          padding: var(--space-sm);
+          display: flex;
+          gap: 8px;
+        }
+        .date-filter-item {
+          flex: 1;
+          min-width: 0;
+          display: flex;
+          flex-direction: column;
+        }
+        .date-filter-label {
+          display: block;
+          font-size: 11px;
+          font-weight: 500;
+          margin-bottom: 4px;
+          white-space: nowrap;
+          flex-shrink: 0;
+        }
+        .date-filter-input {
+          padding: 6px 4px;
+          font-size: 11px;
+          width: 100%;
+          min-width: 0;
+        }
+
+        /* Mode Tablet dan Laptop (768px ke atas) */
+        @media (min-width: 768px) {
+          .date-filter-container {
+            padding: var(--space-md);
+            gap: 24px;
+          }
+          .date-filter-item {
+            flex-direction: row;
+            align-items: center;
+            gap: 12px;
+          }
+          .date-filter-label {
+            margin-bottom: 0;
+            font-size: 13px;
+          }
+          .date-filter-input {
+            padding: 8px 12px;
+            font-size: 14px;
+          }
+        }
+
         @media print {
           body * { visibility: hidden; }
           .print-area, .print-area * { visibility: visible; color: #000 !important; background: #fff !important; }

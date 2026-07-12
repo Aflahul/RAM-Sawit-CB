@@ -41,19 +41,19 @@
   --color-info: #3498DB;
   --color-info-bg: rgba(52, 152, 219, 0.12);
 
-  /* Background & Surface */
-  --bg-body: #0B1120;
-  --bg-surface: #111827;
-  --bg-card: #1A2332;
-  --bg-card-hover: #1F2B3D;
-  --bg-input: #0F1923;
-  --bg-sidebar: #0D1526;
-  --bg-modal-overlay: rgba(0, 0, 0, 0.6);
+  /* Background & Surface (UI UX Pro Max - Premium Financial Dark) */
+  --bg-body: #020617;
+  --bg-surface: #0F172A;
+  --bg-card: #0E1223;
+  --bg-card-hover: #161C33;
+  --bg-input: #020617;
+  --bg-sidebar: #0B0E1E;
+  --bg-modal-overlay: rgba(2, 6, 23, 0.8);
 
-  /* Glass Effect */
-  --glass-bg: rgba(26, 35, 50, 0.7);
-  --glass-border: rgba(255, 255, 255, 0.08);
-  --glass-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+  /* Glass Effect (Advanced Frosted Glass) */
+  --glass-bg: rgba(15, 23, 42, 0.6);
+  --glass-border: rgba(255, 255, 255, 0.05);
+  --glass-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
 
   /* Text */
   --text-primary: #F1F5F9;
@@ -96,13 +96,19 @@
   --text-4xl: 2.25rem;
   --text-5xl: 3rem;
 
-  /* Shadows */
-  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.2);
-  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.25);
-  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.3);
+  /* Shadows (Cinematic) */
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.3), 0 2px 4px -2px rgba(0, 0, 0, 0.3);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.4), 0 4px 6px -4px rgba(0, 0, 0, 0.4);
   --shadow-xl: 0 16px 48px rgba(0, 0, 0, 0.35);
+  --shadow-neon: 0 0 15px rgba(59, 171, 113, 0.3);
+  --shadow-neon-hover: 0 0 25px rgba(59, 171, 113, 0.6);
   --shadow-glow-primary: 0 0 20px rgba(59, 171, 113, 0.3);
   --shadow-glow-gold: 0 0 20px rgba(240, 165, 0, 0.3);
+
+  /* Animation Easing (UI UX Pro Max Spring Curve) */
+  --ease-spring: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
 
   /* Transitions */
   --transition-fast: 150ms cubic-bezier(0.4, 0, 0.2, 1);
@@ -327,6 +333,7 @@ a:hover {
 /* --- Main Content Area --- */
 .main-content {
   flex: 1;
+  min-width: 0;
   margin-left: var(--sidebar-width);
   min-height: 100vh;
   display: flex;
@@ -380,6 +387,7 @@ a:hover {
 /* --- Page Content --- */
 .page-content {
   flex: 1;
+  min-width: 0;
   padding: var(--space-xl);
   max-width: var(--content-max-width);
   width: 100%;
@@ -429,6 +437,9 @@ a:hover {
 
 .bottom-nav-icon {
   font-size: 1.35rem;
+  display: flex;
+  justify-content: center;
+  align-items: center;
 }
 
 /* ============================================
@@ -437,15 +448,20 @@ a:hover {
 
 /* --- Card --- */
 .card {
-  background: var(--bg-card);
-  border: 1px solid var(--border-default);
-  border-radius: var(--radius-lg);
+  background: var(--glass-bg);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-xl);
   padding: var(--space-lg);
-  transition: all var(--transition-base);
+  box-shadow: var(--shadow-md);
+  transition: box-shadow 300ms var(--ease-out), transform 400ms var(--ease-spring), border-color 300ms ease;
 }
 
 .card:hover {
-  border-color: var(--border-hover);
+  border-color: var(--color-primary-400);
+  transform: scale(1.02);
+  box-shadow: var(--shadow-neon-hover);
 }
 
 .card-glass {
@@ -1280,7 +1296,7 @@ a:hover {
    RESPONSIVE
    ============================================ */
 
-@media (max-width: 1024px) {
+@media (max-width: 768px) {
   .sidebar {
     transform: translateX(-100%);
   }
@@ -1304,6 +1320,10 @@ a:hover {
 }
 
 @media (max-width: 768px) {
+  html {
+    font-size: 13px;
+  }
+
   .bottom-nav {
     display: flex;
   }
@@ -1323,7 +1343,7 @@ a:hover {
   }
 
   .card-value {
-    font-size: var(--text-2xl);
+    font-size: var(--text-xl);
   }
 
   .modal {
@@ -1342,13 +1362,17 @@ a:hover {
 }
 
 @media (max-width: 480px) {
+  html {
+    font-size: 12px;
+  }
+
   :root {
     --space-lg: 16px;
     --space-xl: 20px;
   }
 
   .page-title {
-    font-size: var(--text-xl);
+    font-size: var(--text-lg);
   }
 }
 
@@ -1401,11 +1425,23 @@ a:hover {
   border: 0;
 }
 
+@media screen {
+  .only-print {
+    display: none !important;
+  }
+}
+
 /* --- Form Grid --- */
 .form-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
   gap: var(--space-lg);
+}
+
+@media (max-width: 600px) {
+  .form-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 .form-actions {
@@ -1498,4 +1534,38 @@ a:hover {
   margin-top: var(--space-xl);
   font-size: var(--text-xs);
   color: var(--text-tertiary);
+}
+
+/* ============================================
+   UI UX Pro Max - Cinematic Utilities
+   ============================================ */
+
+.glass-panel {
+  background: var(--glass-bg);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--shadow-md);
+  border-radius: var(--radius-xl);
+}
+
+.spring-transition {
+  transition: all 400ms var(--ease-spring);
+}
+.spring-transition:hover {
+  transform: scale(1.02);
+}
+
+.neon-glow {
+  transition: box-shadow 300ms var(--ease-out), transform 400ms var(--ease-spring);
+}
+.neon-glow:hover {
+  box-shadow: var(--shadow-neon-hover);
+  border-color: var(--color-primary-400);
+}
+
+.cinematic-bg {
+  background: radial-gradient(circle at top right, rgba(27, 94, 59, 0.15) 0%, transparent 40%),
+              radial-gradient(circle at bottom left, rgba(240, 165, 0, 0.08) 0%, transparent 40%),
+              var(--bg-body);
 }
