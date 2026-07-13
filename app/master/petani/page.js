@@ -93,7 +93,6 @@ export default function PetaniPage() {
     <AppShell title="Petani / Mitra" subtitle="Kelola data petani dan mitra TBS">
       <div className="page-header">
         <div>
-          <h2 className="page-title">Data Petani & Mitra</h2>
           <p className="page-description">Total: {petaniList.length} petani aktif</p>
         </div>
         <button className="btn btn-primary" onClick={openNew}>

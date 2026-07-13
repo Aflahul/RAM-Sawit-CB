@@ -149,10 +149,6 @@ export default function LaporanPetaniPage() {
         </div>
       )}
 
-      <div className="page-header">
-        <h2 className="page-title">Laporan per Petani</h2>
-      </div>
-
       <div style={{ display: 'grid', gridTemplateColumns: selectedPetani ? '300px 1fr' : '1fr', gap: 'var(--space-lg)' }}>
         <div className="card" style={{ maxHeight: selectedPetani ? '80vh' : 'auto', overflow: 'auto' }}>
           <div className="card-header">

@@ -124,8 +124,7 @@ export default function LaporanHarianPage() {
         </div>
       )}
 
-      <div className="page-header">
-        <h2 className="page-title">Laporan Harian</h2>
+      <div className="page-header" style={{ justifyContent: 'flex-end' }}>
         <div className="flex gap-sm items-center">
           <input
             type="date"

@@ -121,7 +121,6 @@ export default function PengaturanWebPage() {
     <AppShell title="Pengaturan Web" subtitle="Logo dan identitas aplikasi">
       <div className="page-header">
         <div>
-          <h2 className="page-title">Pengaturan Web</h2>
           <p className="page-description">Atur nama aplikasi, logo website, dan logo kwitansi cetak</p>
         </div>
       </div>
@@ -265,7 +264,7 @@ export default function PengaturanWebPage() {
           <div className="web-preview-block web-preview-print">
             <div className="web-preview-label">Preview Kwitansi</div>
             <div className="web-preview-receipt">
-              <BrandMark branding={form} mode="print" size={58} />
+              <BrandMark branding={form} mode="print" size={96} />
               <div>
                 <div className="web-preview-receipt-title">KWITANSI PEMBAYARAN TBS</div>
                 <div className="web-preview-receipt-subtitle">{form.appName}</div>

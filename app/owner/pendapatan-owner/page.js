@@ -316,7 +316,6 @@ export default function PendapatanOwnerPage() {
     <AppShell title="Pendapatan Owner Bruto" subtitle="Fee Owner bruto dari pengiriman mitra">
       <div className="page-header no-print">
         <div>
-          <h2 className="page-title">Laporan Pendapatan Owner Bruto</h2>
           <p className="page-description">
             Fee Owner bruto dari transaksi mitra periode {dateFrom} s/d {dateTo}
           </p>
@@ -483,9 +482,9 @@ export default function PendapatanOwnerPage() {
                       <SortableHeader label="Tipe" sortKey="tipe" sort={summarySort} onSort={handleSummarySort} />
                       <SortableHeader label="Transaksi" sortKey="transaksi" sort={summarySort} onSort={handleSummarySort} align="right" />
                       <SortableHeader label="Tonase" sortKey="tonase" sort={summarySort} onSort={handleSummarySort} align="right" />
-                      <SortableHeader label="Nilai Pabrik/TWB" sortKey="nilai_pabrik" sort={summarySort} onSort={handleSummarySort} align="right" />
-                      <SortableHeader label="Nilai Bersih Mitra" sortKey="nilai_bersih" sort={summarySort} onSort={handleSummarySort} align="right" />
-                      <SortableHeader label="Pendapatan Owner Bruto" sortKey="pendapatan" sort={summarySort} onSort={handleSummarySort} align="right" />
+                      <SortableHeader label="Hasil Pabrik" sortKey="nilai_pabrik" sort={summarySort} onSort={handleSummarySort} align="right" />
+                      <SortableHeader label="Nilai Bersih" sortKey="nilai_bersih" sort={summarySort} onSort={handleSummarySort} align="right" />
+                      <SortableHeader label="Bruto" sortKey="pendapatan" sort={summarySort} onSort={handleSummarySort} align="right" />
                     </tr>
                   </thead>
                   <tbody>
@@ -540,21 +539,19 @@ export default function PendapatanOwnerPage() {
                 <table className="table">
                   <thead>
                     <tr>
-                      <SortableHeader label="Tanggal" sortKey="tanggal" sort={detailSort} onSort={handleDetailSort} />
-                      <SortableHeader label="Waktu" sortKey="waktu" sort={detailSort} onSort={handleDetailSort} />
-                      <SortableHeader label="Mitra" sortKey="mitra" sort={detailSort} onSort={handleDetailSort} />
-                      <SortableHeader label="Sopir / Plat" sortKey="sopir" sort={detailSort} onSort={handleDetailSort} />
+                      <SortableHeader label="Tanggal" sortKey="waktu" sort={detailSort} onSort={handleDetailSort} />
+                      <SortableHeader label="Mitra" sortKey="sopir" sort={detailSort} onSort={handleDetailSort} />
                       <SortableHeader label="Tonase" sortKey="tonase" sort={detailSort} onSort={handleDetailSort} align="right" />
-                      <SortableHeader label="Harga Pabrik" sortKey="harga_pabrik" sort={detailSort} onSort={handleDetailSort} align="right" />
-                      <SortableHeader label="Hasil Kotor Pabrik" sortKey="hasil_kotor_pabrik" sort={detailSort} onSort={handleDetailSort} align="right" />
+                      <SortableHeader label="Harga" sortKey="harga_pabrik" sort={detailSort} onSort={handleDetailSort} align="right" />
+                      <SortableHeader label="Hasil Pabrik" sortKey="hasil_kotor_pabrik" sort={detailSort} onSort={handleDetailSort} align="right" />
                       <SortableHeader label="Fee/Kg" sortKey="fee" sort={detailSort} onSort={handleDetailSort} align="right" />
-                      <SortableHeader label="Pendapatan Owner Bruto" sortKey="pendapatan" sort={detailSort} onSort={handleDetailSort} align="right" />
+                      <SortableHeader label="Bruto" sortKey="pendapatan" sort={detailSort} onSort={handleDetailSort} align="right" />
                     </tr>
                   </thead>
                   <tbody>
                     {sortedDetailTransaksi.length === 0 ? (
                       <tr>
-                        <td colSpan={9} style={{ padding: 24, textAlign: 'center', color: 'var(--text-tertiary)' }}>
+                        <td colSpan={7} style={{ padding: 24, textAlign: 'center', color: 'var(--text-tertiary)' }}>
                           Tidak ada transaksi pada periode ini
                         </td>
                       </tr>
@@ -566,13 +563,19 @@ export default function PendapatanOwnerPage() {
 
                       return (
                         <tr key={row.id}>
-                          <td>{row.tanggal}</td>
-                          <td className="table-mono">{formatWaktu(row.created_at)}</td>
-                          <td style={{ fontWeight: 600 }}>{formatMitraLabel(row.master_mitra) || '-'}</td>
                           <td>
-                            <div>{row.sopir_aktual_nama || row.sopir_default_nama || '-'}</div>
+                            <div style={{ fontWeight: 700 }}>{row.tanggal}</div>
                             <div className="table-mono" style={{ marginTop: 4, color: 'var(--text-tertiary)', fontSize: 12 }}>
-                              {row.plat_nomor || '-'}
+                              {formatWaktu(row.created_at)}
+                            </div>
+                          </td>
+                          <td>
+                            <div style={{ fontWeight: 700 }}>{row.sopir_aktual_nama || row.sopir_default_nama || '-'}</div>
+                            <div style={{ marginTop: 4, color: 'var(--text-tertiary)', fontSize: 12 }}>
+                              {row.master_mitra?.kode || '-'} - <span className="table-mono">{row.plat_nomor || 'Tanpa plat'}</span>
+                            </div>
+                            <div className="table-mono" style={{ marginTop: 4, color: 'var(--text-tertiary)', fontSize: 12 }}>
+                              {row.master_mitra?.nama || ''}
                             </div>
                           </td>
                           <td className="table-mono" style={{ textAlign: 'right' }}>{formatNumber(toNumber(row.tonase))} Kg</td>
@@ -595,7 +598,7 @@ export default function PendapatanOwnerPage() {
                   {filteredTransaksi.length > 0 && (
                     <tfoot>
                       <tr>
-                        <td colSpan={4} style={{ textAlign: 'right', fontWeight: 800 }}>TOTAL</td>
+                        <td colSpan={2} style={{ textAlign: 'right', fontWeight: 800 }}>TOTAL</td>
                         <td className="table-mono" style={{ textAlign: 'right', fontWeight: 800 }}>{formatNumber(summary.totalTonase)} Kg</td>
                         <td></td>
                         <td className="table-mono" style={{ textAlign: 'right', fontWeight: 800 }}>{formatRupiah(summary.totalNilaiPabrik)}</td>

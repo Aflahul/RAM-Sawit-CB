@@ -177,7 +177,6 @@ export default function LabaRugiPage() {
 
       <div className="page-header">
         <div>
-          <h2 className="page-title">Laporan Laba / Rugi</h2>
           <p className="page-description">
             {periode === 'bulanan' ? `${bulanNama[bulan]} ${tahun}` : `Tahun ${tahun}`}
           </p>

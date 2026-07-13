@@ -89,7 +89,6 @@ export default function HargaTBSPage() {
 
       <div className="page-header">
         <div>
-          <h2 className="page-title">Harga TBS Lokal</h2>
           <p className="page-description">
             Harga memakai waktu berlaku, jadi perubahan hari yang sama tetap tercatat sebagai riwayat.
           </p>

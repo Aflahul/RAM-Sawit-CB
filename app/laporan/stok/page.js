@@ -196,8 +196,7 @@ export default function LaporanStokPage() {
         </div>
       )}
 
-      <div className="page-header">
-        <h2 className="page-title">Laporan Stok Lokal</h2>
+      <div className="page-header" style={{ justifyContent: 'flex-end' }}>
         <div className="flex gap-sm">
           <button className="btn btn-outline btn-sm" onClick={exportStok}>Export Excel</button>
           {canAdjustStock && (

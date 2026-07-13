@@ -111,8 +111,7 @@ export default function ArmadaPage() {
 
   return (
     <AppShell title="Armada & Sopir" subtitle="Kelola data kendaraan dan sopir">
-      <div className="page-header">
-        <h2 className="page-title">Armada & Sopir</h2>
+      <div className="page-header" style={{ justifyContent: 'flex-end' }}>
         <div className="flex gap-sm">
           <button className="btn btn-outline" onClick={openNewKendaraan}>+ Kendaraan</button>
           <button className="btn btn-primary" onClick={openNewSopir}>+ Sopir</button>

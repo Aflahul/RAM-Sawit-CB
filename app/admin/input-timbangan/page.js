@@ -230,7 +230,9 @@ export default function InputTimbanganPage() {
       return;
     }
 
-    const hargaBeliMitra = latestHarga - form.mitra_fee;
+    const hargaPabrik = latestHarga;
+    const hargaBeliMitra = hargaPabrik - form.mitra_fee;
+    const totalKotorPabrik = tonase * hargaPabrik;
     const totalNilaiBersih = tonase * hargaBeliMitra;
     const totalFeeOwner = tonase * form.mitra_fee;
     const sopirDiganti = form.sopir_aktual_mode === SOPIR_AKTUAL_MANUAL
@@ -255,9 +257,9 @@ export default function InputTimbanganPage() {
       sopir_diganti_dari_default: sopirDiganti,
       catatan_sopir: form.catatan_sopir || null,
       tonase: tonase,
-      harga_harian: hargaBeliMitra,
-      total_kotor: totalNilaiBersih,
-      harga_pabrik_per_kg: latestHarga,
+      harga_harian: hargaPabrik,
+      total_kotor: totalKotorPabrik,
+      harga_pabrik_per_kg: hargaPabrik,
       fee_owner_per_kg: form.mitra_fee,
       harga_bersih_per_kg: hargaBeliMitra,
       total_fee_owner: totalFeeOwner,
@@ -296,7 +298,6 @@ export default function InputTimbanganPage() {
     <AppShell title="Pengiriman Mitra" subtitle="Catat armada mitra masuk">
       <div className="page-header">
         <div>
-          <h2 className="page-title">Pengiriman Mitra (MVP)</h2>
           <p className="page-description">Harga Pabrik / TWB Hari Ini: <strong>{formatRupiah(latestHarga)} / Kg</strong></p>
         </div>
       </div>

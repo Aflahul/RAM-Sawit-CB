@@ -264,7 +264,6 @@ export default function PengirimanPage() {
 
       <div className="page-header">
         <div>
-          <h2 className="page-title">Pengiriman Lokal ke Pabrik</h2>
           <p className="text-tertiary text-sm">Sisa stok lokal: <strong className="text-mono">{formatNumber(stokSaldo)} kg</strong></p>
         </div>
         <button className="btn btn-primary" onClick={() => setShowModal(true)}>Pengiriman Baru</button>

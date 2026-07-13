@@ -215,8 +215,7 @@ export default function HutangPage() {
         </div>
       )}
 
-      <div className="page-header">
-        <h2 className="page-title">Hutang Petani</h2>
+      <div className="page-header" style={{ justifyContent: 'flex-end' }}>
         <button className="btn btn-outline btn-sm" onClick={exportHutang}>Export Excel</button>
       </div>
 

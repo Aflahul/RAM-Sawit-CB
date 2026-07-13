@@ -55,8 +55,7 @@ export default function PabrikPage() {
 
   return (
     <AppShell title="Pabrik Tujuan" subtitle="Kelola data pabrik pengolahan">
-      <div className="page-header">
-        <h2 className="page-title">Pabrik Tujuan</h2>
+      <div className="page-header" style={{ justifyContent: 'flex-end' }}>
         <button className="btn btn-primary" onClick={openNew}>+ Tambah Pabrik</button>
       </div>
 

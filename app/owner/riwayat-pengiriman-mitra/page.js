@@ -41,6 +41,7 @@ const emptyEditForm = {
   harga_harian: 0,
   total_kotor: 0,
   total_fee_owner: 0,
+  total_nilai_bersih: 0,
   alasan_edit: '',
 };
 
@@ -219,14 +220,16 @@ export default function RiwayatPengirimanMitraPage() {
 
   function recalculateTotals(nextForm) {
     const feeOwner = toNumber(nextForm.fee_owner_per_kg);
-    const hargaHarian = Math.max(toNumber(nextForm.harga_dasar) - feeOwner, 0);
+    const hargaPabrik = toNumber(nextForm.harga_dasar);
+    const hargaHarian = Math.max(hargaPabrik - feeOwner, 0);
     const tonase = toNumber(nextForm.tonase);
 
     return {
       ...nextForm,
       harga_harian: hargaHarian,
-      total_kotor: Math.round(tonase * hargaHarian),
+      total_kotor: Math.round(tonase * hargaPabrik),
       total_fee_owner: Math.round(tonase * feeOwner),
+      total_nilai_bersih: Math.round(tonase * hargaHarian),
     };
   }
 
@@ -254,8 +257,9 @@ export default function RiwayatPengirimanMitraPage() {
       fee_owner_history_id: row.fee_owner_history_id || effectiveFee.historyId,
       fee_owner_per_kg: fallbackFee,
       harga_harian: toNumber(row.harga_bersih_per_kg ?? row.harga_harian),
-      total_kotor: toNumber(row.total_nilai_bersih ?? row.total_kotor),
+      total_kotor: Math.round(toNumber(row.tonase) * hargaDasar),
       total_fee_owner: toNumber(row.total_fee_owner),
+      total_nilai_bersih: toNumber(row.total_nilai_bersih ?? row.total_kotor),
       alasan_edit: '',
     });
   }
@@ -404,13 +408,13 @@ export default function RiwayatPengirimanMitraPage() {
       sopir_diganti_dari_default: sopirDiganti,
       catatan_sopir: editForm.catatan_sopir || null,
       tonase,
-      harga_harian: editForm.harga_harian,
+      harga_harian: toNumber(editForm.harga_dasar),
       total_kotor: editForm.total_kotor,
       harga_pabrik_per_kg: toNumber(editForm.harga_dasar),
       fee_owner_per_kg: toNumber(editForm.fee_owner_per_kg),
       harga_bersih_per_kg: editForm.harga_harian,
       total_fee_owner: editForm.total_fee_owner,
-      total_nilai_bersih: editForm.total_kotor,
+      total_nilai_bersih: editForm.total_nilai_bersih,
       fee_owner_history_id: editForm.fee_owner_history_id || null,
       updated_by: userId,
       alasan_edit: editForm.alasan_edit.trim(),
@@ -474,7 +478,6 @@ export default function RiwayatPengirimanMitraPage() {
     <AppShell title="Riwayat Pengiriman Mitra" subtitle="Edit dan koreksi transaksi mitra">
       <div className="page-header">
         <div>
-          <h2 className="page-title">Riwayat Pengiriman Mitra</h2>
           <p className="page-description">Daftar transaksi detail untuk koreksi input dan pembatalan tanpa hapus data</p>
         </div>
         <button className="btn btn-outline" onClick={loadData} disabled={loading}>
@@ -536,38 +539,38 @@ export default function RiwayatPengirimanMitraPage() {
         <table className="table">
           <thead>
             <tr>
-              <SortableHeader label="Tanggal" sortKey="tanggal" sort={sort} onSort={handleSort} />
-              <SortableHeader label="Waktu" sortKey="waktu" sort={sort} onSort={handleSort} />
-              <SortableHeader label="Mitra" sortKey="mitra" sort={sort} onSort={handleSort} />
-              <SortableHeader label="Sopir Aktual" sortKey="sopir" sort={sort} onSort={handleSort} />
-              <SortableHeader label="Plat" sortKey="plat" sort={sort} onSort={handleSort} />
+              <SortableHeader label="Tanggal" sortKey="waktu" sort={sort} onSort={handleSort} />
+              <SortableHeader label="Mitra" sortKey="sopir" sort={sort} onSort={handleSort} />
               <SortableHeader label="Status" sortKey="status" sort={sort} onSort={handleSort} />
               <SortableHeader label="Tonase" sortKey="tonase" sort={sort} onSort={handleSort} align="right" />
-              <SortableHeader label="Harga Bersih/Kg" sortKey="harga_bersih" sort={sort} onSort={handleSort} align="right" />
-              <SortableHeader label="Nilai Bersih" sortKey="nilai_bersih" sort={sort} onSort={handleSort} align="right" />
+              <SortableHeader label="Harga/Kg" sortKey="harga_bersih" sort={sort} onSort={handleSort} align="right" />
+              <SortableHeader label="Bersih" sortKey="nilai_bersih" sort={sort} onSort={handleSort} align="right" />
               <th style={{ textAlign: 'center' }}>Aksi</th>
             </tr>
           </thead>
           <tbody>
             {loading ? (
-              <tr><td colSpan={10} style={{ padding: 24, textAlign: 'center' }}>Memuat riwayat...</td></tr>
+              <tr><td colSpan={7} style={{ padding: 24, textAlign: 'center' }}>Memuat riwayat...</td></tr>
             ) : errorMsg ? (
-              <tr><td colSpan={10} style={{ padding: 24, textAlign: 'center', color: 'var(--color-danger)' }}>Gagal memuat riwayat: {errorMsg}</td></tr>
+              <tr><td colSpan={7} style={{ padding: 24, textAlign: 'center', color: 'var(--color-danger)' }}>Gagal memuat riwayat: {errorMsg}</td></tr>
             ) : sortedTransaksi.length === 0 ? (
-              <tr><td colSpan={10} style={{ padding: 24, textAlign: 'center', color: 'var(--text-tertiary)' }}>Tidak ada transaksi pada filter ini</td></tr>
+              <tr><td colSpan={7} style={{ padding: 24, textAlign: 'center', color: 'var(--text-tertiary)' }}>Tidak ada transaksi pada filter ini</td></tr>
             ) : (
               paginatedTransaksi.rows.map(row => (
                 <tr key={row.id} style={row.status === 'dibatalkan' ? { opacity: 0.62 } : undefined}>
-                  <td>{row.tanggal}</td>
-                  <td className="table-mono">{formatWaktu(row.created_at)}</td>
-                  <td style={{ fontWeight: 700 }}>{formatMitraLabel(row.master_mitra) || '-'}</td>
+                  <td>
+                    <div style={{ fontWeight: 700 }}>{row.tanggal}</div>
+                    <div className="table-mono" style={{ marginTop: 4, color: 'var(--text-tertiary)', fontSize: 12 }}>{formatWaktu(row.created_at)}</div>
+                  </td>
                   <td>
                     <div style={{ fontWeight: 700 }}>{row.sopir_aktual_nama || row.sopir_default_nama || '-'}</div>
+                    <div style={{ marginTop: 4, color: 'var(--text-tertiary)', fontSize: 12 }}>
+                      {row.master_mitra?.kode || '-'} - <span className="table-mono">{row.plat_nomor || 'Tanpa plat'}</span>
+                    </div>
                     {row.sopir_diganti_dari_default && (
                       <div style={{ color: 'var(--text-tertiary)', fontSize: 12 }}>Default: {row.sopir_default_nama || '-'}</div>
                     )}
                   </td>
-                  <td className="table-mono">{row.plat_nomor || '-'}</td>
                   <td>
                     <span className={`badge ${row.status === 'dibatalkan' ? 'badge-danger' : 'badge-success'}`}>
                       {row.status === 'dibatalkan' ? 'Dibatalkan' : 'Aktif'}
@@ -759,7 +762,8 @@ export default function RiwayatPengirimanMitraPage() {
                     <span>Harga Pabrik/TWB: <strong>{formatRupiah(editForm.harga_dasar)}</strong></span>
                     <span>Fee Owner: <strong>{formatRupiah(editFeeOwner)}</strong></span>
                     <span>Harga Bersih/Kg: <strong>{formatRupiah(editForm.harga_harian)}</strong></span>
-                    <span>Nilai Bersih: <strong>{formatRupiah(editForm.total_kotor)}</strong></span>
+                    <span>Nilai Kotor Pabrik: <strong>{formatRupiah(editForm.total_kotor)}</strong></span>
+                    <span>Nilai Bersih: <strong>{formatRupiah(editForm.total_nilai_bersih)}</strong></span>
                   </div>
                 </div>
 

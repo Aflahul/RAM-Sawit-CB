@@ -285,8 +285,7 @@ export default function MasterDataMVPPage() {
     <AppShell title="Master Data MVP" subtitle="Kelola Mitra dan Armada/Sopir">
       <div className="page-header">
         <div>
-          <h2 className="page-title">Master Data (Tahap 1)</h2>
-          <div style={{ display: 'flex', gap: 16, marginTop: 12 }}>
+          <div style={{ display: 'flex', gap: 16, marginTop: 0 }}>
             <button 
               className={`btn ${activeTab === 'mitra' ? 'btn-primary' : 'btn-outline'}`}
               onClick={() => handleTabChange('mitra')}

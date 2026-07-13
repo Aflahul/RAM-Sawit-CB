@@ -1,12 +1,17 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
-import { MessageCircle, Printer, Send, X } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { AlertTriangle, CheckCircle2, CreditCard, MessageCircle, Printer, Send, X } from 'lucide-react';
 import BrandMark from '@/components/branding/BrandMark';
 import AppShell from '@/components/layout/AppShell';
 import SearchableCombobox from '@/components/ui/SearchableCombobox';
 import { formatMitraLabel, getMitraSearchText } from '@/lib/display-labels';
+import { canRecordMitraPayment, normalizeRole } from '@/lib/roles';
 import { supabase } from '@/lib/supabase';
+import {
+  resolveHargaBersihPerKg,
+  resolveTotalNilaiBersihMitra,
+} from '@/lib/transaksi-mitra-calculations';
 import { useBrandingSettings } from '@/lib/use-branding-settings';
 import { formatNumber, formatRupiah, formatWaktu, getTodayISO } from '@/lib/utils';
 
@@ -48,9 +53,27 @@ export default function KwitansiMitraPage() {
   
   const [transaksi, setTransaksi] = useState([]);
   const [panjars, setPanjars] = useState([]);
+  const [payment, setPayment] = useState(null);
+  const [userRole, setUserRole] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [savingPayment, setSavingPayment] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [showWhatsappPreview, setShowWhatsappPreview] = useState(false);
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [paymentForm, setPaymentForm] = useState({ metode_bayar: 'tunai', catatan: '' });
+
+  const checkRole = useCallback(async () => {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) return;
+
+    const { data: user } = await supabase
+      .from('users')
+      .select('role')
+      .eq('id', session.user.id)
+      .single();
+
+    setUserRole(normalizeRole(user?.role));
+  }, []);
 
   const loadMitras = useCallback(async () => {
     const { data } = await supabase
@@ -71,7 +94,8 @@ export default function KwitansiMitraPage() {
       .select(`
         id, tanggal, tonase, harga_harian, total_kotor,
         created_at,
-        harga_bersih_per_kg, total_nilai_bersih, plat_nomor,
+        harga_pabrik_per_kg, fee_owner_per_kg, harga_bersih_per_kg,
+        total_fee_owner, total_nilai_bersih, plat_nomor,
         sopir_default_nama, sopir_aktual_nama, sopir_diganti_dari_default, catatan_sopir
       `)
       .eq('mitra_id', selectedMitra)
@@ -108,6 +132,36 @@ export default function KwitansiMitraPage() {
     }
       
     setPanjars(pjrData || []);
+
+    const { data: paymentData, error: paymentError } = await supabase
+      .from('pembayaran_mitra_kwitansi')
+      .select(`
+        id, status, periode_dari, periode_sampai, tanggal_bayar, dibayar_at, metode_bayar,
+        total_tonase, total_nilai_bersih, total_panjar, nominal_dibayar, jumlah_transaksi,
+        catatan, created_at,
+        items:pembayaran_mitra_kwitansi_item (
+          transaksi_mitra_id, tanggal, waktu_transaksi, sopir_aktual_nama, plat_nomor,
+          tonase_snapshot, harga_bersih_per_kg_snapshot, total_nilai_bersih_snapshot, status_transaksi_snapshot,
+          transaksi:transaksi_mitra ( id, status, tonase, total_nilai_bersih, total_kotor, updated_at )
+        )
+      `)
+      .eq('master_mitra_id', selectedMitra)
+      .eq('periode_dari', dateFrom)
+      .eq('periode_sampai', dateTo)
+      .neq('status', 'dibatalkan')
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (paymentError) {
+      console.error('Gagal memuat status pembayaran kwitansi:', paymentError);
+      setPayment(null);
+      setErrorMsg(paymentError.message);
+      setLoading(false);
+      return;
+    }
+
+    setPayment(paymentData || null);
     
     setLoading(false);
   }, [dateFrom, dateTo, selectedMitra]);
@@ -115,7 +169,8 @@ export default function KwitansiMitraPage() {
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     loadMitras();
-  }, [loadMitras]);
+    checkRole();
+  }, [checkRole, loadMitras]);
 
   useEffect(() => {
     if (selectedMitra && dateFrom && dateTo) {
@@ -124,6 +179,7 @@ export default function KwitansiMitraPage() {
     } else {
       setTransaksi([]);
       setPanjars([]);
+      setPayment(null);
       setErrorMsg('');
     }
   }, [selectedMitra, dateFrom, dateTo, loadKwitansiData]);
@@ -133,10 +189,65 @@ export default function KwitansiMitraPage() {
   };
 
   const totalTonase = transaksi.reduce((sum, t) => sum + Number(t.tonase), 0);
-  const totalNilaiBersih = transaksi.reduce((sum, t) => sum + Number(t.total_nilai_bersih ?? t.total_kotor), 0);
+  const totalNilaiBersih = transaksi.reduce((sum, t) => sum + resolveTotalNilaiBersihMitra(t), 0);
   const totalPanjar = panjars.reduce((sum, p) => sum + Number(p.jumlah), 0);
-  const sisaBersih = totalNilaiBersih - totalPanjar;
+  const displayTotalTonase = payment ? Number(payment.total_tonase) : totalTonase;
+  const displayTotalNilaiBersih = payment ? Number(payment.total_nilai_bersih) : totalNilaiBersih;
+  const displayTotalPanjar = payment ? Number(payment.total_panjar) : totalPanjar;
+  const sisaBersih = payment ? Number(payment.nominal_dibayar) : totalNilaiBersih - totalPanjar;
   const selectedMitraData = mitras.find(m => m.id === selectedMitra);
+  const canRecordPayment = canRecordMitraPayment(userRole);
+  const kwitansiRows = useMemo(() => {
+    if (!payment) return transaksi;
+
+    return [...(payment.items || [])]
+      .sort((a, b) => `${a.tanggal || ''} ${a.waktu_transaksi || ''}`.localeCompare(`${b.tanggal || ''} ${b.waktu_transaksi || ''}`))
+      .map(item => ({
+        id: item.transaksi_mitra_id,
+        tanggal: item.tanggal,
+        created_at: item.waktu_transaksi,
+        tonase: item.tonase_snapshot,
+        harga_bersih_per_kg: item.harga_bersih_per_kg_snapshot,
+        total_nilai_bersih: item.total_nilai_bersih_snapshot,
+        plat_nomor: item.plat_nomor,
+        sopir_aktual_nama: item.sopir_aktual_nama,
+        sopir_default_nama: '',
+        sopir_diganti_dari_default: false,
+        catatan_sopir: '',
+      }));
+  }, [payment, transaksi]);
+  const paymentReview = useMemo(() => {
+    if (!payment) return { status: 'belum_dibayar', label: 'Belum Dibayar', reason: '' };
+
+    const paidItems = payment.items || [];
+    const paidIds = new Set(paidItems.map(item => item.transaksi_mitra_id));
+    const currentIds = new Set(transaksi.map(item => item.id));
+    const hasNewTransaction = transaksi.some(item => !paidIds.has(item.id));
+    const hasMissingPaidTransaction = paidItems.some(item => !currentIds.has(item.transaksi_mitra_id));
+    const hasChangedTransaction = paidItems.some((item) => {
+      const trx = item.transaksi;
+      if (!trx || trx.status === 'dibatalkan') return true;
+
+      const currentTonase = Number(trx.tonase || 0);
+      const currentTotal = resolveTotalNilaiBersihMitra(trx);
+      return Math.round(currentTonase * 100) !== Math.round(Number(item.tonase_snapshot || 0) * 100)
+        || Math.round(currentTotal) !== Math.round(Number(item.total_nilai_bersih_snapshot || 0));
+    });
+
+    if (payment.status === 'perlu_review' || hasNewTransaction || hasMissingPaidTransaction || hasChangedTransaction) {
+      return {
+        status: 'perlu_review',
+        label: 'Perlu Review',
+        reason: hasNewTransaction
+          ? 'Ada transaksi baru pada periode ini setelah kwitansi dibayar.'
+          : hasMissingPaidTransaction
+            ? 'Ada transaksi yang dulu dibayar tetapi sekarang tidak aktif/berubah filter.'
+            : 'Ada transaksi yang berubah setelah kwitansi dibayar.',
+      };
+    }
+
+    return { status: 'dibayar', label: 'Sudah Dibayar', reason: '' };
+  }, [payment, transaksi]);
   const whatsappNumber = normalizeWhatsappNumber(selectedMitraData?.no_hp);
   const whatsappNumberValid = isValidWhatsappNumber(whatsappNumber);
   const whatsappCaption = buildWhatsappCaption({
@@ -144,13 +255,13 @@ export default function KwitansiMitraPage() {
     mitra: selectedMitraData,
     dateFrom,
     dateTo,
-    totalTonase,
-    totalNilaiBersih,
-    totalPanjar,
+    totalTonase: displayTotalTonase,
+    totalNilaiBersih: displayTotalNilaiBersih,
+    totalPanjar: displayTotalPanjar,
     sisaBersih,
   });
-  const canSendWhatsapp = Boolean(selectedMitra && transaksi.length > 0 && whatsappNumberValid);
-  const whatsappWarning = selectedMitra && transaksi.length > 0 && !whatsappNumberValid
+  const canSendWhatsapp = Boolean(selectedMitra && kwitansiRows.length > 0 && whatsappNumberValid);
+  const whatsappWarning = selectedMitra && kwitansiRows.length > 0 && !whatsappNumberValid
     ? selectedMitraData?.no_hp
       ? 'Nomor WA penanggung jawab mitra belum valid. Perbarui nomor di Master Mitra.'
       : 'Nomor WA penanggung jawab mitra belum diisi. Lengkapi nomor di Master Mitra.'
@@ -167,19 +278,53 @@ export default function KwitansiMitraPage() {
     setShowWhatsappPreview(false);
   };
 
+  const handleMarkPaid = async (event) => {
+    event.preventDefault();
+    if (!selectedMitra || savingPayment || payment) return;
+
+    setSavingPayment(true);
+    const { error } = await supabase.rpc('create_pembayaran_mitra_kwitansi', {
+      p_master_mitra_id: selectedMitra,
+      p_periode_dari: dateFrom,
+      p_periode_sampai: dateTo,
+      p_metode_bayar: paymentForm.metode_bayar,
+      p_catatan: paymentForm.catatan || null,
+    });
+
+    if (error) {
+      alert(`Gagal menandai dibayar: ${error.message}`);
+      setSavingPayment(false);
+      return;
+    }
+
+    setShowPaymentModal(false);
+    setPaymentForm({ metode_bayar: 'tunai', catatan: '' });
+    await loadKwitansiData();
+    setSavingPayment(false);
+  };
+
   return (
     <AppShell title="Kwitansi Mitra" subtitle="Dashboard & Cetak Invoice Mitra">
       <div className="page-header no-print">
         <div>
-          <h2 className="page-title">Kwitansi Mitra (MVP)</h2>
           <p className="page-description">Rekapitulasi otomatis armada dan panjar</p>
         </div>
         <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+          {canRecordPayment && (
+            <button
+              className="btn btn-outline"
+              onClick={() => setShowPaymentModal(true)}
+              disabled={!selectedMitra || transaksi.length === 0 || Boolean(payment) || savingPayment}
+            >
+              <CreditCard size={16} />
+              Tandai Dibayar
+            </button>
+          )}
           <button className="btn btn-outline" onClick={handleOpenWhatsappPreview} disabled={!canSendWhatsapp}>
             <MessageCircle size={16} />
             Kirim WhatsApp
           </button>
-          <button className="btn btn-primary" onClick={handlePrint} disabled={!selectedMitra || transaksi.length === 0}>
+          <button className="btn btn-primary" onClick={handlePrint} disabled={!selectedMitra || kwitansiRows.length === 0}>
             <Printer size={16} />
             Cetak PDF / Struk
           </button>
@@ -227,16 +372,36 @@ export default function KwitansiMitraPage() {
       )}
 
       {!loading && !errorMsg && selectedMitra && (
-        <div className="print-area card" style={{ padding: 'var(--space-2xl)' }}>
-          <div style={{ borderBottom: '2px dashed var(--border-default)', paddingBottom: 24, marginBottom: 24, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 20 }}>
+        <div className={`alert no-print ${paymentReview.status === 'dibayar' ? 'alert-success' : paymentReview.status === 'perlu_review' ? 'alert-warning' : 'alert-info'}`}>
+          {paymentReview.status === 'dibayar' ? <CheckCircle2 size={18} /> : paymentReview.status === 'perlu_review' ? <AlertTriangle size={18} /> : <CreditCard size={18} />}
+          <div>
+            <strong>Status Pembayaran: {paymentReview.label}</strong>
+            {payment ? (
+              <div style={{ marginTop: 4 }}>
+                Dibayar {payment.tanggal_bayar} {formatWaktu(payment.dibayar_at)} via {payment.metode_bayar}
+                {' '}sebesar <span className="table-mono">{formatRupiah(payment.nominal_dibayar)}</span>.
+                {paymentReview.reason ? ` ${paymentReview.reason}` : ''}
+              </div>
+            ) : (
+              <div style={{ marginTop: 4 }}>
+                Setelah owner membayar kwitansi ini, klik <strong>Tandai Dibayar</strong> agar sistem mencatat mitra/periode ini sudah dibayarkan.
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {!loading && !errorMsg && selectedMitra && (
+        <div className="print-area card kwitansi-preview" style={{ padding: 'var(--space-xl)' }}>
+          <div className="kwitansi-doc-header" style={{ borderBottom: '2px dashed var(--border-default)', paddingBottom: 20, marginBottom: 20, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 20 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 16, minWidth: 0 }}>
-              <BrandMark branding={branding} mode="print" size={58} />
+              <BrandMark branding={branding} mode="print" size={112} className="kwitansi-logo" />
               <div>
-                <h1 style={{ margin: 0, fontSize: 24, color: 'var(--text-primary)' }}>KWITANSI PEMBAYARAN TBS</h1>
-                <p style={{ margin: '8px 0 0', color: 'var(--text-secondary)' }}>{branding.appName}</p>
+                <h1 className="kwitansi-title" style={{ margin: 0, fontSize: 22, color: 'var(--text-primary)' }}>KWITANSI PEMBAYARAN TBS</h1>
+                <p className="kwitansi-brand-name" style={{ margin: '6px 0 0', color: 'var(--text-secondary)' }}>{branding.appName}</p>
               </div>
             </div>
-            <div style={{ textAlign: 'right' }}>
+            <div className="kwitansi-recipient" style={{ textAlign: 'right' }}>
               <div style={{ fontSize: 14, color: 'var(--text-secondary)' }}>Kepada Yth. Mitra:</div>
               <h2 style={{ margin: '4px 0 0', fontSize: 20, color: 'var(--text-primary)' }}>{selectedMitraData?.nama}</h2>
               <div style={{ fontSize: 13, color: 'var(--text-tertiary)', marginTop: 4 }}>
@@ -245,32 +410,39 @@ export default function KwitansiMitraPage() {
               <div style={{ fontSize: 14, color: 'var(--text-secondary)', marginTop: 4 }}>
                 Periode: {dateFrom} s/d {dateTo}
               </div>
+              {payment && (
+                <div style={{ marginTop: 10, display: 'inline-flex', padding: '6px 10px', border: '1px solid #111', borderRadius: 6, fontWeight: 800, color: '#111' }}>
+                  {paymentReview.status === 'perlu_review' ? 'PERLU REVIEW' : 'SUDAH DIBAYAR'}
+                </div>
+              )}
             </div>
           </div>
 
           <h3 style={{ fontSize: 16, marginBottom: 16 }}>Rincian Armada Masuk:</h3>
-          <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: 32 }}>
+          <div className="kwitansi-table-wrap">
+            <table className="kwitansi-detail-table" style={{ width: '100%', borderCollapse: 'collapse', marginBottom: 24 }}>
             <thead>
               <tr style={{ background: 'var(--bg-surface)', borderBottom: '2px solid var(--border-default)' }}>
                 <th style={{ padding: 12, textAlign: 'left' }}>Tanggal</th>
-                <th style={{ padding: 12, textAlign: 'left' }}>Waktu</th>
-                <th style={{ padding: 12, textAlign: 'left' }}>Sopir Aktual</th>
-                <th style={{ padding: 12, textAlign: 'left' }}>Plat Armada</th>
-                <th style={{ padding: 12, textAlign: 'right' }}>Tonase (Kg)</th>
-                <th style={{ padding: 12, textAlign: 'right' }}>Harga Bersih/Kg</th>
-                <th style={{ padding: 12, textAlign: 'right' }}>Nilai Bersih (Rp)</th>
+                <th style={{ padding: 12, textAlign: 'left' }}>Mitra</th>
+                <th style={{ padding: 12, textAlign: 'right' }}>Tonase</th>
+                <th style={{ padding: 12, textAlign: 'right' }}>Harga/Kg</th>
+                <th style={{ padding: 12, textAlign: 'right' }}>Bersih</th>
               </tr>
             </thead>
             <tbody>
-              {transaksi.length === 0 ? (
-                <tr><td colSpan={7} style={{ padding: 24, textAlign: 'center', color: 'var(--text-tertiary)' }}>Tidak ada transaksi pada periode ini</td></tr>
+              {kwitansiRows.length === 0 ? (
+                <tr><td colSpan={5} style={{ padding: 24, textAlign: 'center', color: 'var(--text-tertiary)' }}>Tidak ada transaksi pada periode ini</td></tr>
               ) : (
-                transaksi.map((t, i) => (
-                  <tr key={i} style={{ borderBottom: '1px solid var(--border-default)' }}>
-                    <td style={{ padding: 12 }}>{t.tanggal}</td>
-                    <td style={{ padding: 12 }} className="table-mono">{formatWaktu(t.created_at)}</td>
+                kwitansiRows.map((t) => (
+                  <tr key={t.id} style={{ borderBottom: '1px solid var(--border-default)' }}>
+                    <td style={{ padding: 12 }}>
+                      <div style={{ fontWeight: 700 }}>{t.tanggal}</div>
+                      <div className="table-mono" style={{ marginTop: 4, fontSize: 12, color: 'var(--text-tertiary)' }}>{formatWaktu(t.created_at)}</div>
+                    </td>
                     <td style={{ padding: 12 }}>
                       <div style={{ fontWeight: 600 }}>{t.sopir_aktual_nama || t.sopir_default_nama || '-'}</div>
+                      <div className="table-mono" style={{ marginTop: 4, fontSize: 12, color: 'var(--text-tertiary)' }}>{t.plat_nomor || '-'}</div>
                       {t.sopir_diganti_dari_default && (
                         <div style={{ fontSize: 12, color: 'var(--text-tertiary)', marginTop: 4 }}>
                           Pengganti dari {t.sopir_default_nama || '-'}
@@ -278,33 +450,33 @@ export default function KwitansiMitraPage() {
                         </div>
                       )}
                     </td>
-                    <td style={{ padding: 12 }} className="table-mono">{t.plat_nomor || '-'}</td>
                     <td style={{ padding: 12, textAlign: 'right' }}>{Number(t.tonase).toLocaleString('id-ID')}</td>
-                    <td style={{ padding: 12, textAlign: 'right' }} className="table-mono">{formatRupiah(t.harga_bersih_per_kg ?? t.harga_harian)}</td>
-                    <td style={{ padding: 12, textAlign: 'right' }} className="table-mono">{formatRupiah(t.total_nilai_bersih ?? t.total_kotor)}</td>
+                    <td style={{ padding: 12, textAlign: 'right' }} className="table-mono">{formatRupiah(resolveHargaBersihPerKg(t))}</td>
+                    <td style={{ padding: 12, textAlign: 'right' }} className="table-mono">{formatRupiah(resolveTotalNilaiBersihMitra(t))}</td>
                   </tr>
                 ))
               )}
             </tbody>
             <tfoot>
               <tr style={{ background: 'var(--bg-surface)', fontWeight: 'bold' }}>
-                <td colSpan={4} style={{ padding: 12, textAlign: 'right' }}>TOTAL NILAI BERSIH TBS:</td>
-                <td style={{ padding: 12, textAlign: 'right' }}>{totalTonase.toLocaleString('id-ID')} Kg</td>
+                <td colSpan={2} style={{ padding: 12, textAlign: 'right' }}>TOTAL NILAI BERSIH TBS:</td>
+                <td style={{ padding: 12, textAlign: 'right' }}>{displayTotalTonase.toLocaleString('id-ID')} Kg</td>
                 <td style={{ padding: 12, textAlign: 'right' }}></td>
-                <td style={{ padding: 12, textAlign: 'right', color: 'var(--text-primary)', fontSize: 16 }}>{formatRupiah(totalNilaiBersih)}</td>
+                <td style={{ padding: 12, textAlign: 'right', color: 'var(--text-primary)', fontSize: 16 }}>{formatRupiah(displayTotalNilaiBersih)}</td>
               </tr>
             </tfoot>
-          </table>
+            </table>
+          </div>
 
-          <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 32 }}>
-            <div style={{ width: 400, background: 'var(--bg-surface)', padding: 24, borderRadius: 8, border: '1px solid var(--border-default)' }}>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 24 }}>
+            <div className="kwitansi-total-box" style={{ width: 400, background: 'var(--bg-surface)', padding: 20, borderRadius: 8, border: '1px solid var(--border-default)' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 12 }}>
                 <span style={{ color: 'var(--text-secondary)' }}>Total Nilai Bersih TBS:</span>
-                <span style={{ fontWeight: 600 }} className="table-mono">{formatRupiah(totalNilaiBersih)}</span>
+                <span style={{ fontWeight: 600 }} className="table-mono">{formatRupiah(displayTotalNilaiBersih)}</span>
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 12, color: '#ef4444' }}>
                 <span>Potongan Panjar Mitra:</span>
-                <span style={{ fontWeight: 600 }} className="table-mono">- {formatRupiah(totalPanjar)}</span>
+                <span style={{ fontWeight: 600 }} className="table-mono">- {formatRupiah(displayTotalPanjar)}</span>
               </div>
               <div style={{ borderTop: '2px solid var(--border-default)', margin: '16px 0' }}></div>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -315,6 +487,14 @@ export default function KwitansiMitraPage() {
               </div>
             </div>
           </div>
+
+          {payment && (
+            <div style={{ marginTop: 24, padding: 16, border: '1px solid var(--border-default)', borderRadius: 8, color: 'var(--text-secondary)' }}>
+              <strong style={{ color: 'var(--text-primary)' }}>Status Pembayaran:</strong>{' '}
+              {paymentReview.status === 'perlu_review' ? 'Perlu review' : 'Sudah dibayar'} pada {payment.tanggal_bayar} {formatWaktu(payment.dibayar_at)} via {payment.metode_bayar}.
+              {payment.catatan ? ` Catatan: ${payment.catatan}` : ''}
+            </div>
+          )}
           
           <div style={{ marginTop: 40, textAlign: 'center', color: 'var(--text-tertiary)', fontSize: 12 }}>
             Dicetak secara otomatis oleh Sistem {branding.appName} pada {new Date().toLocaleString('id-ID')}
@@ -323,13 +503,232 @@ export default function KwitansiMitraPage() {
       )}
 
       <style jsx global>{`
+        .kwitansi-table-wrap {
+          overflow-x: auto;
+        }
+
+        @media screen {
+          .kwitansi-preview {
+            padding: 24px !important;
+            font-size: 13px !important;
+          }
+          .kwitansi-doc-header {
+            padding-bottom: 18px !important;
+            margin-bottom: 18px !important;
+          }
+          .kwitansi-logo {
+            width: 96px !important;
+            height: 96px !important;
+            flex: 0 0 96px !important;
+          }
+          .kwitansi-title {
+            font-size: 20px !important;
+            line-height: 1.2 !important;
+          }
+          .kwitansi-brand-name {
+            font-size: 15px !important;
+          }
+          .kwitansi-recipient,
+          .kwitansi-recipient div {
+            font-size: 13px !important;
+          }
+          .kwitansi-recipient h2 {
+            font-size: 18px !important;
+          }
+          .kwitansi-preview h3 {
+            font-size: 14px !important;
+            margin-bottom: 12px !important;
+          }
+          .kwitansi-detail-table {
+            min-width: 620px;
+            margin-bottom: 18px !important;
+            font-size: 13px !important;
+          }
+          .kwitansi-detail-table th,
+          .kwitansi-detail-table td {
+            padding: 8px 10px !important;
+            font-size: 13px !important;
+            line-height: 1.35 !important;
+          }
+          .kwitansi-total-box {
+            width: 360px !important;
+            padding: 16px !important;
+            font-size: 13px !important;
+          }
+          .kwitansi-total-box span {
+            font-size: 13px !important;
+          }
+          .kwitansi-total-box span[style*="font-size: 18px"] {
+            font-size: 15px !important;
+          }
+          .kwitansi-total-box span[style*="font-size: 24px"] {
+            font-size: 19px !important;
+          }
+        }
+
+        @media (min-width: 768px) and (max-width: 1440px) {
+          .kwitansi-preview {
+            padding: 20px !important;
+          }
+          .kwitansi-doc-header {
+            padding-bottom: 16px !important;
+            margin-bottom: 16px !important;
+          }
+          .kwitansi-logo {
+            width: 88px !important;
+            height: 88px !important;
+            flex-basis: 88px !important;
+          }
+          .kwitansi-title {
+            font-size: 18px !important;
+            line-height: 1.2 !important;
+          }
+          .kwitansi-brand-name {
+            font-size: 14px !important;
+          }
+          .kwitansi-recipient,
+          .kwitansi-recipient div {
+            font-size: 12px !important;
+          }
+          .kwitansi-recipient h2 {
+            font-size: 16px !important;
+          }
+          .kwitansi-preview h3 {
+            font-size: 14px !important;
+            margin-bottom: 10px !important;
+          }
+          .kwitansi-detail-table {
+            min-width: 620px;
+            margin-bottom: 16px !important;
+            font-size: 12px !important;
+          }
+          .kwitansi-detail-table th,
+          .kwitansi-detail-table td {
+            padding: 7px 9px !important;
+            font-size: 12px !important;
+            line-height: 1.35 !important;
+          }
+          .kwitansi-total-box {
+            width: 340px !important;
+            padding: 14px !important;
+            font-size: 12px !important;
+          }
+          .kwitansi-total-box span {
+            font-size: 12px !important;
+          }
+          .kwitansi-total-box span[style*="font-size: 18px"] {
+            font-size: 14px !important;
+          }
+          .kwitansi-total-box span[style*="font-size: 24px"] {
+            font-size: 18px !important;
+          }
+        }
+
+        @media (max-width: 767px) {
+          .kwitansi-preview {
+            padding: 16px !important;
+          }
+          .kwitansi-doc-header {
+            flex-direction: column;
+            align-items: flex-start !important;
+          }
+          .kwitansi-logo {
+            width: 80px !important;
+            height: 80px !important;
+            flex-basis: 80px !important;
+          }
+          .kwitansi-recipient {
+            text-align: left !important;
+          }
+          .kwitansi-total-box {
+            width: 100% !important;
+          }
+        }
+
         @media print {
           body * { visibility: hidden; }
           .print-area, .print-area * { visibility: visible; color: #000 !important; background: #fff !important; }
           .print-area { position: absolute; left: 0; top: 0; width: 100%; box-shadow: none !important; padding: 0 !important; }
+          .kwitansi-logo { width: 112px !important; height: 112px !important; flex-basis: 112px !important; }
           .no-print { display: none !important; }
         }
       `}</style>
+
+      {showPaymentModal && (
+        <div className="modal-overlay no-print" onClick={() => !savingPayment && setShowPaymentModal(false)}>
+          <div className="modal" onClick={event => event.stopPropagation()} style={{ maxWidth: 620 }}>
+            <div className="modal-header">
+              <h3 className="modal-title">Tandai Kwitansi Sudah Dibayar</h3>
+              <button className="modal-close" disabled={savingPayment} onClick={() => setShowPaymentModal(false)} aria-label="Tutup">
+                <X size={18} />
+              </button>
+            </div>
+
+            <form onSubmit={handleMarkPaid}>
+              <div className="modal-body">
+                <div className="alert alert-info">
+                  <div>
+                    <strong>Kwitansi menjadi bukti pembayaran utama.</strong>
+                    <div style={{ marginTop: 4 }}>
+                      Sistem akan menyimpan snapshot transaksi periode ini dan menandai panjar yang dipotong sebagai lunas agar tidak terpotong lagi di kwitansi berikutnya.
+                    </div>
+                  </div>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12, marginBottom: 16 }}>
+                  <div className="card" style={{ padding: 14, borderRadius: 8 }}>
+                    <div className="text-tertiary" style={{ fontSize: 12 }}>Total Nilai Bersih</div>
+                    <div className="table-mono" style={{ fontWeight: 800 }}>{formatRupiah(totalNilaiBersih)}</div>
+                  </div>
+                  <div className="card" style={{ padding: 14, borderRadius: 8 }}>
+                    <div className="text-tertiary" style={{ fontSize: 12 }}>Potongan Panjar</div>
+                    <div className="table-mono" style={{ fontWeight: 800, color: 'var(--color-danger)' }}>{formatRupiah(totalPanjar)}</div>
+                  </div>
+                  <div className="card" style={{ padding: 14, borderRadius: 8 }}>
+                    <div className="text-tertiary" style={{ fontSize: 12 }}>Dibayar ke Mitra</div>
+                    <div className="table-mono" style={{ fontWeight: 900, color: 'var(--color-success)' }}>{formatRupiah(totalNilaiBersih - totalPanjar)}</div>
+                  </div>
+                </div>
+
+                <div className="form-group">
+                  <label className="form-label form-label-required">Metode Bayar</label>
+                  <select
+                    className="form-input form-select"
+                    required
+                    value={paymentForm.metode_bayar}
+                    onChange={event => setPaymentForm(current => ({ ...current, metode_bayar: event.target.value }))}
+                  >
+                    <option value="tunai">Tunai</option>
+                    <option value="transfer">Transfer</option>
+                    <option value="lainnya">Lainnya</option>
+                  </select>
+                </div>
+
+                <div className="form-group">
+                  <label className="form-label">Catatan</label>
+                  <textarea
+                    className="form-input"
+                    rows={3}
+                    value={paymentForm.catatan}
+                    onChange={event => setPaymentForm(current => ({ ...current, catatan: event.target.value }))}
+                    placeholder="Contoh: dibayar tunai setelah cek kwitansi"
+                  />
+                </div>
+              </div>
+
+              <div className="modal-footer">
+                <button type="button" className="btn btn-outline" disabled={savingPayment} onClick={() => setShowPaymentModal(false)}>
+                  Batal
+                </button>
+                <button type="submit" className="btn btn-primary" disabled={savingPayment || transaksi.length === 0}>
+                  <CheckCircle2 size={16} />
+                  {savingPayment ? 'Menyimpan...' : 'Simpan Sudah Dibayar'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {showWhatsappPreview && (
         <div className="modal-overlay no-print" onClick={() => setShowWhatsappPreview(false)}>

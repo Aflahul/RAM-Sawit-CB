@@ -137,7 +137,6 @@ export default function PanjarMitraPage() {
     <AppShell title="Panjar Mitra" subtitle="Kelola kasbon/panjar mitra">
       <div className="page-header">
         <div>
-          <h2 className="page-title">Data Panjar Mitra</h2>
           <p className="page-description">Kasbon yang akan memotong otomatis tagihan kwitansi</p>
         </div>
         <button className="btn btn-primary" onClick={openNew}>
