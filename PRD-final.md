@@ -1,12 +1,323 @@
 # ADDENDUM MVP TAHAP 1 (Selesai - Juli 2026)
 Pengembangan Tahap 1 (MVP) berfokus pada **Pengiriman Mitra ke Pabrik** telah selesai. Menu operasional lain diberi label [Coming Soon].
 Fitur utama yang telah live:
-1. **Master Data Mitra & Sopir**: Relasi `sopir` ke `master_mitra`, termasuk pengaturan `fee_per_kg` per mitra.
-2. **Pengiriman Mitra**: Pencatatan armada masuk dengan perhitungan Skenario B (Harga Beli Bersih = Harga Pabrik - Fee DO).
+1. **Master Data Mitra & Sopir**: Relasi `sopir` ke `master_mitra`, termasuk pengaturan `fee_per_kg` sebagai **Fee Owner** per mitra.
+2. **Pengiriman Mitra**: Pencatatan armada masuk dengan perhitungan Skenario B (Harga Bersih ke Mitra = Harga Pabrik/TWB - Fee Owner).
 3. **Panjar Mitra**: Modul kasbon mitra dengan tombol input cepat (Quick Add).
-4. **Kwitansi Mitra**: Cetak invoice otomatis yang memotong panjar dari total bersih penerimaan.
+4. **Kwitansi Mitra**: Cetak kwitansi pembayaran otomatis dari owner ke mitra, dengan potongan panjar dari total nilai bersih TBS.
 5. **Laporan Mitra**: Ledger rekapan global seluruh transaksi pengiriman mitra.
-6. **Dashboard Multi-Harga**: Pemisahan input Harga Pabrik (TWB) untuk MVP dan Harga Beli Lokal untuk Tahap 2.
+6. **Laporan Pendapatan Owner Bruto**: Rekap Fee Owner bruto dari transaksi mitra, hanya untuk Owner dan Super Admin.
+7. **Dashboard Multi-Harga**: Pemisahan input Harga Pabrik (TWB) untuk MVP dan Harga Beli Lokal untuk Tahap 2.
+
+Aturan Fee Owner MVP:
+
+- `master_mitra.fee_per_kg` adalah Fee Owner aktif/default untuk tampilan cepat.
+- Perubahan Fee Owner harus dicatat sebagai riwayat dengan tanggal berlaku.
+- Setiap transaksi mitra wajib menyimpan snapshot harga/fee saat transaksi dibuat: Harga Pabrik/TWB, Fee Owner/Kg, Harga Bersih/Kg, Total Fee Owner, dan Total Nilai Bersih.
+- Perubahan Fee Owner di masa depan tidak boleh mengubah transaksi lama.
+- Koreksi transaksi lama dilakukan dari Riwayat Pengiriman Mitra dengan alasan edit.
+
+Aturan Laporan Pendapatan Owner Bruto MVP:
+
+- Pendapatan owner dari alur mitra dihitung dari snapshot `total_fee_owner` atau `fee_owner_per_kg x tonase`.
+- Angka ini disebut **Pendapatan Owner Bruto** karena belum dikurangi biaya operasional owner.
+- Biaya operasional seperti solar, gaji sopir, uang jalan, perawatan armada, kuli, retribusi, dan biaya timbang masuk Tahap 2.
+- Laporan ini tidak boleh masuk ke kwitansi mitra, caption WhatsApp, atau laporan operasional yang bisa dilihat admin biasa.
+- Jika transaksi lama belum memiliki snapshot Fee Owner, sistem menandainya sebagai perlu koreksi dan tidak memaksa memakai fee master terbaru.
+- Koreksi pendapatan owner untuk transaksi lama dilakukan dari Riwayat Pengiriman Mitra agar alasan perubahan tersimpan.
+
+Aturan Klasifikasi Mitra/Grup MVP:
+
+- `master_mitra.tipe_mitra` dipakai untuk membedakan `eksternal` dan `internal_owner`.
+- Kode `BL`, `BL/...`, `SL`, dan `SL/...` diklasifikasikan sebagai `internal_owner` karena merupakan grup/timbangan milik owner.
+- Klasifikasi ini belum mengubah formula pembayaran atau kwitansi; fungsinya untuk filter dan konteks laporan.
+- Perlakuan biaya operasional, kepemilikan armada, status sopir, dan pendapatan bersih owner ditunda ke Tahap 2 agar tidak terjadi double count.
+
+## ADDENDUM MVP - Pengiriman Kwitansi Mitra via WhatsApp (Direncanakan - Juli 2026)
+
+### Tujuan
+
+Kwitansi Mitra perlu memiliki dua aksi utama:
+
+1. **Cetak / Simpan PDF** untuk kebutuhan arsip fisik atau kirim manual.
+2. **Kirim WhatsApp** ke nomor WhatsApp penanggung jawab mitra berdasarkan data master mitra.
+
+Fitur ini adalah add-on MVP karena owner membutuhkan cara cepat mengirim kwitansi ke mitra tanpa mengetik ulang ringkasan pembayaran. Sistem harus tetap menjaga kontrol manusia sebelum pesan benar-benar dikirim agar tidak salah kirim bukti transaksi.
+
+### Kondisi Data Saat Ini
+
+Sumber nomor WhatsApp memakai data `master_mitra.no_hp` dan nama penerima memakai `master_mitra.penanggung_jawab`.
+
+Ketentuan data:
+
+- `no_hp` wajib dinormalisasi ke format internasional sebelum dipakai WhatsApp.
+- Untuk Indonesia, nomor `08xxxxxxxxxx` dinormalisasi menjadi `628xxxxxxxxxx`.
+- Karakter selain angka seperti spasi, strip, titik, dan tanda plus harus dibersihkan.
+- Jika nomor kosong atau tidak valid, tombol **Kirim WhatsApp** harus nonaktif atau menampilkan peringatan untuk melengkapi master mitra.
+- Jika satu mitra memiliki lebih dari satu kontak, v1 cukup memakai nomor penanggung jawab utama; multi-kontak menjadi pengembangan lanjutan.
+
+### Analisis Opsi Implementasi
+
+#### Opsi A - WhatsApp Link / Click to Chat
+
+Alur:
+
+- Sistem membuat link `https://wa.me/<nomor>?text=<pesan>`.
+- WhatsApp Web atau aplikasi WhatsApp terbuka dengan pesan ringkasan otomatis.
+- Operator memeriksa penerima dan menekan kirim.
+- File PDF dilampirkan manual jika browser tidak mendukung share file langsung.
+
+Kelebihan:
+
+- Paling cepat dibuat dan langsung bisa dipakai.
+- Tidak membutuhkan akun WhatsApp Business Platform, token API, webhook, atau biaya API.
+- Aman untuk MVP karena pengiriman tetap dikonfirmasi manusia.
+- Cocok dengan pola kerja owner/operator yang sudah memakai WhatsApp harian.
+
+Kekurangan:
+
+- Link `wa.me` hanya membuka chat dan teks; bukan API otomatis untuk melampirkan file.
+- Status terkirim/terbaca tidak bisa diverifikasi otomatis oleh sistem.
+- Di desktop, operator mungkin tetap harus mengunduh/mencetak PDF lalu melampirkannya manual.
+
+#### Opsi B - Web Share API dengan File PDF
+
+Alur:
+
+- Sistem membuat file kwitansi dalam format PDF.
+- Jika browser mendukung `navigator.canShare()` dan `navigator.share()` untuk file, sistem membuka share sheet perangkat.
+- Operator memilih WhatsApp dan mengirim file ke mitra.
+- Jika tidak didukung, sistem fallback ke download PDF + buka WhatsApp link.
+
+Kelebihan:
+
+- Pengalaman terbaik untuk HP/tablet karena file bisa langsung dibagikan ke WhatsApp dari share sheet.
+- Tetap tidak membutuhkan WhatsApp Business API.
+- Tetap ada konfirmasi manusia sebelum file dikirim.
+
+Kekurangan:
+
+- Dukungan browser tidak merata, terutama desktop dan beberapa browser tertentu.
+- Membutuhkan generator PDF yang stabil.
+- Sistem tidak bisa memastikan apakah pengguna benar-benar memilih WhatsApp atau batal share.
+
+#### Opsi C - WhatsApp Business Platform / Cloud API
+
+Alur:
+
+- Sistem membuat atau mengambil file PDF kwitansi.
+- Sistem mengirim pesan dokumen ke nomor mitra lewat WhatsApp Business Platform.
+- Status pengiriman dapat dilacak lewat webhook.
+
+Kelebihan:
+
+- Paling otomatis dan profesional untuk jangka panjang.
+- Bisa mengirim dokumen PDF sebagai pesan dokumen.
+- Bisa menyimpan status API seperti terkirim, gagal, dan webhook delivery.
+- Cocok saat volume transaksi naik dan perlu bukti kirim sistematis.
+
+Kekurangan:
+
+- Membutuhkan setup WhatsApp Business Account, business verification, nomor bisnis, token, konfigurasi webhook, dan pengelolaan template pesan.
+- Ada risiko aturan template/customer service window berubah sesuai kebijakan Meta.
+- Ada biaya operasional API.
+- Implementasi lebih sensitif: token API tidak boleh berada di frontend dan harus dipanggil dari server/Edge Function.
+
+### Analisis Format File
+
+| Format | Kelebihan | Kekurangan | Keputusan |
+| --- | --- | --- | --- |
+| PDF | Paling cocok untuk invoice/kwitansi, layout stabil, mudah dicetak, mudah diarsipkan, tampak resmi | Perlu generator PDF atau print-to-PDF; preview di chat tidak seinstan gambar | **Dipilih sebagai format utama** |
+| PNG/JPG | Mudah dilihat langsung di chat, cocok untuk ringkasan pendek | Rentan buram/crop jika kwitansi panjang, kurang ideal untuk arsip resmi, sulit multi-halaman | Opsional sebagai preview ringkas |
+| Teks WhatsApp saja | Sangat cepat, tidak perlu file | Tidak cukup sebagai bukti pembayaran resmi, mudah kehilangan detail tabel | Hanya sebagai caption/ringkasan |
+
+Keputusan format:
+
+- Format utama kwitansi WhatsApp adalah **PDF**.
+- Pesan WhatsApp tetap berisi ringkasan singkat: mitra, periode, total tonase, total nilai bersih TBS, potongan panjar mitra, sisa dibayar ke mitra, dan status.
+- Gambar/PNG boleh ditambahkan nanti hanya sebagai preview cepat, bukan pengganti PDF.
+
+### Solusi Terbaik yang Dipilih
+
+Solusi terbaik untuk Sawit CB adalah **hybrid bertahap**:
+
+#### Tahap 1 - MVP Cepat dan Aman
+
+Gunakan kombinasi:
+
+- Tombol **Cetak / Simpan PDF** tetap tersedia.
+- Tombol **Kirim WhatsApp**:
+  - validasi nomor WA PJ mitra;
+  - buat caption otomatis;
+  - jika generator PDF sudah tersedia, unduh PDF otomatis sebelum membuka WhatsApp;
+  - jika perangkat mendukung Web Share file, bagikan PDF melalui share sheet;
+  - jika tidak mendukung, fallback ke download/cetak PDF dan buka `wa.me` dengan caption otomatis.
+- Operator tetap melakukan konfirmasi terakhir di WhatsApp.
+
+Catatan batasan:
+
+- Link `wa.me` hanya aman dipakai untuk membuka chat dan mengisi teks. File PDF tidak bisa dipasang otomatis sebagai attachment WhatsApp Web dari frontend biasa.
+- Skenario terbaik sebelum WhatsApp API adalah: sistem membuat/mengunduh PDF, membuka WhatsApp dengan caption otomatis, lalu operator melampirkan file PDF yang sudah terunduh.
+- Auto-attach file baru realistis melalui Web Share API pada perangkat yang mendukung, atau lewat WhatsApp Business Platform / Cloud API pada tahap lanjut.
+
+Alasan pemilihan:
+
+- Langsung bisa dipakai tanpa proses onboarding WhatsApp Business API.
+- Risiko salah kirim lebih rendah karena manusia tetap melihat penerima dan isi pesan.
+- Cocok dengan MVP saat ini yang masih memakai halaman kwitansi berbasis print.
+- Jalur teknis tetap bisa ditingkatkan ke API penuh tanpa mengganti logika bisnis kwitansi.
+
+#### Tahap 2 - Otomasi Terkontrol
+
+Jika kebutuhan naik, tambahkan:
+
+- Supabase Storage private bucket untuk menyimpan PDF kwitansi.
+- Tabel `kwitansi_mitra_send_log`.
+- Tombol **Tandai Terkirim** untuk MVP manual.
+- Nomor bukti/kwitansi unik.
+- Riwayat kirim ulang jika kwitansi berubah setelah koreksi transaksi.
+
+#### Tahap 3 - WhatsApp Business API
+
+Jika owner membutuhkan pengiriman otomatis:
+
+- Pakai WhatsApp Business Platform / Cloud API dari server/Edge Function.
+- Kirim PDF sebagai document message.
+- Simpan status API dan webhook.
+- Gunakan template pesan jika pengiriman berada di luar customer service window atau jika aturan Meta mewajibkan template.
+
+### Simulasi Skenario Terbaik
+
+#### Skenario 1 - Data Lengkap dan Operator Mengirim dari HP
+
+1. Owner membuka `/owner/kwitansi-mitra`.
+2. Owner memilih mitra dan periode.
+3. Sistem menghitung transaksi aktif, mengecualikan transaksi `dibatalkan`.
+4. Tombol **Kirim WhatsApp** aktif karena `no_hp` mitra valid.
+5. Sistem membuat PDF kwitansi dan caption:
+
+```text
+Kwitansi Pembayaran Sawit CB
+Mitra: SL/B - Salulemo - H. Bayu
+Periode: 2026-07-12 s/d 2026-07-13
+Total Tonase: 9.898 Kg
+Total Nilai Bersih TBS: Rp 29.199.100
+Potongan Panjar Mitra: Rp 0
+Sisa Dibayar ke Mitra: Rp 29.199.100
+
+Mohon dicek. Terima kasih.
+```
+
+6. Browser membuka share sheet.
+7. Operator memilih WhatsApp, mengecek penerima, lalu mengirim PDF.
+8. Sistem dapat menampilkan instruksi atau tombol **Tandai Terkirim** jika send log manual sudah dibuat.
+
+#### Skenario 2 - Desktop atau Browser Tidak Mendukung Share File
+
+1. Owner klik **Kirim WhatsApp**.
+2. Sistem mendeteksi file share tidak didukung.
+3. Sistem menawarkan:
+   - download/simpan PDF;
+   - buka WhatsApp dengan caption otomatis.
+4. Operator melampirkan PDF secara manual di WhatsApp Web.
+
+#### Skenario 3 - Nomor PJ Mitra Kosong atau Tidak Valid
+
+1. Tombol **Kirim WhatsApp** nonaktif atau menampilkan peringatan.
+2. Sistem menampilkan pesan: `Nomor WA penanggung jawab mitra belum valid`.
+3. Operator diarahkan memperbarui data di Master Mitra.
+
+#### Skenario 4 - Transaksi Sudah Pernah Dikirim lalu Ada Koreksi
+
+1. Operator mengedit/batalkan transaksi dari Riwayat Pengiriman.
+2. Kwitansi berubah.
+3. Sistem harus membuat file baru dengan label revisi, misalnya `Revisi 1`.
+4. Tombol kirim ulang memberi caption:
+
+```text
+Kwitansi Sawit CB - Revisi
+Kwitansi sebelumnya dikoreksi karena: salah input tonase.
+Mohon gunakan file terbaru ini.
+```
+
+### Tantangan dan Risiko
+
+1. **Salah kirim ke nomor yang salah**
+   - Mitigasi: tampilkan nama PJ, nama mitra, nomor WA, dan preview caption sebelum membuka WhatsApp.
+
+2. **Nomor tidak valid**
+   - Mitigasi: normalisasi nomor, validasi minimal panjang nomor, dan blok tombol kirim jika tidak valid.
+
+3. **File tidak ikut terkirim pada fallback WhatsApp Web**
+   - Mitigasi: instruksi jelas: `PDF sudah diunduh, lampirkan file ini di WhatsApp`.
+
+4. **Kwitansi berubah setelah dikirim**
+   - Mitigasi: kirim ulang harus diberi label revisi dan alasan koreksi.
+
+5. **Tidak ada bukti delivery otomatis pada MVP**
+   - Mitigasi: send log manual dengan status `dibuka_wa`, `ditandai_terkirim`, atau `gagal`.
+
+6. **API WhatsApp membutuhkan biaya dan setup**
+   - Mitigasi: API penuh ditunda sampai volume transaksi dan kebutuhan tracking benar-benar membutuhkan.
+
+7. **Data finansial tersebar melalui file**
+   - Mitigasi: file hanya berisi data mitra terkait, tidak memuat margin/laba perusahaan, dan link file tidak dibuat publik permanen.
+
+8. **Token API WhatsApp bocor jika implementasi API langsung dari frontend**
+   - Mitigasi: jika memakai API, panggil hanya dari backend/Edge Function; frontend tidak boleh menyimpan token rahasia.
+
+### Data Model Tambahan yang Disarankan
+
+Untuk Tahap 2 add-on:
+
+#### Tabel `kwitansi_mitra_send_log`
+
+Field:
+
+- id
+- mitra_id
+- periode_dari
+- periode_sampai
+- nomor_wa_tujuan
+- nama_penerima
+- file_url
+- file_format: pdf, image
+- total_tonase
+- total_kotor
+- total_panjar
+- sisa_bayar
+- status: draft, dibuka_wa, dibagikan, ditandai_terkirim, api_sent, api_failed, dibatalkan
+- message_text
+- revision_no
+- alasan_revisi
+- sent_by
+- sent_at
+- created_at
+
+Acceptance:
+
+- Setiap pengiriman WhatsApp tercatat minimal sebagai `dibuka_wa` atau `ditandai_terkirim`.
+- Jika memakai API, status dikontrol dari response API dan webhook.
+- File lama tidak ditimpa saat terjadi revisi; buat file baru dengan revision number.
+
+### Acceptance Criteria Add-on
+
+- Tombol **Cetak / Simpan PDF** tetap tersedia.
+- Tombol **Kirim WhatsApp** muncul di halaman Kwitansi Mitra.
+- Tombol **Kirim WhatsApp** hanya aktif jika mitra dipilih, transaksi tersedia, dan nomor WA valid.
+- Sistem mengambil nomor dari `master_mitra.no_hp` dan menampilkan nama PJ jika tersedia.
+- Caption WhatsApp otomatis berisi ringkasan kwitansi.
+- Format utama file adalah PDF.
+- Jika Web Share API file didukung, sistem mencoba membagikan PDF langsung.
+- Jika tidak didukung, sistem fallback ke download/cetak PDF dan membuka `wa.me` dengan caption.
+- Transaksi berstatus `dibatalkan` tidak masuk kwitansi yang dikirim.
+- Admin biasa tidak menerima informasi laba/margin owner di file atau caption.
+
+### Rujukan Teknis
+
+- [WhatsApp Help Center - Click to Chat](https://faq.whatsapp.com/5913398998672934): link `wa.me/<nomor>` membuka chat dengan nomor internasional tanpa menyimpan kontak.
+- [Meta WhatsApp Business Platform - Document Messages](https://developers.facebook.com/documentation/business-messaging/whatsapp/messages/document-messages): Cloud API dapat mengirim file sebagai pesan dokumen.
+- [MDN Web Share API](https://developer.mozilla.org/en-US/docs/Web/API/Web_Share_API): browser dapat membagikan teks, link, dan file melalui share target perangkat jika didukung dan dipicu dari aksi pengguna.
 
 > [!CAUTION]
 > **ATURAN KERJA TAHAP 2 (SANGAT PENTING)**
@@ -37,7 +348,7 @@ Keputusan berikut menjadi dasar final pengembangan sistem:
 | Area | Keputusan |
 | --- | --- |
 | Fee perusahaan dari mitra | Selalu ada fee untuk perusahaan |
-| Cara hitung fee mitra | Potongan nominal per kg |
+| Cara hitung Fee Owner dari mitra | Potongan nominal per kg |
 | Dasar pembayaran ke mitra | Berat final yang diterima pabrik |
 | Selisih berat mitra vs pabrik | Dibagi antara mitra dan perusahaan dengan persentase yang bisa diatur owner/super admin |
 | Pembayaran pabrik | Per surat jalan / DO |
@@ -45,6 +356,7 @@ Keputusan berikut menjadi dasar final pengembangan sistem:
 | Panjar/uang muka mitra | Ada, tetapi hanya untuk mitra tertentu |
 | Armada perusahaan dipakai mitra | Biaya selalu dipotong dari pembayaran mitra |
 | Cara hitung biaya armada | Berdasarkan jarak, kemudian dihitung dengan tonase muatan |
+| Pergantian sopir armada | Sopir yang dicatat di transaksi adalah sopir aktual saat pengiriman; relasi sopir-armada di master hanya default/riwayat |
 | Hutang/kasbon mitra | Mitra bisa punya hutang/kasbon seperti petani |
 | Data kendaraan mitra | Cukup nama sopir dan plat kendaraan jika ada |
 | Stok TBS lokal | Perlu dicatat sebagai stok sementara |
@@ -79,6 +391,10 @@ Jika mitra memakai armada perusahaan:
 - Formula biaya armada harus mendukung komponen jarak, tonase, tarif default per armada, dan override manual jika diperlukan.
 - Sistem perlu menyimpan jarak, tonase muatan, tarif, total biaya armada yang dipotong, dan sumber tarif yang dipakai.
 - Biaya ini tidak boleh tercatat ganda sebagai pengurang laba jika sudah dipotong dari hak mitra.
+- Sopir tidak boleh dianggap selalu melekat permanen pada satu armada, karena di lapangan sopir yang membawa mobil/armada bisa diganti.
+- Master relasi sopir-armada hanya dipakai sebagai default/auto-fill. Setiap pengiriman wajib menyimpan sopir aktual dan snapshot nama/plat yang berlaku saat transaksi dibuat.
+- Default mitra pada sopir/armada hanya dipakai untuk auto-fill. Setiap pengiriman mitra wajib menyimpan mitra transaksi yang bisa dioverride, terutama untuk armada bersama SL/BL atau armada tanpa afiliasi tetap.
+- Jika sopir aktual berbeda dari sopir default armada, transaksi tetap sah tetapi harus mudah terlihat di laporan operasional dan audit perubahan.
 
 ### 3.3 Dampak ke Stok TBS Lokal
 
@@ -114,7 +430,7 @@ Settlement dan pembayaran mitra harus bisa dibuat menjadi bukti digital:
 
 - Melihat seluruh dashboard dan laporan.
 - Melihat laporan keuntungan/laba-rugi.
-- Mengatur harga, fee mitra, formula settlement, biaya, dan konfigurasi bisnis.
+- Mengatur harga, Fee Owner dari mitra, formula settlement, biaya, dan konfigurasi bisnis.
 - Mengonfirmasi pembayaran pabrik.
 - Mengonfirmasi pembayaran ke mitra.
 - Melihat audit perubahan transaksi penting.
@@ -191,7 +507,33 @@ Data minimal:
 - Kepemilikan
 - Tarif default per km per ton
 - Status tarif default aktif/nonaktif
+- Sopir default/utama, opsional
 - Status aktif/nonaktif
+
+Catatan:
+
+- Sopir default/utama hanya untuk mempercepat input dan bukan sumber kebenaran transaksi.
+- Perubahan sopir default armada tidak boleh mengubah data sopir pada pengiriman lama.
+
+### Sopir
+
+Sopir adalah orang yang membawa armada perusahaan atau armada mitra pada pengiriman tertentu.
+
+Data minimal:
+
+- Nama
+- Nomor HP, opsional
+- Afiliasi: perusahaan, mitra, atau bebas/umum
+- Mitra terkait, opsional jika sopir biasa membawa armada mitra tertentu
+- Armada default, opsional
+- Status aktif/nonaktif
+
+Catatan:
+
+- Satu sopir bisa membawa armada yang berbeda pada hari berbeda.
+- Satu armada bisa dibawa sopir berbeda pada pengiriman berbeda.
+- Sistem harus membedakan `sopir default` di master dari `sopir aktual` yang disimpan di transaksi.
+- Afiliasi mitra pada master sopir boleh kosong untuk sopir/armada bersama. Mitra yang dipakai transaksi tetap dipilih pada saat input pengiriman.
 
 ### Armada Mitra
 
@@ -200,7 +542,7 @@ Armada yang digunakan oleh mitra. Sistem cukup mencatat data sederhana jika ters
 Data minimal:
 
 - Plat kendaraan, opsional
-- Nama sopir, opsional
+- Nama sopir default, opsional
 - Mitra pemilik
 
 ### Pabrik
@@ -244,8 +586,9 @@ Data minimal:
    - Nomor DO/tiket timbang
    - Tonase timbang mitra
    - Tonase final pabrik
-   - Nama sopir mitra, jika ada
+   - Nama sopir aktual mitra, jika ada
    - Plat kendaraan mitra, jika ada
+   - Catatan pergantian sopir jika sopir aktual berbeda dari default armada/mitra
 5. Pabrik membayar ke perusahaan per DO.
 6. Sistem menghitung hak mitra memakai `tonase_dasar_settlement` dari data pabrik.
 7. Fee perusahaan dipotong nominal per kg.
@@ -258,7 +601,7 @@ Data minimal:
 
 1. Mitra meminta bantuan armada perusahaan.
 2. Admin membuat pengiriman mitra dengan pilihan armada perusahaan.
-3. Sistem mengambil tarif default armada, lalu admin mencatat armada, sopir, jarak, tonase muatan, tarif yang dipakai, dan total biaya armada.
+3. Sistem mengambil tarif default armada, lalu admin mencatat armada, sopir aktual, jarak, tonase muatan, tarif yang dipakai, dan total biaya armada.
 4. Biaya armada wajib dipotong dari hak mitra.
 5. Saat settlement, biaya armada tampil sebagai potongan.
 6. Laporan membedakan:
@@ -280,6 +623,7 @@ Catatan satuan:
 ### 7.1 Input Settlement
 
 - Mitra
+- Mitra transaksi, dapat dioverride dari default master sopir/armada
 - Nomor DO
 - Pabrik
 - Tanggal kirim
@@ -513,7 +857,7 @@ Fungsi:
 
 - Pilih tanggal.
 - Pilih pabrik.
-- Pilih armada dan sopir perusahaan.
+- Pilih armada dan sopir aktual perusahaan.
 - Pilih detail transaksi petani atau kelompok transaksi harian.
 - Input total tonase kirim.
 - Input nomor DO.
@@ -538,7 +882,7 @@ Fungsi:
 - Input nomor DO/tiket timbang.
 - Input tonase timbang mitra.
 - Input tonase final pabrik.
-- Input nama sopir dan plat kendaraan mitra jika ada.
+- Input atau pilih sopir aktual dan plat kendaraan mitra jika ada.
 - Pilih armada: armada mitra atau armada perusahaan.
 - Jika armada perusahaan, input jarak, tonase muatan, tarif, dan total potongan armada.
 - Update pembayaran pabrik per DO.
@@ -550,6 +894,8 @@ Acceptance criteria:
 - Nomor DO tidak boleh duplikat untuk pabrik yang sama lintas sumber lokal/mitra, kecuali transaksi masih berstatus draft dan belum dikirim.
 - Setelah pabrik membayar, sistem membuat atau mengupdate settlement mitra.
 - Hak mitra dihitung berdasarkan `tonase_dasar_settlement`.
+- Sopir dan plat kendaraan pada pengiriman disimpan sebagai snapshot sehingga perubahan master sopir/armada tidak mengubah histori DO lama.
+- Jika sopir aktual berbeda dari sopir default armada, laporan operasional tetap menampilkan armada, sopir default, dan sopir aktual.
 
 ### 8.9 Settlement Mitra
 
@@ -934,6 +1280,29 @@ Field:
 - aktif
 - created_at
 
+Catatan:
+
+- Relasi sopir default dapat disimpan di tabel `sopir` atau tabel assignment terpisah; fungsinya hanya membantu auto-fill saat input.
+- Perhitungan biaya armada tetap melekat ke armada, bukan ke sopir default.
+
+### Tabel `sopir`
+
+Field:
+
+- id
+- nama
+- no_hp
+- tipe_sopir: perusahaan, mitra, umum
+- mitra_id
+- armada_default_id
+- aktif
+- created_at
+
+Catatan:
+
+- `armada_default_id` bersifat opsional dan boleh berubah.
+- Histori pengiriman tidak boleh bergantung pada nilai `armada_default_id` terbaru.
+
 ### Tabel `armada_mitra`
 
 Field:
@@ -1045,6 +1414,12 @@ Field utama/tambahan:
 - potongan_pabrik_lain
 - total_pembayaran_pabrik
 - armada_type: perusahaan, mitra
+- armada_perusahaan_id
+- sopir_aktual_id
+- sopir_aktual_nama
+- sopir_aktual_no_hp
+- sopir_aktual_source: master, manual
+- sopir_diganti_dari_default
 - kendaraan_mitra_text
 - sopir_mitra_text
 - jarak_armada_km
@@ -1066,6 +1441,10 @@ Catatan:
 - `nomor_do` harus unik untuk `pabrik_id` ketika status bukan draft, lintas sumber lokal dan mitra.
 - Validasi alokasi stok lokal harus memakai transaksi database agar dua admin tidak bisa mengalokasikan stok yang sama secara bersamaan.
 - V1 mendukung satu tipe sortasi utama per DO melalui `potongan_sortasi_type`. Jika pabrik memberikan beberapa komponen potongan sekaligus, komponen tambahan dicatat pada `potongan_pabrik_lain` sebagai nominal.
+- Untuk armada perusahaan, `armada_perusahaan_id` adalah armada yang dipakai, sedangkan `sopir_aktual_id`/snapshot nama adalah sopir yang benar-benar membawa armada pada DO tersebut.
+- Untuk armada mitra, sistem boleh memakai `sopir_mitra_text`/`kendaraan_mitra_text` jika sopir atau kendaraan tidak perlu dimasterkan.
+- `mitra_id` pada pengiriman adalah mitra transaksi final untuk DO tersebut, bukan sekadar turunan permanen dari default sopir/armada.
+- Perubahan master sopir, armada, atau relasi default setelah transaksi dibuat tidak boleh mengubah snapshot sopir/plat pada pengiriman lama.
 
 ### Tabel `stok_tbs_lokal_ledger`
 
@@ -1421,6 +1800,7 @@ Prinsip hak akses detail:
 - Pembagian selisih berat harus selalu memakai persentase yang tersimpan agar settlement bisa diaudit.
 - Tarif armada perlu riwayat tanggal berlaku agar perubahan tarif tidak mengubah perhitungan pengiriman lama.
 - Fee mitra perlu riwayat tanggal berlaku agar perubahan fee tidak mengubah pengiriman/settlement lama.
+- Sopir aktual harus disimpan per pengiriman karena sopir armada bisa diganti sewaktu-waktu; relasi default di master tidak cukup untuk audit DO lama.
 - Ledger hutang/kasbon harus generik untuk petani dan mitra agar tidak terjadi double count.
 - Transaksi yang sudah berdampak ke ledger tidak boleh dihapus; pembatalan harus memakai reversal agar audit tetap utuh.
 - Kondisi `tonase_dasar_settlement` lebih besar dari timbang mitra harus ditandai sebagai anomali rekonsiliasi agar tidak luput dari perhatian owner/admin.
@@ -1437,6 +1817,7 @@ Versi final dianggap berhasil jika:
 - Harga beli petani memakai harga yang berlaku berdasarkan tanggal/jam transaksi.
 - Admin bisa mengirim TBS lokal ke pabrik dengan detail transaksi petani dan total harian.
 - Admin bisa mencatat pengiriman mitra ke pabrik per DO.
+- Admin bisa mencatat sopir aktual per DO, termasuk saat sopir berbeda dari default armada.
 - Sistem bisa mencatat pembayaran pabrik per DO.
 - Sistem menghitung hak mitra berdasarkan `tonase_dasar_settlement`.
 - Sistem memotong fee perusahaan nominal per kg.

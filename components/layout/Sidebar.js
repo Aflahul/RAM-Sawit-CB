@@ -3,9 +3,9 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { canViewProfit, getRoleLabel, normalizeRole } from '@/lib/roles';
-import { 
-  LayoutDashboard, Truck, ReceiptText, Database, Store, 
-  Wallet, Calculator, FileText, Users, Box, TrendingUp, MapPin, Tag 
+import {
+  LayoutDashboard, Truck, ReceiptText, Database, Store,
+  Wallet, Calculator, FileText, Users, Box, TrendingUp, MapPin, Tag, ClipboardList, BadgeDollarSign
 } from 'lucide-react';
 
 const menuSections = [
@@ -14,9 +14,11 @@ const menuSections = [
     items: [
       { href: '/dashboard', icon: <LayoutDashboard size={20} />, label: 'Dashboard' },
       { href: '/admin/input-timbangan', icon: <Truck size={20} />, label: 'Pengiriman Mitra' },
+      { href: '/owner/riwayat-pengiriman-mitra', icon: <ClipboardList size={20} />, label: 'Riwayat Pengiriman' },
       { href: '/owner/kwitansi-mitra', icon: <ReceiptText size={20} />, label: 'Kwitansi Mitra' },
       { href: '/owner/panjar-mitra', icon: <Wallet size={20} />, label: 'Panjar Mitra' },
       { href: '/owner/laporan-mitra', icon: <FileText size={20} />, label: 'Laporan Mitra' },
+      { href: '/owner/pendapatan-owner', icon: <BadgeDollarSign size={20} />, label: 'Pendapatan Bruto', profitOnly: true },
     ],
   },
   {

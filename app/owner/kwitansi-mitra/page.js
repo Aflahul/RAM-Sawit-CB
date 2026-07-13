@@ -1,78 +1,165 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useCallback, useEffect, useState } from 'react';
+import { MessageCircle, Printer, Send, X } from 'lucide-react';
 import AppShell from '@/components/layout/AppShell';
+import SearchableCombobox from '@/components/ui/SearchableCombobox';
+import { formatMitraLabel, getMitraSearchText } from '@/lib/display-labels';
 import { supabase } from '@/lib/supabase';
-import { formatRupiah, getTodayDate } from '@/lib/utils';
+import { formatNumber, formatRupiah, getTodayISO } from '@/lib/utils';
+
+function normalizeWhatsappNumber(phone) {
+  const digits = String(phone || '').replace(/\D/g, '');
+
+  if (!digits) return '';
+  if (digits.startsWith('0')) return `62${digits.slice(1)}`;
+  if (digits.startsWith('62')) return digits;
+  if (digits.startsWith('8')) return `62${digits}`;
+
+  return digits;
+}
+
+function isValidWhatsappNumber(phone) {
+  return /^62\d{8,13}$/.test(phone);
+}
+
+function buildWhatsappCaption({ mitra, dateFrom, dateTo, totalTonase, totalNilaiBersih, totalPanjar, sisaBersih }) {
+  return [
+    'Kwitansi Pembayaran Sawit CB',
+    `Mitra: ${formatMitraLabel(mitra) || '-'}`,
+    `Periode: ${dateFrom} s/d ${dateTo}`,
+    `Total Tonase: ${formatNumber(totalTonase)} Kg`,
+    `Total Nilai Bersih TBS: ${formatRupiah(totalNilaiBersih)}`,
+    `Potongan Panjar Mitra: ${formatRupiah(totalPanjar)}`,
+    `Sisa Dibayar ke Mitra: ${formatRupiah(sisaBersih)}`,
+    '',
+    'Mohon dicek. PDF kwitansi pembayaran terlampir.',
+  ].join('\n');
+}
 
 export default function KwitansiMitraPage() {
   const [mitras, setMitras] = useState([]);
   const [selectedMitra, setSelectedMitra] = useState('');
-  const [dateFrom, setDateFrom] = useState('');
-  const [dateTo, setDateTo] = useState('');
+  const [dateFrom, setDateFrom] = useState(getTodayISO);
+  const [dateTo, setDateTo] = useState(getTodayISO);
   
   const [transaksi, setTransaksi] = useState([]);
   const [panjars, setPanjars] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [errorMsg, setErrorMsg] = useState('');
+  const [showWhatsappPreview, setShowWhatsappPreview] = useState(false);
 
-  useEffect(() => {
-    const today = new Date().toISOString().split('T')[0];
-    setDateFrom(today);
-    setDateTo(today);
-    loadMitras();
+  const loadMitras = useCallback(async () => {
+    const { data } = await supabase
+      .from('master_mitra')
+      .select('id, kode, alamat, nama, penanggung_jawab, no_hp')
+      .eq('aktif', true)
+      .order('kode');
+    setMitras(data || []);
   }, []);
 
-  useEffect(() => {
-    if (selectedMitra && dateFrom && dateTo) {
-      loadKwitansiData();
-    } else {
-      setTransaksi([]);
-      setPanjars([]);
-    }
-  }, [selectedMitra, dateFrom, dateTo]);
-
-  async function loadMitras() {
-    const { data } = await supabase.from('master_mitra').select('id, nama').order('nama');
-    setMitras(data || []);
-  }
-
-  async function loadKwitansiData() {
+  const loadKwitansiData = useCallback(async () => {
     setLoading(true);
+    setErrorMsg('');
     
     // 1. Fetch Transaksi Masuk
-    const { data: trxData } = await supabase
+    const { data: trxData, error: trxError } = await supabase
       .from('transaksi_mitra')
       .select(`
-        id, tanggal, tonase, harga_harian, total_kotor, plat_nomor,
-        sopir ( nama )
+        id, tanggal, tonase, harga_harian, total_kotor,
+        harga_bersih_per_kg, total_nilai_bersih, plat_nomor,
+        sopir_default_nama, sopir_aktual_nama, sopir_diganti_dari_default, catatan_sopir
       `)
       .eq('mitra_id', selectedMitra)
       .gte('tanggal', dateFrom)
       .lte('tanggal', dateTo)
+      .neq('status', 'dibatalkan')
       .order('tanggal', { ascending: true });
+
+    if (trxError) {
+      console.error('Gagal memuat transaksi kwitansi mitra:', trxError);
+      setTransaksi([]);
+      setPanjars([]);
+      setErrorMsg(trxError.message);
+      setLoading(false);
+      return;
+    }
       
     setTransaksi(trxData || []);
 
-    // 2. Fetch Panjar Belum Lunas
-    const { data: pjrData } = await supabase
+    // 2. Fetch panjar mitra yang masih menjadi potongan pembayaran
+    const { data: pjrData, error: panjarError } = await supabase
       .from('panjar_mitra')
       .select('*')
       .eq('mitra_id', selectedMitra)
       .eq('status', 'belum_lunas');
+
+    if (panjarError) {
+      console.error('Gagal memuat panjar mitra:', panjarError);
+      setPanjars([]);
+      setErrorMsg(panjarError.message);
+      setLoading(false);
+      return;
+    }
       
     setPanjars(pjrData || []);
     
     setLoading(false);
-  }
+  }, [dateFrom, dateTo, selectedMitra]);
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    loadMitras();
+  }, [loadMitras]);
+
+  useEffect(() => {
+    if (selectedMitra && dateFrom && dateTo) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      loadKwitansiData();
+    } else {
+      setTransaksi([]);
+      setPanjars([]);
+      setErrorMsg('');
+    }
+  }, [selectedMitra, dateFrom, dateTo, loadKwitansiData]);
 
   const handlePrint = () => {
     window.print();
   };
 
   const totalTonase = transaksi.reduce((sum, t) => sum + Number(t.tonase), 0);
-  const totalKotor = transaksi.reduce((sum, t) => sum + Number(t.total_kotor), 0);
+  const totalNilaiBersih = transaksi.reduce((sum, t) => sum + Number(t.total_nilai_bersih ?? t.total_kotor), 0);
   const totalPanjar = panjars.reduce((sum, p) => sum + Number(p.jumlah), 0);
-  const sisaBersih = totalKotor - totalPanjar;
+  const sisaBersih = totalNilaiBersih - totalPanjar;
+  const selectedMitraData = mitras.find(m => m.id === selectedMitra);
+  const whatsappNumber = normalizeWhatsappNumber(selectedMitraData?.no_hp);
+  const whatsappNumberValid = isValidWhatsappNumber(whatsappNumber);
+  const whatsappCaption = buildWhatsappCaption({
+    mitra: selectedMitraData,
+    dateFrom,
+    dateTo,
+    totalTonase,
+    totalNilaiBersih,
+    totalPanjar,
+    sisaBersih,
+  });
+  const canSendWhatsapp = Boolean(selectedMitra && transaksi.length > 0 && whatsappNumberValid);
+  const whatsappWarning = selectedMitra && transaksi.length > 0 && !whatsappNumberValid
+    ? selectedMitraData?.no_hp
+      ? 'Nomor WA penanggung jawab mitra belum valid. Perbarui nomor di Master Mitra.'
+      : 'Nomor WA penanggung jawab mitra belum diisi. Lengkapi nomor di Master Mitra.'
+    : '';
+
+  const handleOpenWhatsappPreview = () => {
+    if (!canSendWhatsapp) return;
+    setShowWhatsappPreview(true);
+  };
+
+  const handleOpenWhatsapp = () => {
+    const whatsappUrl = `https://wa.me/${whatsappNumber}?text=${encodeURIComponent(whatsappCaption)}`;
+    window.open(whatsappUrl, '_blank', 'noopener,noreferrer');
+    setShowWhatsappPreview(false);
+  };
 
   return (
     <AppShell title="Kwitansi Mitra" subtitle="Dashboard & Cetak Invoice Mitra">
@@ -81,20 +168,30 @@ export default function KwitansiMitraPage() {
           <h2 className="page-title">Kwitansi Mitra (MVP)</h2>
           <p className="page-description">Rekapitulasi otomatis armada dan panjar</p>
         </div>
-        <button className="btn btn-primary" onClick={handlePrint} disabled={!selectedMitra || transaksi.length === 0}>
-          🖨️ Cetak PDF / Struk
-        </button>
+        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+          <button className="btn btn-outline" onClick={handleOpenWhatsappPreview} disabled={!canSendWhatsapp}>
+            <MessageCircle size={16} />
+            Kirim WhatsApp
+          </button>
+          <button className="btn btn-primary" onClick={handlePrint} disabled={!selectedMitra || transaksi.length === 0}>
+            <Printer size={16} />
+            Cetak PDF / Struk
+          </button>
+        </div>
       </div>
 
       <div className="toolbar no-print card" style={{ padding: 'var(--space-md)', marginBottom: 'var(--space-lg)', display: 'flex', gap: 16, flexWrap: 'wrap' }}>
         <div style={{ flex: 1, minWidth: 200 }}>
           <label style={{ display: 'block', fontSize: 14, fontWeight: 500, marginBottom: 8 }}>Nama Mitra</label>
-          <select className="form-input" value={selectedMitra} onChange={e => setSelectedMitra(e.target.value)}>
-            <option value="">-- Pilih Mitra --</option>
-            {mitras.map(m => (
-              <option key={m.id} value={m.id}>{m.nama}</option>
-            ))}
-          </select>
+          <SearchableCombobox
+            value={selectedMitra}
+            options={mitras}
+            onChange={setSelectedMitra}
+            getOptionLabel={formatMitraLabel}
+            getSearchText={getMitraSearchText}
+            placeholder="Cari kode, alamat, atau nama mitra..."
+            emptyLabel="Mitra tidak ditemukan"
+          />
         </div>
         <div>
           <label style={{ display: 'block', fontSize: 14, fontWeight: 500, marginBottom: 8 }}>Dari Tanggal</label>
@@ -108,16 +205,34 @@ export default function KwitansiMitraPage() {
 
       {loading && <div style={{ textAlign: 'center', padding: 40 }}>Memuat data kwitansi...</div>}
 
-      {!loading && selectedMitra && (
+      {!loading && errorMsg && (
+        <div className="card" style={{ padding: 24, color: 'var(--color-danger)', textAlign: 'center' }}>
+          Gagal memuat kwitansi: {errorMsg}
+        </div>
+      )}
+
+      {!loading && !errorMsg && whatsappWarning && (
+        <div className="alert alert-warning no-print">
+          <div>
+            <strong>WhatsApp belum bisa digunakan.</strong>
+            <div style={{ marginTop: 4 }}>{whatsappWarning}</div>
+          </div>
+        </div>
+      )}
+
+      {!loading && !errorMsg && selectedMitra && (
         <div className="print-area card" style={{ padding: 'var(--space-2xl)' }}>
           <div style={{ borderBottom: '2px dashed var(--border-default)', paddingBottom: 24, marginBottom: 24, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <div>
-              <h1 style={{ margin: 0, fontSize: 24, color: 'var(--text-primary)' }}>INVOICE PEMBELIAN TBS</h1>
+              <h1 style={{ margin: 0, fontSize: 24, color: 'var(--text-primary)' }}>KWITANSI PEMBAYARAN TBS</h1>
               <p style={{ margin: '8px 0 0', color: 'var(--text-secondary)' }}>Pabrik Kelapa Sawit (SAWIT CB)</p>
             </div>
             <div style={{ textAlign: 'right' }}>
               <div style={{ fontSize: 14, color: 'var(--text-secondary)' }}>Kepada Yth. Mitra:</div>
-              <h2 style={{ margin: '4px 0 0', fontSize: 20, color: 'var(--text-primary)' }}>{mitras.find(m => m.id === selectedMitra)?.nama}</h2>
+              <h2 style={{ margin: '4px 0 0', fontSize: 20, color: 'var(--text-primary)' }}>{selectedMitraData?.nama}</h2>
+              <div style={{ fontSize: 13, color: 'var(--text-tertiary)', marginTop: 4 }}>
+                {formatMitraLabel(selectedMitraData)}
+              </div>
               <div style={{ fontSize: 14, color: 'var(--text-secondary)', marginTop: 4 }}>
                 Periode: {dateFrom} s/d {dateTo}
               </div>
@@ -129,11 +244,11 @@ export default function KwitansiMitraPage() {
             <thead>
               <tr style={{ background: 'var(--bg-surface)', borderBottom: '2px solid var(--border-default)' }}>
                 <th style={{ padding: 12, textAlign: 'left' }}>Tanggal</th>
-                <th style={{ padding: 12, textAlign: 'left' }}>Nama Sopir</th>
+                <th style={{ padding: 12, textAlign: 'left' }}>Sopir Aktual</th>
                 <th style={{ padding: 12, textAlign: 'left' }}>Plat Armada</th>
                 <th style={{ padding: 12, textAlign: 'right' }}>Tonase (Kg)</th>
-                <th style={{ padding: 12, textAlign: 'right' }}>Harga/Kg</th>
-                <th style={{ padding: 12, textAlign: 'right' }}>Total (Rp)</th>
+                <th style={{ padding: 12, textAlign: 'right' }}>Harga Bersih/Kg</th>
+                <th style={{ padding: 12, textAlign: 'right' }}>Nilai Bersih (Rp)</th>
               </tr>
             </thead>
             <tbody>
@@ -143,21 +258,29 @@ export default function KwitansiMitraPage() {
                 transaksi.map((t, i) => (
                   <tr key={i} style={{ borderBottom: '1px solid var(--border-default)' }}>
                     <td style={{ padding: 12 }}>{t.tanggal}</td>
-                    <td style={{ padding: 12 }}>{t.sopir?.nama || '-'}</td>
+                    <td style={{ padding: 12 }}>
+                      <div style={{ fontWeight: 600 }}>{t.sopir_aktual_nama || t.sopir_default_nama || '-'}</div>
+                      {t.sopir_diganti_dari_default && (
+                        <div style={{ fontSize: 12, color: 'var(--text-tertiary)', marginTop: 4 }}>
+                          Pengganti dari {t.sopir_default_nama || '-'}
+                          {t.catatan_sopir ? ` - ${t.catatan_sopir}` : ''}
+                        </div>
+                      )}
+                    </td>
                     <td style={{ padding: 12 }} className="table-mono">{t.plat_nomor || '-'}</td>
                     <td style={{ padding: 12, textAlign: 'right' }}>{Number(t.tonase).toLocaleString('id-ID')}</td>
-                    <td style={{ padding: 12, textAlign: 'right' }} className="table-mono">{formatRupiah(t.harga_harian)}</td>
-                    <td style={{ padding: 12, textAlign: 'right' }} className="table-mono">{formatRupiah(t.total_kotor)}</td>
+                    <td style={{ padding: 12, textAlign: 'right' }} className="table-mono">{formatRupiah(t.harga_bersih_per_kg ?? t.harga_harian)}</td>
+                    <td style={{ padding: 12, textAlign: 'right' }} className="table-mono">{formatRupiah(t.total_nilai_bersih ?? t.total_kotor)}</td>
                   </tr>
                 ))
               )}
             </tbody>
             <tfoot>
               <tr style={{ background: 'var(--bg-surface)', fontWeight: 'bold' }}>
-                <td colSpan={3} style={{ padding: 12, textAlign: 'right' }}>TOTAL TRANSAKSI KOTOR:</td>
+                <td colSpan={3} style={{ padding: 12, textAlign: 'right' }}>TOTAL NILAI BERSIH TBS:</td>
                 <td style={{ padding: 12, textAlign: 'right' }}>{totalTonase.toLocaleString('id-ID')} Kg</td>
                 <td style={{ padding: 12, textAlign: 'right' }}></td>
-                <td style={{ padding: 12, textAlign: 'right', color: 'var(--text-primary)', fontSize: 16 }}>{formatRupiah(totalKotor)}</td>
+                <td style={{ padding: 12, textAlign: 'right', color: 'var(--text-primary)', fontSize: 16 }}>{formatRupiah(totalNilaiBersih)}</td>
               </tr>
             </tfoot>
           </table>
@@ -165,16 +288,16 @@ export default function KwitansiMitraPage() {
           <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 32 }}>
             <div style={{ width: 400, background: 'var(--bg-surface)', padding: 24, borderRadius: 8, border: '1px solid var(--border-default)' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 12 }}>
-                <span style={{ color: 'var(--text-secondary)' }}>Total Tagihan Kotor:</span>
-                <span style={{ fontWeight: 600 }} className="table-mono">{formatRupiah(totalKotor)}</span>
+                <span style={{ color: 'var(--text-secondary)' }}>Total Nilai Bersih TBS:</span>
+                <span style={{ fontWeight: 600 }} className="table-mono">{formatRupiah(totalNilaiBersih)}</span>
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 12, color: '#ef4444' }}>
-                <span>Dikurangi Panjar (Belum Lunas):</span>
+                <span>Potongan Panjar Mitra:</span>
                 <span style={{ fontWeight: 600 }} className="table-mono">- {formatRupiah(totalPanjar)}</span>
               </div>
               <div style={{ borderTop: '2px solid var(--border-default)', margin: '16px 0' }}></div>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ fontSize: 18, fontWeight: 'bold' }}>SISA BAYAR BERSIH:</span>
+                <span style={{ fontSize: 18, fontWeight: 'bold' }}>SISA DIBAYAR KE MITRA:</span>
                 <span style={{ fontSize: 24, fontWeight: 'bold', color: 'var(--color-success)' }} className="table-mono">
                   {formatRupiah(sisaBersih)}
                 </span>
@@ -196,6 +319,69 @@ export default function KwitansiMitraPage() {
           .no-print { display: none !important; }
         }
       `}</style>
+
+      {showWhatsappPreview && (
+        <div className="modal-overlay no-print" onClick={() => setShowWhatsappPreview(false)}>
+          <div className="modal" onClick={event => event.stopPropagation()} style={{ maxWidth: 680 }}>
+            <div className="modal-header">
+              <h3 className="modal-title">Kirim Kwitansi via WhatsApp</h3>
+              <button className="modal-close" onClick={() => setShowWhatsappPreview(false)} aria-label="Tutup">
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="modal-body">
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12, marginBottom: 16 }}>
+                <div style={{ padding: 14, border: '1px solid var(--border-default)', borderRadius: 8, background: 'var(--bg-surface)' }}>
+                  <div style={{ fontSize: 12, color: 'var(--text-tertiary)', marginBottom: 6 }}>Mitra</div>
+                  <div style={{ fontWeight: 700 }}>{formatMitraLabel(selectedMitraData) || '-'}</div>
+                </div>
+                <div style={{ padding: 14, border: '1px solid var(--border-default)', borderRadius: 8, background: 'var(--bg-surface)' }}>
+                  <div style={{ fontSize: 12, color: 'var(--text-tertiary)', marginBottom: 6 }}>Penerima</div>
+                  <div style={{ fontWeight: 700 }}>{selectedMitraData?.penanggung_jawab || selectedMitraData?.nama || '-'}</div>
+                  <div className="table-mono" style={{ marginTop: 4, color: 'var(--text-secondary)' }}>{whatsappNumber}</div>
+                </div>
+              </div>
+
+              <div className="alert alert-info" style={{ marginBottom: 16 }}>
+                <div>
+                  <strong>PDF dilampirkan dari hasil cetak/simpan.</strong>
+                  <div style={{ marginTop: 4 }}>Buka WhatsApp akan mengisi pesan otomatis; lampirkan PDF kwitansi pembayaran sebelum dikirim.</div>
+                </div>
+              </div>
+
+              <label style={{ display: 'block', fontSize: 14, fontWeight: 600, marginBottom: 8 }}>Preview Pesan</label>
+              <pre style={{
+                whiteSpace: 'pre-wrap',
+                wordBreak: 'break-word',
+                margin: 0,
+                padding: 16,
+                borderRadius: 8,
+                border: '1px solid var(--border-default)',
+                background: 'var(--bg-input)',
+                color: 'var(--text-primary)',
+                fontFamily: 'var(--font-mono)',
+                fontSize: 13,
+                lineHeight: 1.6,
+              }}>{whatsappCaption}</pre>
+            </div>
+
+            <div className="modal-footer">
+              <button className="btn btn-outline" onClick={() => setShowWhatsappPreview(false)}>
+                Batal
+              </button>
+              <button className="btn btn-outline" onClick={handlePrint}>
+                <Printer size={16} />
+                Cetak / Simpan PDF
+              </button>
+              <button className="btn btn-primary" onClick={handleOpenWhatsapp}>
+                <Send size={16} />
+                Buka WhatsApp
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </AppShell>
   );
 }

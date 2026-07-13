@@ -2,6 +2,18 @@
 
 Dokumen ini menurunkan `PRD-final.md` menjadi task implementasi teknis berdasarkan kondisi repo saat ini.
 
+## Aturan Pencatatan Implementasi
+
+Setiap perubahan yang sudah diimplementasikan wajib tercatat di dokumen ini agar status MVP, migration, UI, dan backlog tidak tercecer.
+
+Ketentuan:
+
+- Setelah membuat migration, catat nama file migration, status apply remote/local, dan dampak schema.
+- Setelah mengubah UI, catat route/halaman yang berubah dan acceptance yang sudah terpenuhi.
+- Setelah menambah fitur MVP live, tambahkan checklist `[x]` pada bagian terkait.
+- Setelah menambah rencana di `PRD-final.md`, tambahkan agenda implementasi di dokumen ini dengan status jelas: `[x]` untuk analisis/dokumen yang sudah selesai, `[ ]` untuk fitur yang belum dibuat.
+- Jangan menandai fitur sebagai selesai jika baru berupa analisis atau rencana.
+
 ## 0. Kondisi Saat Ini (MVP Tahap 1 Selesai)
 
 Semua fitur MVP (Tahap 1) terkait **Pengiriman Mitra ke Pabrik** telah selesai dibangun. 
@@ -11,6 +23,189 @@ Modul yang sudah live dan beroperasi:
 - **Panjar Mitra:** Menggunakan `panjar_mitra` dengan tombol *Quick Add*.
 - **Kwitansi Mitra:** Pemotongan panjar otomatis.
 - **Laporan Mitra:** Rekapitulasi global transaksi Mitra.
+
+### Kondisi Baru - Pergantian Sopir Armada (13 Juli 2026)
+
+Di lapangan, sopir yang membawa mobil/armada kadang diganti. Dampaknya:
+
+- Relasi sopir ke armada di master tidak boleh dianggap permanen.
+- Master sopir-armada hanya boleh menjadi default/auto-fill.
+- Default mitra pada sopir/armada hanya usulan awal; mitra transaksi tetap harus bisa dipilih/diubah saat input.
+- Armada bersama atau pool seperti `SL/BL` boleh tidak punya default mitra agar tidak terkunci ke kode yang salah.
+- Setiap pengiriman/DO harus menyimpan sopir aktual dan snapshot nama sopir/plat pada saat transaksi.
+- Jika default sopir armada berubah setelah DO dibuat, histori DO lama tidak boleh ikut berubah.
+- Form input harus mengizinkan override sopir aktual, termasuk sopir manual jika belum ada di master.
+
+Status implementasi MVP live:
+
+- [x] Migration non-destruktif `202607130001_mvp_sopir_aktual_transaksi_mitra.sql`.
+- [x] `/admin/input-timbangan` mendukung sopir aktual default, pilih dari master, atau manual.
+- [x] `/admin/input-timbangan` mendukung override `Mitra Transaksi` terpisah dari default sopir/armada.
+- [x] `transaksi_mitra` menyimpan snapshot sopir default dan sopir aktual.
+- [x] Laporan mitra dan kwitansi menampilkan sopir aktual serta tanda pengganti.
+- [x] Migration schema `202607130001_mvp_sopir_aktual_transaksi_mitra.sql` sudah dijalankan di Supabase remote/production.
+- [x] Seed SQL daftar sopir/plat dibuat: `202607130002_mvp_seed_sopir_armada_default.sql`.
+- [x] Seed SQL sopir/plat `202607130002_mvp_seed_sopir_armada_default.sql` sudah dijalankan ke Supabase remote via CLI.
+- [x] Supabase migration history sudah sinkron sampai `202607130002`.
+- [x] `/owner/kwitansi-mitra` dan `/owner/laporan-mitra` memakai snapshot `sopir_aktual_nama` agar tidak gagal karena relasi `sopir` ambigu.
+- [x] Halaman `/owner/riwayat-pengiriman-mitra` dibuat untuk melihat detail transaksi, edit kesalahan input, dan membatalkan transaksi tanpa delete fisik.
+- [x] `transaksi_mitra` ditambah status `aktif/dibatalkan`, alasan edit, alasan batal, dan metadata update lewat migration `20260713053518_mvp_riwayat_pengiriman_mitra_status.sql`.
+- [x] Laporan dan kwitansi mitra mengecualikan transaksi `dibatalkan`.
+- [x] `/owner/laporan-mitra` mendukung filter multi-mitra, mode gabung beberapa mitra, dan mode kelompok per mitra.
+- [x] `/owner/master-data` dan `/owner/laporan-mitra` mendukung export Excel `.xlsx` rapi dengan header berwarna dan row ganjil/genap beda warna.
+- [x] Dashboard MVP mengecualikan transaksi mitra `dibatalkan` dari total pengiriman pabrik dan jumlah mitra mengirim hari ini.
+- [x] Halaman `/owner/pendapatan-owner` dibuat untuk laporan pendapatan owner dari snapshot Fee Owner transaksi mitra.
+- [x] Menu Pendapatan Owner Bruto hanya tampil untuk role yang boleh melihat profit (`owner`/`super_admin`).
+- [x] Migration non-destruktif `20260713074944_mvp_mitra_internal_owner_classification.sql` dibuat untuk `master_mitra.tipe_mitra`.
+- [x] Kode `BL`, `BL/%`, `SL`, dan `SL/%` diklasifikasikan sebagai `internal_owner`; lainnya default `eksternal`.
+- [x] `/owner/master-data` mendukung edit tipe mitra/grup: Mitra Eksternal atau Internal Owner.
+- [x] `/owner/pendapatan-owner` diberi label **Pendapatan Owner Bruto**, filter tipe mitra, dan catatan belum dikurangi biaya operasional.
+- [x] `/owner/pendapatan-owner` menampilkan catatan kecil breakdown Pendapatan Owner Bruto per nilai Fee Owner aktif (mis. 40/kg, 30/kg, 20/kg) sesuai transaksi periode/filter.
+- [x] Input Fee Owner nominal awal sudah dijalankan lewat migration `20260713092933_mvp_fee_owner_input_20260713.sql`.
+- [x] Tanggal berlaku Fee Owner dikoreksi menjadi mulai `2026-01-01` lewat migration `20260713093508_mvp_fee_owner_effective_20260101.sql`.
+- [x] Fee 20/Kg: `SL`, `BL`, `SL/NL`, `SL/CHT`.
+- [x] Fee 30/Kg: `SL/F`, `SL/MLD`, `SL/BS`, `SL/HB`, `SL/SW`, `SL/WRD`, `SL/ANC`, `SL/B`, `SL/IMAN` alias input `SL/IMN`, `SL/NSL`, `BL/P`, `BL/ML`.
+- [x] Catatan input fee: `BL/ML` muncul di fee 20 dan 30 sehingga nilai final mengikuti daftar terakhir = 30; `SL/WND` belum ada di master mitra.
+- [ ] Tahap 2: biaya operasional owner, kepemilikan armada, status sopir, dan pendapatan owner bersih.
+- [ ] Review apakah `SL/MD` perlu dibuat sebagai master mitra baru atau tetap menjadi armada tanpa default mitra.
+
+### Agenda Baru - Searchable Combobox untuk Semua Dropdown Master (13 Juli 2026)
+
+Native `<select>` mulai tidak ergonomis karena data sopir/armada, mitra, petani, pabrik, dan armada akan terus bertambah. Metode input terbaik untuk MVP berikutnya:
+
+- Ganti dropdown data referensi/master menjadi reusable `SearchableCombobox`.
+- Dropdown enum kecil seperti status, kategori biaya, bulan, atau periode tetap boleh memakai `<select>` biasa.
+- Nilai yang disimpan tetap `id`; label hanya untuk tampilan.
+- Mitra bisa dicari dari `kode`, `alamat`, `nama`, dan penanggung jawab jika nanti ada.
+- Sopir/armada bisa dicari dari `nama sopir`, `plat nomor`, serta `kode/alamat/nama mitra default`.
+- Petani, pabrik, dan armada perusahaan memakai pola yang sama sesuai field utama masing-masing.
+- Tampilan opsi dibuat dua baris: baris utama untuk identitas cepat, baris kedua untuk konteks.
+- Tambahkan tombol clear, keyboard navigation, dan state kosong/error/loading.
+- Untuk mobile, gunakan panel pencarian besar agar operator tidak perlu scroll dropdown browser yang panjang.
+- Untuk data lebih dari 300 opsi, lanjutkan dengan virtualized list atau pencarian server-side.
+
+Task:
+
+- [x] Buat komponen `SearchableCombobox` reusable.
+- [x] Ganti dropdown `Armada / Sopir Default` dan `Sopir Pengganti` di `/admin/input-timbangan`.
+- [x] Ganti dropdown `Mitra Transaksi` di `/admin/input-timbangan`.
+- [x] Ganti dropdown `Nama Mitra` di `/owner/kwitansi-mitra`.
+- [x] Ganti dropdown `Pilih Mitra` di `/owner/panjar-mitra`.
+- [x] Ganti dropdown afiliasi mitra default di `/owner/master-data`.
+- [ ] Ganti dropdown petani di `/transaksi/beli` dan `/keuangan/hutang`.
+- [ ] Ganti dropdown sopir, kendaraan, pabrik, dan alokasi stok di `/transaksi/kirim`.
+- [ ] Ganti dropdown armada/sopir di `/master/armada`.
+- [x] Siapkan helper label standar: mitra = `kode - alamat - nama`, sopir/armada = `nama - plat - kode/alamat mitra`.
+
+Acceptance:
+
+- [x] Operator bisa menemukan mitra/sopir tanpa scroll panjang.
+- [x] Search bekerja untuk kode, alamat, nama, dan plat.
+- [x] Bisa dipakai dengan mouse, touch, dan keyboard.
+- [ ] Performa tetap nyaman untuk minimal 500 opsi lokal.
+- [x] Tidak mengubah data yang tersimpan, hanya metode pemilihan di UI.
+
+### Agenda Baru - Sort dan Pagination Tabel MVP (13 Juli 2026)
+
+Tabel dengan data banyak perlu bisa diurutkan dari header dan dipaginasi agar operator tidak perlu scroll panjang.
+
+Task:
+
+- [x] Buat helper sort reusable `sortRows` dan `getNextSort`.
+- [x] Buat komponen header tabel sortable `SortableHeader`.
+- [x] Buat helper pagination reusable `paginateRows`.
+- [x] Buat komponen kontrol halaman `TablePagination`.
+- [x] Terapkan sort header dan pagination 20 data/halaman di `/owner/laporan-mitra`.
+- [x] Tambahkan filter multi-mitra dan mode kelompok per mitra di `/owner/laporan-mitra`.
+- [x] Terapkan sort header dan pagination 20 data/halaman di `/owner/riwayat-pengiriman-mitra`.
+- [x] Terapkan sort header dan pagination 20 data/halaman di `/owner/panjar-mitra`.
+- [x] Terapkan sort header dan pagination 20 data/halaman di `/owner/master-data`.
+- [x] Terapkan sort header dan pagination 20 data/halaman di `/owner/pendapatan-owner`.
+- [x] Dashboard dibatasi menampilkan maksimal 10 transaksi terakhir.
+- [ ] Terapkan pola yang sama ke tabel modul Tahap 2 saat modul tersebut dibuka penuh.
+
+Acceptance:
+
+- [x] Klik header tabel mengurutkan data ascending/descending.
+- [x] Kolom angka diurutkan sebagai angka, bukan teks.
+- [x] Kolom teks memakai urutan natural `id-ID`.
+- [x] Tabel utama MVP menampilkan 20 data per halaman.
+- [x] Tabel dashboard tetap ringkas dengan maksimal 10 data.
+
+### Agenda Baru - Export Spreadsheet MVP (13 Juli 2026)
+
+Data master dan laporan perlu bisa dibawa ke Excel/Spreadsheet untuk pengecekan manual dan arsip owner.
+
+Task:
+
+- [x] Tambah helper reusable `exportStyledWorkbook` untuk file `.xlsx`.
+- [x] Style export: judul, subtitle, header berwarna, border, dan row ganjil/genap beda warna.
+- [x] Export daftar Mitra dari `/owner/master-data` sesuai filter/search/sort aktif.
+- [x] Export daftar Armada & Sopir dari `/owner/master-data` sesuai filter/search/sort aktif.
+- [x] Export Laporan Mitra dari `/owner/laporan-mitra` sesuai periode dan filter multi-mitra aktif.
+- [x] Laporan Mitra export dua sheet: detail pengiriman dan ringkasan per mitra.
+- [ ] Terapkan export spreadsheet ke laporan Tahap 2 saat modul final dibuka.
+
+Acceptance:
+
+- [x] File export berbentuk `.xlsx`, bukan CSV polos.
+- [x] Header tabel tampil berwarna.
+- [x] Row ganjil/genap dibedakan warna.
+- [x] Kolom angka tetap menjadi angka agar bisa dihitung di spreadsheet.
+- [x] Export memakai data hasil filter/search/sort, bukan hanya data halaman pagination yang sedang terlihat.
+
+### Add-on MVP - Pengiriman Kwitansi Mitra via WhatsApp (13 Juli 2026)
+
+Add-on ini sudah direncanakan di `PRD-final.md` sebagai fitur tambahan MVP untuk mengirim kwitansi mitra ke nomor WhatsApp penanggung jawab mitra.
+
+Keputusan desain:
+
+- Format utama yang dikirim adalah PDF.
+- Tombol **Cetak / Simpan PDF** tetap dipertahankan.
+- Tombol **Kirim WhatsApp** akan memakai nomor dari `master_mitra.no_hp`.
+- Nama penerima memakai `master_mitra.penanggung_jawab`.
+- Alur MVP memakai pendekatan hybrid:
+  - jika browser mendukung file share, bagikan PDF lewat Web Share API;
+  - jika tidak mendukung, fallback ke download/cetak PDF dan buka `wa.me` dengan caption otomatis.
+- WhatsApp Business Platform / Cloud API ditunda untuk tahap lanjut karena butuh setup akun bisnis, token, webhook, dan kontrol biaya.
+
+Task:
+
+- [x] Analisis opsi implementasi: WhatsApp link, Web Share API, dan WhatsApp Business Platform / Cloud API.
+- [x] Pilih solusi MVP: hybrid PDF + Web Share API + fallback `wa.me`.
+- [x] Catat keputusan format file: PDF sebagai format utama, teks WhatsApp sebagai caption/ringkasan.
+- [x] Tambahkan addendum perencanaan ke `PRD-final.md`.
+- [x] Tambah normalisasi nomor WA: `08...` menjadi `628...`, hapus spasi/strip/titik/tanda plus.
+- [x] Tambah validasi nomor WA di halaman Kwitansi Mitra.
+- [x] Tambah preview penerima: kode mitra, nama/alamat mitra, nama PJ, dan nomor WA.
+- [ ] Tambah generator PDF kwitansi yang stabil untuk dibagikan/diunduh.
+- [ ] Tambah auto-download PDF sebelum membuka WhatsApp jika generator PDF sudah tersedia.
+- [x] Tambah tombol **Kirim WhatsApp** di `/owner/kwitansi-mitra`.
+- [x] Buat caption otomatis berisi mitra, periode, total tonase, total nilai bersih TBS, potongan panjar mitra, dan sisa dibayar ke mitra.
+- [x] Koreksi istilah kwitansi: panjar ditampilkan sebagai potongan panjar mitra/uang muka, bukan "panjar belum lunas".
+- [x] Koreksi label master mitra: `fee_per_kg` ditampilkan sebagai **Fee Owner**, bukan Fee Pabrik/Fee Mitra.
+- [x] Tambah kontrol koreksi harga bersih di `/owner/riwayat-pengiriman-mitra`: input Harga Pabrik/TWB, tampilkan Fee Owner aktif, hitung ulang Harga Bersih/Kg dan Nilai Bersih.
+- [x] Tambah tombol koreksi cepat untuk data lama yang tersimpan sebelum Fee Owner dipotong: gunakan harga lama sebagai Harga Pabrik/TWB lalu kurangi Fee Owner aktif.
+- [x] Tambah migration non-destruktif `20260713071118_mvp_fee_owner_snapshot_history.sql` untuk `fee_owner_mitra_history` dan snapshot harga/fee di `transaksi_mitra`.
+- [x] Transaksi mitra baru menyimpan snapshot `harga_pabrik_per_kg`, `fee_owner_per_kg`, `harga_bersih_per_kg`, `total_fee_owner`, `total_nilai_bersih`, dan `fee_owner_history_id`.
+- [x] Master Mitra mencatat riwayat Fee Owner saat fee disimpan, termasuk tanggal berlaku dan alasan perubahan.
+- [x] Input/Riwayat/Kwitansi/Laporan Mitra membaca harga/nilai bersih dari snapshot baru, dengan fallback ke kolom lama untuk data existing.
+- [ ] Implement Web Share API untuk membagikan PDF jika browser mendukung.
+- [x] Implement fallback desktop: download/cetak PDF dan buka `https://wa.me/<nomor>?text=<caption>`.
+- [x] Pastikan transaksi `dibatalkan` tidak masuk PDF/caption yang dikirim.
+- [x] Tambah instruksi jelas saat file harus dilampirkan manual di WhatsApp Web.
+- [ ] Tambah send log manual `kwitansi_mitra_send_log` jika sudah dibutuhkan untuk riwayat kirim.
+- [ ] Tambah status revisi jika kwitansi pernah dikirim lalu transaksi dikoreksi.
+- [ ] Evaluasi WhatsApp Business API setelah volume transaksi dan kebutuhan tracking meningkat.
+
+Acceptance:
+
+- [x] Tombol **Kirim WhatsApp** hanya aktif saat mitra dipilih, transaksi tersedia, dan nomor WA valid.
+- [x] Operator melihat preview penerima sebelum membuka WhatsApp/share sheet.
+- [ ] File yang dibagikan adalah PDF kwitansi.
+- [x] Caption tidak memuat laba/margin owner.
+- [x] Alur desktop tetap bisa dipakai walau browser tidak mendukung file share.
+- [ ] Alur mobile bisa membagikan PDF langsung jika browser/perangkat mendukung.
 
 ### Panduan Environment (PENTING UNTUK TAHAP 2)
 Untuk menjaga integritas data operasional MVP (Tahap 1) yang sudah mulai digunakan oleh Owner:
@@ -173,12 +368,12 @@ Acceptance:
 
 ## P0B - Alur Mitra dan Settlement
 
-Tujuan: pisahkan mitra, pengiriman mitra, settlement per DO, fee history, kasbon mitra, biaya armada, dan bukti pembayaran.
+Tujuan: pisahkan mitra, pengiriman mitra, settlement per DO, Fee Owner history, kasbon mitra, biaya armada, dan bukti pembayaran.
 
 ### P0B.0 Pengaturan Bisnis
 
 - [ ] Buat UI `/pengaturan/bisnis`.
-- [x] Simpan default fee mitra per kg.
+- [x] Simpan default Fee Owner per kg.
 - [x] Simpan default persentase selisih tonase perusahaan/mitra.
 - [x] Simpan tindakan kasbon melewati limit: `blokir_otomatis` atau `wajib_approval`.
 - [x] Simpan toleransi anomali tonase.
@@ -205,9 +400,9 @@ Acceptance:
 - [ ] Petani tidak muncul di form pengiriman mitra.
 - [ ] Mitra tidak muncul di form transaksi pembelian petani lokal.
 
-### P0B.2 Fee Mitra History
+### P0B.2 Fee Owner History
 
-- [x] Buat `fee_mitra_history`.
+- [x] Buat `fee_mitra_history` sebagai riwayat Fee Owner dari mitra.
 - [ ] Tambahkan UI set fee per kg dengan tanggal/jam berlaku.
 - [ ] Settlement mengambil fee berdasarkan tanggal pengiriman/DO.
 - [ ] Perubahan fee tidak mengubah settlement lama.
@@ -220,18 +415,25 @@ Acceptance:
 ### P0B.3 Pengiriman Mitra (Sesuai MVP Terbaru)
 
 - [ ] Buat route `/admin/input-timbangan` (Khusus Admin Lapangan, UI Mobile-Friendly).
-- [ ] Input berfokus pada pemilihan **Nama Sopir**.
-- [ ] Implementasikan auto-fill: Saat Sopir dipilih, **Plat Armada** dan **Afiliasi Mitra** otomatis terisi.
+- [x] Review route `/admin/input-timbangan` yang sudah ada agar kompatibel dengan schema final `pengiriman`/settlement.
+- [x] Input mendukung pilihan armada/plat dan **sopir aktual** per DO, bukan hanya pemilihan nama sopir sebagai sumber utama.
+- [x] Implementasikan auto-fill: saat armada atau sopir default dipilih, **Plat Armada**, **Sopir Default**, dan **Afiliasi Mitra** otomatis terisi.
+- [x] Tambahkan pilihan **Mitra Transaksi** yang bisa dioverride dari default sopir/armada untuk kasus armada bersama SL/BL.
+- [x] Tambahkan override sopir aktual jika sopir yang membawa armada berbeda dari default.
+- [x] Simpan snapshot sopir aktual dan plat kendaraan ke transaksi/pengiriman agar histori tidak berubah saat master diubah.
+- [x] Tambahkan riwayat transaksi mitra untuk edit koreksi dan pembatalan tanpa delete fisik.
 - [ ] Input tonase pabrik/timbangan.
 - [ ] Buat route `/owner/kwitansi-mitra` untuk mencetak Kwitansi per Mitra.
-- [ ] Kwitansi harus menjumlahkan total tonase afiliasi mitra, dikali harga, lalu **dikurangi Panjar** (dari tabel kasbon/hutang) untuk mendapat Sisa Bayar Bersih.
+- [ ] Kwitansi harus menjumlahkan total nilai bersih TBS mitra, lalu **dikurangi Panjar Mitra** untuk mendapat sisa yang dibayar owner ke mitra.
 - [ ] Deteksi anomali jika `tonase_dasar_settlement > tonase_timbang_mitra` melewati toleransi.
 
 Acceptance:
 
 - [ ] Pengiriman mitra tidak mengubah stok lokal.
 - [ ] Pengiriman mitra bisa lanjut menjadi settlement setelah pembayaran pabrik/DO final.
+- [ ] Setelah transaksi masuk settlement/pembayaran, edit langsung harus dikunci dan memakai flow koreksi/reversal.
 - [ ] Anomali tampil di laporan mitra.
+- [x] Pengiriman dengan sopir pengganti tetap bisa disimpan dan laporan menampilkan sopir default vs sopir aktual.
 
 ### P0B.4 Settlement Mitra Formula
 
@@ -273,6 +475,9 @@ Acceptance:
 
 ### P0B.6 Biaya Bantuan Mitra dan Armada
 
+- [x] Tambah migration non-destruktif untuk sopir aktual per pengiriman: `sopir_aktual_id`, snapshot nama/no HP, source master/manual, dan flag berbeda dari default.
+- [x] MVP: afiliasi default sopir/armada dibuat opsional dan tidak mengunci `mitra_id` transaksi.
+- [ ] Tambah/rapikan relasi default sopir-armada sebagai default/assignment, bukan kebenaran transaksi.
 - [ ] Buat/update `biaya_operasional` dengan `tipe_biaya`.
 - [ ] Buat `tarif_armada` dengan tanggal berlaku.
 - [ ] Hitung biaya armada: `max(jarak_km x tonase_ton x tarif_per_km_per_ton, minimum_charge)`.
@@ -283,6 +488,7 @@ Acceptance:
 
 - [ ] Biaya bantuan mitra tidak mengurangi laba dua kali.
 - [ ] Potongan armada tampil di settlement.
+- [x] Perubahan sopir default armada tidak mengubah sopir aktual pada pengiriman/settlement lama.
 
 ### P0B.7 Pembayaran dan Bukti Mitra
 
@@ -331,17 +537,22 @@ Acceptance:
 
 - [ ] Update dashboard owner.
 - [x] Update `/laporan/laba-rugi`.
+- [x] Tambah `/owner/pendapatan-owner` untuk rekap Fee Owner bruto MVP dari transaksi mitra.
+- [x] Tambah klasifikasi mitra/grup internal owner vs mitra eksternal di laporan owner.
 - [x] Tampilkan Laba Bersih Kas sebagai angka utama.
 - [x] Tampilkan Laba Estimasi Transaksi sebagai pembanding.
 - [ ] Pisahkan lokal dan mitra.
 - [ ] Tampilkan dampak sortasi lokal.
-- [ ] Tampilkan fee mitra, potongan armada, biaya aktual, koreksi selisih.
+- [x] Tampilkan Fee Owner bruto mitra dari snapshot transaksi MVP.
+- [ ] Tampilkan potongan armada, biaya aktual, koreksi selisih.
 - [x] Sembunyikan dari admin biasa.
 
 Acceptance:
 
+- [x] Owner/super_admin melihat laporan pendapatan owner bruto.
 - [ ] Owner/super_admin melihat laba-rugi.
 - [ ] Admin operasional/admin keuangan tidak bisa melihat laba-rugi.
+- [x] Admin operasional/admin keuangan tidak melihat menu Pendapatan Owner Bruto.
 - [ ] Dashboard owner menampilkan basis kas sebagai angka utama.
 - [x] Label basis kas/transaksi jelas.
 
@@ -411,14 +622,15 @@ Acceptance:
 4. Pembelian petani + stok ledger.
 5. Pengiriman lokal + pembayaran pabrik.
 6. Master mitra + fee history.
-7. Pengiriman mitra.
-8. Formula settlement + unit test.
-9. Hutang/kasbon mitra.
-10. Biaya armada/bantuan mitra.
-11. Pembayaran dan bukti mitra.
-12. Audit/reversal menyeluruh.
-13. Laporan owner dan operasional.
-14. Cleanup encoding/icon.
+7. Schema sopir aktual dan default armada.
+8. Pengiriman mitra.
+9. Formula settlement + unit test.
+10. Hutang/kasbon mitra.
+11. Biaya armada/bantuan mitra.
+12. Pembayaran dan bukti mitra.
+13. Audit/reversal menyeluruh.
+14. Laporan owner dan operasional.
+15. Cleanup encoding/icon.
 
 ## Test Wajib Sebelum Release P0
 
@@ -433,6 +645,8 @@ Acceptance:
 - [ ] Settlement sortasi percent membagi 100 dengan benar.
 - [ ] Fee mitra berubah tidak mengubah settlement lama.
 - [ ] Tarif armada berubah tidak mengubah pengiriman lama.
+- [ ] Sopir default armada berubah tidak mengubah sopir aktual DO lama.
+- [ ] Pengiriman bisa disimpan saat sopir aktual berbeda dari sopir default armada.
 - [ ] DO duplikat per pabrik ditolak saat bukan draft.
 - [ ] Admin biasa tidak bisa melihat laba-rugi lewat UI maupun query.
 - [ ] Batal transaksi membuat reversal, bukan delete.

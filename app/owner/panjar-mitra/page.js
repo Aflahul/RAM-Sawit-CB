@@ -1,9 +1,25 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import AppShell from '@/components/layout/AppShell';
+import SearchableCombobox from '@/components/ui/SearchableCombobox';
+import SortableHeader from '@/components/ui/SortableHeader';
+import TablePagination from '@/components/ui/TablePagination';
+import { formatMitraLabel, getMitraSearchText } from '@/lib/display-labels';
+import { paginateRows } from '@/lib/pagination-utils';
+import { getNextSort, sortRows } from '@/lib/sort-utils';
 import { supabase } from '@/lib/supabase';
-import { formatRupiah } from '@/lib/utils';
+import { formatRupiah, getTodayISO } from '@/lib/utils';
+
+const TABLE_PAGE_SIZE = 20;
+
+const panjarSortAccessors = {
+  tanggal: row => row.tanggal,
+  mitra: row => formatMitraLabel(row.master_mitra),
+  keterangan: row => row.keterangan,
+  jumlah: row => Number(row.jumlah),
+  status: row => row.status,
+};
 
 export default function PanjarMitraPage() {
   const [panjars, setPanjars] = useState([]);
@@ -12,6 +28,8 @@ export default function PanjarMitraPage() {
   const [showModal, setShowModal] = useState(false);
   const [saving, setSaving] = useState(false);
   const [search, setSearch] = useState('');
+  const [sort, setSort] = useState({ key: 'tanggal', direction: 'desc' });
+  const [page, setPage] = useState(1);
 
   const [form, setForm] = useState({
     tanggal: '',
@@ -32,7 +50,7 @@ export default function PanjarMitraPage() {
       .from('panjar_mitra')
       .select(`
         *,
-        master_mitra ( nama, kode )
+        master_mitra ( kode, alamat, nama )
       `)
       .order('tanggal', { ascending: false });
       
@@ -41,9 +59,9 @@ export default function PanjarMitraPage() {
     // Load Mitra
     const { data: mData } = await supabase
       .from('master_mitra')
-      .select('id, nama, kode')
+      .select('id, kode, alamat, nama')
       .eq('aktif', true)
-      .order('nama');
+      .order('kode');
       
     setMitras(mData || []);
     
@@ -51,14 +69,19 @@ export default function PanjarMitraPage() {
   }
 
   function openNew() {
-    const today = new Date().toISOString().split('T')[0];
-    setForm({ tanggal: today, mitra_id: '', jumlah: '', keterangan: '' });
+    setForm({ tanggal: getTodayISO(), mitra_id: '', jumlah: '', keterangan: '' });
     setShowModal(true);
   }
 
   async function handleSave(e) {
     e.preventDefault();
     setSaving(true);
+
+    if (!form.mitra_id) {
+      alert("Pilih mitra terlebih dahulu.");
+      setSaving(false);
+      return;
+    }
 
     const payload = {
       tanggal: form.tanggal,
@@ -93,6 +116,23 @@ export default function PanjarMitraPage() {
     loadData();
   }
 
+  function handleSort(key) {
+    setPage(1);
+    setSort(current => getNextSort(current, key, key === 'tanggal' ? 'desc' : 'asc'));
+  }
+
+  const filteredPanjars = useMemo(() => {
+    const keyword = search.trim().toLowerCase();
+    if (!keyword) return panjars;
+    return panjars.filter(p => getMitraSearchText(p.master_mitra || {}).toLowerCase().includes(keyword));
+  }, [panjars, search]);
+  const sortedPanjars = useMemo(() => {
+    return sortRows(filteredPanjars, sort, panjarSortAccessors);
+  }, [filteredPanjars, sort]);
+  const paginatedPanjars = useMemo(() => {
+    return paginateRows(sortedPanjars, page, TABLE_PAGE_SIZE);
+  }, [page, sortedPanjars]);
+
   return (
     <AppShell title="Panjar Mitra" subtitle="Kelola kasbon/panjar mitra">
       <div className="page-header">
@@ -113,7 +153,10 @@ export default function PanjarMitraPage() {
             className="form-input"
             placeholder="Cari nama mitra..."
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={(e) => {
+              setSearch(e.target.value);
+              setPage(1);
+            }}
             style={{ paddingLeft: 40 }}
           />
         </div>
@@ -123,25 +166,25 @@ export default function PanjarMitraPage() {
         <table className="table">
           <thead>
             <tr>
-              <th>Tanggal</th>
-              <th>Nama Mitra</th>
-              <th>Keterangan</th>
-              <th style={{ textAlign: 'right' }}>Jumlah (Rp)</th>
-              <th style={{ textAlign: 'center' }}>Status</th>
+              <SortableHeader label="Tanggal" sortKey="tanggal" sort={sort} onSort={handleSort} />
+              <SortableHeader label="Nama Mitra" sortKey="mitra" sort={sort} onSort={handleSort} />
+              <SortableHeader label="Keterangan" sortKey="keterangan" sort={sort} onSort={handleSort} />
+              <SortableHeader label="Jumlah (Rp)" sortKey="jumlah" sort={sort} onSort={handleSort} align="right" />
+              <SortableHeader label="Status" sortKey="status" sort={sort} onSort={handleSort} align="center" />
               <th style={{ textAlign: 'center' }}>Aksi</th>
             </tr>
           </thead>
           <tbody>
             {loading ? (
               <tr><td colSpan={6} style={{ textAlign: 'center', padding: 24 }}>Memuat data...</td></tr>
-            ) : panjars.length === 0 ? (
+            ) : sortedPanjars.length === 0 ? (
               <tr><td colSpan={6} style={{ textAlign: 'center', padding: 24 }}>Belum ada data panjar</td></tr>
             ) : (
-              panjars.filter(p => p.master_mitra?.nama?.toLowerCase().includes(search.toLowerCase())).map(p => (
+              paginatedPanjars.rows.map(p => (
                 <tr key={p.id}>
                   <td>{p.tanggal}</td>
                   <td style={{ fontWeight: 600 }}>
-                    {p.master_mitra?.nama} {p.master_mitra?.kode ? `(${p.master_mitra.kode})` : ''}
+                    {p.master_mitra ? formatMitraLabel(p.master_mitra) : '-'}
                   </td>
                   <td>{p.keterangan || '-'}</td>
                   <td className="table-mono" style={{ textAlign: 'right', fontWeight: 'bold' }}>
@@ -165,6 +208,14 @@ export default function PanjarMitraPage() {
             )}
           </tbody>
         </table>
+        <TablePagination
+          page={paginatedPanjars.page}
+          totalPages={paginatedPanjars.totalPages}
+          totalItems={sortedPanjars.length}
+          startIndex={paginatedPanjars.startIndex}
+          endIndex={paginatedPanjars.endIndex}
+          onPageChange={setPage}
+        />
       </div>
 
       {showModal && (
@@ -182,12 +233,15 @@ export default function PanjarMitraPage() {
                 </div>
                 <div className="form-group">
                   <label className="form-label form-label-required">Pilih Mitra</label>
-                  <select className="form-input" required value={form.mitra_id} onChange={e => setForm({...form, mitra_id: e.target.value})}>
-                    <option value="">-- Pilih Mitra --</option>
-                    {mitras.map(m => (
-                      <option key={m.id} value={m.id}>{m.nama} {m.kode ? `(${m.kode})` : ''}</option>
-                    ))}
-                  </select>
+                  <SearchableCombobox
+                    value={form.mitra_id}
+                    options={mitras}
+                    onChange={mitraId => setForm({ ...form, mitra_id: mitraId })}
+                    getOptionLabel={formatMitraLabel}
+                    getSearchText={getMitraSearchText}
+                    placeholder="Cari kode, alamat, atau nama mitra..."
+                    emptyLabel="Mitra tidak ditemukan"
+                  />
                 </div>
                 <div className="form-group">
                   <label className="form-label form-label-required">Jumlah Panjar (Rp)</label>

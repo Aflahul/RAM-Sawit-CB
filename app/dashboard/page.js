@@ -121,7 +121,7 @@ export default function DashboardPage() {
         .select('id, no_struk, petani:petani_id(nama), berat_bersih_kg, total_harga, created_at')
         .neq('status', 'dibatalkan')
         .order('created_at', { ascending: false })
-        .limit(5),
+        .limit(10),
       supabase
         .from('harga_tbs_lokal')
         .select('*')
@@ -132,7 +132,8 @@ export default function DashboardPage() {
       supabase
         .from('transaksi_mitra')
         .select('mitra_id, tonase')
-        .eq('tanggal', today),
+        .eq('tanggal', today)
+        .neq('status', 'dibatalkan'),
       supabase
         .from('master_mitra')
         .select('id', { count: 'exact', head: true })
@@ -150,7 +151,7 @@ export default function DashboardPage() {
         .maybeSingle(),
     ]);
 
-    if (tbsToday.error || tbsWeek.error || stokLedger.error || hutangLedger.error || biayaToday.error || recent.error || harga.error) {
+    if (tbsToday.error || tbsWeek.error || stokLedger.error || hutangLedger.error || biayaToday.error || recent.error || harga.error || trxMitra.error) {
       setToast({ type: 'error', message: 'Sebagian data dashboard gagal dimuat.' });
     }
 
@@ -162,7 +163,7 @@ export default function DashboardPage() {
 
     const transaksiMitraToday = trxMitra?.data || [];
     const tbsMitraKg = transaksiMitraToday.reduce((sum, item) => sum + Number(item.tonase || 0), 0);
-    const uniqueMitraIds = new Set(transaksiMitraToday.map(item => item.mitra_id));
+    const uniqueMitraIds = new Set(transaksiMitraToday.map(item => item.mitra_id).filter(Boolean));
     const jumlahMitraMengirim = uniqueMitraIds.size;
     const totalMitra = masterMitra?.count || 0;
     
