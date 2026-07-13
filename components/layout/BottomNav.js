@@ -41,7 +41,7 @@ const ChartIcon = () => (
 
 const navItems = [
   { href: '/dashboard', icon: <HomeIcon />, label: 'Home' },
-  { href: '/admin/input-timbangan', icon: <TruckIcon />, label: 'Kirim' },
+  { href: '/admin/input-timbangan', icon: <TruckIcon />, label: 'Input' },
   { href: '/owner/riwayat-pengiriman-mitra', icon: <HistoryIcon />, label: 'Riwayat' },
   { href: '/owner/kwitansi-mitra', icon: <ReceiptIcon />, label: 'Kwitansi' },
   { href: '/owner/panjar-mitra', icon: <WalletIcon />, label: 'Panjar' },

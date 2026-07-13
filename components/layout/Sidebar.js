@@ -15,7 +15,7 @@ const menuSections = [
     title: 'MVP Utama',
     items: [
       { href: '/dashboard', icon: <LayoutDashboard size={20} />, label: 'Dashboard' },
-      { href: '/admin/input-timbangan', icon: <Truck size={20} />, label: 'Pengiriman Mitra' },
+      { href: '/admin/input-timbangan', icon: <Truck size={20} />, label: 'Input Pengiriman' },
       { href: '/owner/riwayat-pengiriman-mitra', icon: <ClipboardList size={20} />, label: 'Riwayat Pengiriman' },
       { href: '/owner/kwitansi-mitra', icon: <ReceiptText size={20} />, label: 'Kwitansi Mitra' },
       { href: '/owner/panjar-mitra', icon: <Wallet size={20} />, label: 'Panjar Mitra' },

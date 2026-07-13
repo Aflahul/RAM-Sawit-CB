@@ -89,6 +89,8 @@ Status implementasi MVP live:
 - [x] `/owner/kwitansi-mitra` memakai typography dan spacing preview yang lebih compact untuk laptop/tablet.
 - [x] Header tabel ringkas maksimal 2 kata untuk tabel operasional utama, misalnya `Tanggal`, `Mitra`, `Hasil Pabrik`, `Nilai Bersih`, dan `Bruto`.
 - [x] Input pengiriman mitra baru menyimpan `total_kotor` sebagai hasil kotor pabrik dan `total_nilai_bersih` sebagai hak mitra setelah Fee Owner.
+- [x] Menu dan halaman `/admin/input-timbangan` diganti label menjadi **Input Pengiriman**.
+- [x] Alur form `/admin/input-timbangan` diubah menjadi: Tanggal -> Mitra Transaksi -> Sopir/Armada -> Sopir Aktual -> Tonase, dengan sopir/armada mitra terpilih diprioritaskan tanpa mengunci pilihan lintas mitra.
 - [x] Migration backfill `20260713132431_mvp_fix_transaksi_mitra_gross_net_values.sql` sudah dijalankan ke Supabase remote/production untuk membetulkan data kotor pabrik vs nilai bersih mitra.
 - [x] Migration koreksi `20260713133009_mvp_fix_blml_fee_final_30.sql` sudah dijalankan ke Supabase remote/production; `BL/ML` final menjadi Fee Owner 30/kg mulai `2026-01-01`.
 - [ ] Tahap 2: biaya operasional owner, kepemilikan armada, status sopir, dan pendapatan owner bersih.

@@ -585,7 +585,7 @@ export default function DashboardPage() {
           </div>
           </LockedWrapper>
           <Link href="/admin/input-timbangan" className="card spring-transition" style={{ textAlign: 'center', textDecoration: 'none' }}>
-            <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>Pengiriman Mitra</div>
+            <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>Input Pengiriman</div>
             <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', marginTop: 4 }}>Input ke pabrik</div>
           </Link>
           <LockedWrapper>

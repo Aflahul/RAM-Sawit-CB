@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import AppShell from '@/components/layout/AppShell';
 import SearchableCombobox from '@/components/ui/SearchableCombobox';
 import {
@@ -90,6 +90,32 @@ export default function InputTimbanganPage() {
     loadData();
   }, [loadData]);
 
+  const selectedDefaultSopir = useMemo(() => (
+    sopirs.find(s => s.id === form.sopir_id) || null
+  ), [form.sopir_id, sopirs]);
+
+  const prioritizedSopirs = useMemo(() => {
+    if (!form.mitra_id) return sopirs;
+
+    return [...sopirs].sort((a, b) => {
+      const getRank = (sopir) => {
+        if (sopir.mitra_id === form.mitra_id) return 0;
+        if (!sopir.mitra_id) return 1;
+        return 2;
+      };
+      const rankDiff = getRank(a) - getRank(b);
+      if (rankDiff !== 0) return rankDiff;
+      return String(a.nama || '').localeCompare(String(b.nama || ''), 'id');
+    });
+  }, [form.mitra_id, sopirs]);
+
+  const defaultMitraLabel = formatMitraLabel(selectedDefaultSopir?.master_mitra) || 'Tanpa default / armada bersama';
+  const sopirMitraBerbeda = Boolean(
+    selectedDefaultSopir?.mitra_id
+    && form.mitra_id
+    && selectedDefaultSopir.mitra_id !== form.mitra_id
+  );
+
   function getEffectiveFeeSnapshot(mitraId, tanggal) {
     const fallbackMitra = mitras.find(m => m.id === mitraId);
     const tanggalValue = tanggal || getTodayISO();
@@ -130,10 +156,6 @@ export default function InputTimbanganPage() {
         ...form,
         sopir_id: '',
         plat_nomor: '',
-        mitra_id: '',
-        mitra_nama: '',
-        mitra_fee: 0,
-        fee_owner_history_id: '',
         sopir_default_nama: '',
         sopir_aktual_mode: SOPIR_AKTUAL_DEFAULT,
         sopir_aktual_id: '',
@@ -146,6 +168,7 @@ export default function InputTimbanganPage() {
 
     const sopir = sopirs.find(s => s.id === selectedId);
     if (sopir) {
+      const nextMitraId = form.mitra_id || sopir.mitra_id || '';
       setForm(applyMitraSnapshot({
         ...form,
         sopir_id: sopir.id,
@@ -157,11 +180,27 @@ export default function InputTimbanganPage() {
         sopir_aktual_nama: sopir.nama,
         sopir_aktual_no_hp: sopir.no_hp || '',
         catatan_sopir: '',
-      }, sopir.mitra_id || '', form.tanggal));
+      }, nextMitraId, form.tanggal));
     }
   }
 
   function handleMitraChange(selectedId) {
+    if (!selectedId) {
+      setForm(applyMitraSnapshot({
+        ...form,
+        sopir_id: '',
+        plat_nomor: '',
+        sopir_default_nama: '',
+        sopir_aktual_mode: SOPIR_AKTUAL_DEFAULT,
+        sopir_aktual_id: '',
+        sopir_aktual_nama: '',
+        sopir_aktual_no_hp: '',
+        catatan_sopir: '',
+        tonase: '',
+      }, '', form.tanggal));
+      return;
+    }
+
     setForm(applyMitraSnapshot({ ...form }, selectedId, form.tanggal));
   }
 
@@ -295,14 +334,14 @@ export default function InputTimbanganPage() {
   }
 
   return (
-    <AppShell title="Pengiriman Mitra" subtitle="Catat armada mitra masuk">
+    <AppShell title="Input Pengiriman" subtitle="Catat pengiriman mitra masuk">
       <div className="page-header">
         <div>
           <p className="page-description">Harga Pabrik / TWB Hari Ini: <strong>{formatRupiah(latestHarga)} / Kg</strong></p>
         </div>
       </div>
 
-      <div className="card" style={{ maxWidth: 480, margin: '0 auto', padding: 'var(--space-xl)' }}>
+      <div className="card" style={{ maxWidth: 560, margin: '0 auto', padding: 'var(--space-xl)' }}>
         {successMsg && (
           <div style={{ background: 'var(--color-success-bg)', color: 'var(--color-success)', padding: 'var(--space-md)', borderRadius: 'var(--radius-md)', marginBottom: 'var(--space-lg)', fontWeight: 500 }}>
             ✅ {successMsg}
@@ -322,63 +361,77 @@ export default function InputTimbanganPage() {
           </div>
 
           <div className="form-group">
-            <label className="form-label form-label-required">Armada / Sopir Default</label>
+            <label className="form-label form-label-required">Mitra Transaksi</label>
+            <SearchableCombobox
+              value={form.mitra_id}
+              options={mitras}
+              onChange={handleMitraChange}
+              getOptionLabel={formatMitraLabel}
+              getSearchText={getMitraSearchText}
+              placeholder="Cari kode, alamat, atau nama mitra..."
+              emptyLabel="Mitra tidak ditemukan"
+              loading={loading}
+            />
+            <div className="form-hint">Fee Owner dan harga bersih mengikuti mitra dan tanggal transaksi ini.</div>
+          </div>
+
+          {form.mitra_id && (
+            <div style={{ background: 'var(--bg-surface)', padding: 16, borderRadius: 8, marginBottom: 16, border: '1px solid var(--border-default)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, marginBottom: 8 }}>
+                <span style={{ color: 'var(--text-tertiary)', fontSize: 14 }}>Mitra Transaksi:</span>
+                <span style={{ fontWeight: 600, color: 'var(--color-info)', textAlign: 'right' }}>{form.mitra_nama || '-'}</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, marginBottom: 8 }}>
+                <span style={{ color: 'var(--text-tertiary)', fontSize: 14 }}>Fee Owner:</span>
+                <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{formatRupiah(form.mitra_fee)} / Kg</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, marginBottom: form.sopir_id ? 12 : 0 }}>
+                <span style={{ color: 'var(--text-tertiary)', fontSize: 14 }}>Harga Bersih ke Mitra:</span>
+                <span style={{ fontWeight: 600, color: 'var(--color-success)' }}>{formatRupiah(latestHarga - form.mitra_fee)} / Kg</span>
+              </div>
+
+              {form.sopir_id && (
+                <div style={{ borderTop: '1px solid var(--border-default)', paddingTop: 12 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, marginBottom: 8 }}>
+                    <span style={{ color: 'var(--text-tertiary)', fontSize: 14 }}>Sopir Default:</span>
+                    <span style={{ fontWeight: 600, color: 'var(--text-primary)', textAlign: 'right' }}>{form.sopir_default_nama}</span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, marginBottom: 8 }}>
+                    <span style={{ color: 'var(--text-tertiary)', fontSize: 14 }}>Plat Armada:</span>
+                    <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{form.plat_nomor}</span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
+                    <span style={{ color: 'var(--text-tertiary)', fontSize: 14 }}>Afiliasi Default:</span>
+                    <span style={{ fontWeight: 600, color: sopirMitraBerbeda ? 'var(--color-warning)' : 'var(--text-primary)', textAlign: 'right' }}>
+                      {defaultMitraLabel}
+                    </span>
+                  </div>
+                  {sopirMitraBerbeda && (
+                    <div className="form-hint" style={{ marginTop: 8 }}>
+                      Afiliasi sopir berbeda dari mitra transaksi. Ini tetap boleh untuk kasus sopir/armada dipakai lintas mitra.
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
+          <div className="form-group">
+            <label className="form-label form-label-required">Sopir / Armada</label>
             <SearchableCombobox
               value={form.sopir_id}
-              options={sopirs}
+              options={prioritizedSopirs}
               onChange={handleSopirChange}
               getOptionLabel={formatSopirArmadaLabel}
               getOptionDescription={formatSopirArmadaDescription}
               getSearchText={getSopirArmadaSearchText}
-              placeholder="Cari sopir, plat, atau mitra..."
+              placeholder={form.mitra_id ? 'Cari sopir, plat, atau mitra...' : 'Pilih mitra dulu'}
               emptyLabel="Armada / sopir tidak ditemukan"
               loading={loading}
+              disabled={!form.mitra_id}
             />
-            <div className="form-hint">Data ini dipakai untuk auto-fill plat dan afiliasi mitra.</div>
+            <div className="form-hint">Sopir/armada dari mitra ini ditampilkan lebih dulu; sopir lain tetap bisa dicari jika ada penggantian lapangan.</div>
           </div>
-
-          {form.sopir_id && (
-            <div style={{ background: 'var(--bg-surface)', padding: 16, borderRadius: 8, marginBottom: 16, border: '1px solid var(--border-default)' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
-                <span style={{ color: 'var(--text-tertiary)', fontSize: 14 }}>Sopir Default:</span>
-                <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{form.sopir_default_nama}</span>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
-                <span style={{ color: 'var(--text-tertiary)', fontSize: 14 }}>Plat Armada:</span>
-                <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{form.plat_nomor}</span>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
-                <span style={{ color: 'var(--text-tertiary)', fontSize: 14 }}>Default Mitra:</span>
-                <span style={{ fontWeight: 600, color: 'var(--color-info)' }}>{form.mitra_nama || 'Belum ada'}</span>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
-                <span style={{ color: 'var(--text-tertiary)', fontSize: 14 }}>Fee Owner:</span>
-                <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{formatRupiah(form.mitra_fee)} / Kg</span>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span style={{ color: 'var(--text-tertiary)', fontSize: 14 }}>Harga Bersih ke Mitra:</span>
-                <span style={{ fontWeight: 600, color: 'var(--color-success)' }}>
-                  {form.mitra_id ? `${formatRupiah(latestHarga - form.mitra_fee)} / Kg` : 'Pilih mitra'}
-                </span>
-              </div>
-            </div>
-          )}
-
-          {form.sopir_id && (
-            <div className="form-group">
-              <label className="form-label form-label-required">Mitra Transaksi</label>
-              <SearchableCombobox
-                value={form.mitra_id}
-                options={mitras}
-                onChange={handleMitraChange}
-                getOptionLabel={formatMitraLabel}
-                getSearchText={getMitraSearchText}
-                placeholder="Cari kode, alamat, atau nama mitra..."
-                emptyLabel="Mitra tidak ditemukan"
-              />
-              <div className="form-hint">Bisa diubah jika armada yang sama dipakai oleh mitra SL/BL yang berbeda.</div>
-            </div>
-          )}
 
           {form.sopir_id && (
             <div className="form-group">
@@ -455,9 +508,10 @@ export default function InputTimbanganPage() {
               style={{ fontSize: 24, fontWeight: 'bold', padding: 16, height: 'auto' }}
               required 
               min={1}
-              placeholder="0"
+              placeholder={form.sopir_id ? '0' : 'Pilih mitra dan sopir dulu'}
               value={form.tonase} 
               onChange={e => setForm({...form, tonase: e.target.value})} 
+              disabled={!form.sopir_id}
             />
           </div>
 
@@ -465,7 +519,7 @@ export default function InputTimbanganPage() {
             type="submit" 
             className="btn btn-primary" 
             style={{ width: '100%', padding: 16, fontSize: 18 }}
-            disabled={saving || loading || !form.sopir_id}
+            disabled={saving || loading || !form.mitra_id || !form.sopir_id}
           >
             {saving ? 'MENYIMPAN...' : 'SIMPAN TRANSAKSI'}
           </button>
