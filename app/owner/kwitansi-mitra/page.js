@@ -2,11 +2,13 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { MessageCircle, Printer, Send, X } from 'lucide-react';
+import BrandMark from '@/components/branding/BrandMark';
 import AppShell from '@/components/layout/AppShell';
 import SearchableCombobox from '@/components/ui/SearchableCombobox';
 import { formatMitraLabel, getMitraSearchText } from '@/lib/display-labels';
 import { supabase } from '@/lib/supabase';
-import { formatNumber, formatRupiah, getTodayISO } from '@/lib/utils';
+import { useBrandingSettings } from '@/lib/use-branding-settings';
+import { formatNumber, formatRupiah, formatWaktu, getTodayISO } from '@/lib/utils';
 
 function normalizeWhatsappNumber(phone) {
   const digits = String(phone || '').replace(/\D/g, '');
@@ -23,9 +25,9 @@ function isValidWhatsappNumber(phone) {
   return /^62\d{8,13}$/.test(phone);
 }
 
-function buildWhatsappCaption({ mitra, dateFrom, dateTo, totalTonase, totalNilaiBersih, totalPanjar, sisaBersih }) {
+function buildWhatsappCaption({ appName, mitra, dateFrom, dateTo, totalTonase, totalNilaiBersih, totalPanjar, sisaBersih }) {
   return [
-    'Kwitansi Pembayaran Sawit CB',
+    `Kwitansi Pembayaran ${appName}`,
     `Mitra: ${formatMitraLabel(mitra) || '-'}`,
     `Periode: ${dateFrom} s/d ${dateTo}`,
     `Total Tonase: ${formatNumber(totalTonase)} Kg`,
@@ -38,6 +40,7 @@ function buildWhatsappCaption({ mitra, dateFrom, dateTo, totalTonase, totalNilai
 }
 
 export default function KwitansiMitraPage() {
+  const { branding } = useBrandingSettings();
   const [mitras, setMitras] = useState([]);
   const [selectedMitra, setSelectedMitra] = useState('');
   const [dateFrom, setDateFrom] = useState(getTodayISO);
@@ -67,6 +70,7 @@ export default function KwitansiMitraPage() {
       .from('transaksi_mitra')
       .select(`
         id, tanggal, tonase, harga_harian, total_kotor,
+        created_at,
         harga_bersih_per_kg, total_nilai_bersih, plat_nomor,
         sopir_default_nama, sopir_aktual_nama, sopir_diganti_dari_default, catatan_sopir
       `)
@@ -74,7 +78,8 @@ export default function KwitansiMitraPage() {
       .gte('tanggal', dateFrom)
       .lte('tanggal', dateTo)
       .neq('status', 'dibatalkan')
-      .order('tanggal', { ascending: true });
+      .order('tanggal', { ascending: true })
+      .order('created_at', { ascending: true });
 
     if (trxError) {
       console.error('Gagal memuat transaksi kwitansi mitra:', trxError);
@@ -135,6 +140,7 @@ export default function KwitansiMitraPage() {
   const whatsappNumber = normalizeWhatsappNumber(selectedMitraData?.no_hp);
   const whatsappNumberValid = isValidWhatsappNumber(whatsappNumber);
   const whatsappCaption = buildWhatsappCaption({
+    appName: branding.appName,
     mitra: selectedMitraData,
     dateFrom,
     dateTo,
@@ -222,10 +228,13 @@ export default function KwitansiMitraPage() {
 
       {!loading && !errorMsg && selectedMitra && (
         <div className="print-area card" style={{ padding: 'var(--space-2xl)' }}>
-          <div style={{ borderBottom: '2px dashed var(--border-default)', paddingBottom: 24, marginBottom: 24, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <div>
-              <h1 style={{ margin: 0, fontSize: 24, color: 'var(--text-primary)' }}>KWITANSI PEMBAYARAN TBS</h1>
-              <p style={{ margin: '8px 0 0', color: 'var(--text-secondary)' }}>Pabrik Kelapa Sawit (SAWIT CB)</p>
+          <div style={{ borderBottom: '2px dashed var(--border-default)', paddingBottom: 24, marginBottom: 24, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 20 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 16, minWidth: 0 }}>
+              <BrandMark branding={branding} mode="print" size={58} />
+              <div>
+                <h1 style={{ margin: 0, fontSize: 24, color: 'var(--text-primary)' }}>KWITANSI PEMBAYARAN TBS</h1>
+                <p style={{ margin: '8px 0 0', color: 'var(--text-secondary)' }}>{branding.appName}</p>
+              </div>
             </div>
             <div style={{ textAlign: 'right' }}>
               <div style={{ fontSize: 14, color: 'var(--text-secondary)' }}>Kepada Yth. Mitra:</div>
@@ -244,6 +253,7 @@ export default function KwitansiMitraPage() {
             <thead>
               <tr style={{ background: 'var(--bg-surface)', borderBottom: '2px solid var(--border-default)' }}>
                 <th style={{ padding: 12, textAlign: 'left' }}>Tanggal</th>
+                <th style={{ padding: 12, textAlign: 'left' }}>Waktu</th>
                 <th style={{ padding: 12, textAlign: 'left' }}>Sopir Aktual</th>
                 <th style={{ padding: 12, textAlign: 'left' }}>Plat Armada</th>
                 <th style={{ padding: 12, textAlign: 'right' }}>Tonase (Kg)</th>
@@ -253,11 +263,12 @@ export default function KwitansiMitraPage() {
             </thead>
             <tbody>
               {transaksi.length === 0 ? (
-                <tr><td colSpan={6} style={{ padding: 24, textAlign: 'center', color: 'var(--text-tertiary)' }}>Tidak ada transaksi pada periode ini</td></tr>
+                <tr><td colSpan={7} style={{ padding: 24, textAlign: 'center', color: 'var(--text-tertiary)' }}>Tidak ada transaksi pada periode ini</td></tr>
               ) : (
                 transaksi.map((t, i) => (
                   <tr key={i} style={{ borderBottom: '1px solid var(--border-default)' }}>
                     <td style={{ padding: 12 }}>{t.tanggal}</td>
+                    <td style={{ padding: 12 }} className="table-mono">{formatWaktu(t.created_at)}</td>
                     <td style={{ padding: 12 }}>
                       <div style={{ fontWeight: 600 }}>{t.sopir_aktual_nama || t.sopir_default_nama || '-'}</div>
                       {t.sopir_diganti_dari_default && (
@@ -277,7 +288,7 @@ export default function KwitansiMitraPage() {
             </tbody>
             <tfoot>
               <tr style={{ background: 'var(--bg-surface)', fontWeight: 'bold' }}>
-                <td colSpan={3} style={{ padding: 12, textAlign: 'right' }}>TOTAL NILAI BERSIH TBS:</td>
+                <td colSpan={4} style={{ padding: 12, textAlign: 'right' }}>TOTAL NILAI BERSIH TBS:</td>
                 <td style={{ padding: 12, textAlign: 'right' }}>{totalTonase.toLocaleString('id-ID')} Kg</td>
                 <td style={{ padding: 12, textAlign: 'right' }}></td>
                 <td style={{ padding: 12, textAlign: 'right', color: 'var(--text-primary)', fontSize: 16 }}>{formatRupiah(totalNilaiBersih)}</td>
@@ -306,7 +317,7 @@ export default function KwitansiMitraPage() {
           </div>
           
           <div style={{ marginTop: 40, textAlign: 'center', color: 'var(--text-tertiary)', fontSize: 12 }}>
-            Dicetak secara otomatis oleh Sistem SAWIT CB pada {new Date().toLocaleString('id-ID')}
+            Dicetak secara otomatis oleh Sistem {branding.appName} pada {new Date().toLocaleString('id-ID')}
           </div>
         </div>
       )}

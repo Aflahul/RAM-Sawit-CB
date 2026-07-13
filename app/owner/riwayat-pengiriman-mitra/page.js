@@ -15,7 +15,7 @@ import {
 import { paginateRows } from '@/lib/pagination-utils';
 import { getNextSort, sortRows } from '@/lib/sort-utils';
 import { supabase } from '@/lib/supabase';
-import { formatRupiah, getTodayISO } from '@/lib/utils';
+import { formatRupiah, formatWaktu, getTimestampMs, getTodayISO } from '@/lib/utils';
 import { Ban, Pencil, RefreshCw } from 'lucide-react';
 
 const SOPIR_AKTUAL_DEFAULT = 'default';
@@ -64,6 +64,7 @@ function getRowSearchText(row) {
 
 const riwayatSortAccessors = {
   tanggal: row => row.tanggal,
+  waktu: row => getTimestampMs(row.created_at || row.tanggal),
   mitra: row => formatMitraLabel(row.master_mitra),
   sopir: row => row.sopir_aktual_nama || row.sopir_default_nama,
   plat: row => row.plat_nomor,
@@ -89,7 +90,7 @@ export default function RiwayatPengirimanMitraPage() {
   const [editForm, setEditForm] = useState(emptyEditForm);
   const [cancelTarget, setCancelTarget] = useState(null);
   const [cancelReason, setCancelReason] = useState('');
-  const [sort, setSort] = useState({ key: 'tanggal', direction: 'desc' });
+  const [sort, setSort] = useState({ key: 'waktu', direction: 'desc' });
   const [page, setPage] = useState(1);
 
   const loadData = useCallback(async () => {
@@ -186,7 +187,7 @@ export default function RiwayatPengirimanMitraPage() {
 
   function handleSort(key) {
     setPage(1);
-    setSort(current => getNextSort(current, key, key === 'tanggal' ? 'desc' : 'asc'));
+    setSort(current => getNextSort(current, key, ['tanggal', 'waktu'].includes(key) ? 'desc' : 'asc'));
   }
 
   function getEffectiveFeeSnapshot(mitraId, tanggal) {
@@ -536,6 +537,7 @@ export default function RiwayatPengirimanMitraPage() {
           <thead>
             <tr>
               <SortableHeader label="Tanggal" sortKey="tanggal" sort={sort} onSort={handleSort} />
+              <SortableHeader label="Waktu" sortKey="waktu" sort={sort} onSort={handleSort} />
               <SortableHeader label="Mitra" sortKey="mitra" sort={sort} onSort={handleSort} />
               <SortableHeader label="Sopir Aktual" sortKey="sopir" sort={sort} onSort={handleSort} />
               <SortableHeader label="Plat" sortKey="plat" sort={sort} onSort={handleSort} />
@@ -548,15 +550,16 @@ export default function RiwayatPengirimanMitraPage() {
           </thead>
           <tbody>
             {loading ? (
-              <tr><td colSpan={9} style={{ padding: 24, textAlign: 'center' }}>Memuat riwayat...</td></tr>
+              <tr><td colSpan={10} style={{ padding: 24, textAlign: 'center' }}>Memuat riwayat...</td></tr>
             ) : errorMsg ? (
-              <tr><td colSpan={9} style={{ padding: 24, textAlign: 'center', color: 'var(--color-danger)' }}>Gagal memuat riwayat: {errorMsg}</td></tr>
+              <tr><td colSpan={10} style={{ padding: 24, textAlign: 'center', color: 'var(--color-danger)' }}>Gagal memuat riwayat: {errorMsg}</td></tr>
             ) : sortedTransaksi.length === 0 ? (
-              <tr><td colSpan={9} style={{ padding: 24, textAlign: 'center', color: 'var(--text-tertiary)' }}>Tidak ada transaksi pada filter ini</td></tr>
+              <tr><td colSpan={10} style={{ padding: 24, textAlign: 'center', color: 'var(--text-tertiary)' }}>Tidak ada transaksi pada filter ini</td></tr>
             ) : (
               paginatedTransaksi.rows.map(row => (
                 <tr key={row.id} style={row.status === 'dibatalkan' ? { opacity: 0.62 } : undefined}>
                   <td>{row.tanggal}</td>
+                  <td className="table-mono">{formatWaktu(row.created_at)}</td>
                   <td style={{ fontWeight: 700 }}>{formatMitraLabel(row.master_mitra) || '-'}</td>
                   <td>
                     <div style={{ fontWeight: 700 }}>{row.sopir_aktual_nama || row.sopir_default_nama || '-'}</div>

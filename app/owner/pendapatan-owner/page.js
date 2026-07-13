@@ -17,7 +17,7 @@ import { paginateRows } from '@/lib/pagination-utils';
 import { canViewProfit, normalizeRole } from '@/lib/roles';
 import { getNextSort, sortRows } from '@/lib/sort-utils';
 import { supabase } from '@/lib/supabase';
-import { formatNumber, formatRupiah, getTodayISO } from '@/lib/utils';
+import { formatNumber, formatRupiah, formatWaktu, getTimestampMs, getTodayISO } from '@/lib/utils';
 
 const TABLE_PAGE_SIZE = 20;
 
@@ -78,7 +78,7 @@ export default function PendapatanOwnerPage() {
   const [errorMsg, setErrorMsg] = useState('');
   const [userRole, setUserRole] = useState(null);
   const [summarySort, setSummarySort] = useState({ key: 'pendapatan', direction: 'desc' });
-  const [detailSort, setDetailSort] = useState({ key: 'tanggal', direction: 'desc' });
+  const [detailSort, setDetailSort] = useState({ key: 'waktu', direction: 'desc' });
   const [summaryPage, setSummaryPage] = useState(1);
   const [detailPage, setDetailPage] = useState(1);
 
@@ -113,6 +113,7 @@ export default function PendapatanOwnerPage() {
       .from('transaksi_mitra')
       .select(`
         id, mitra_id, tanggal, tonase, harga_harian, total_kotor,
+        created_at,
         harga_pabrik_per_kg, fee_owner_per_kg, harga_bersih_per_kg,
         total_fee_owner, total_nilai_bersih, plat_nomor,
         sopir_aktual_nama, sopir_default_nama,
@@ -126,7 +127,9 @@ export default function PendapatanOwnerPage() {
       query = query.eq('mitra_id', selectedMitra);
     }
 
-    const { data, error } = await query.order('tanggal', { ascending: false });
+    const { data, error } = await query
+      .order('tanggal', { ascending: false })
+      .order('created_at', { ascending: false });
 
     if (error) {
       console.error('Gagal memuat pendapatan owner:', error);
@@ -255,6 +258,7 @@ export default function PendapatanOwnerPage() {
   const sortedDetailTransaksi = useMemo(() => {
     return sortRows(filteredTransaksi, detailSort, {
       tanggal: row => row.tanggal,
+      waktu: row => getTimestampMs(row.created_at || row.tanggal),
       mitra: row => formatMitraLabel(row.master_mitra),
       sopir: row => `${row.sopir_aktual_nama || row.sopir_default_nama || ''} ${row.plat_nomor || ''}`,
       tonase: row => toNumber(row.tonase),
@@ -282,7 +286,7 @@ export default function PendapatanOwnerPage() {
 
   const handleDetailSort = (key) => {
     setDetailPage(1);
-    setDetailSort(current => getNextSort(current, key, ['tanggal', 'tonase', 'harga_pabrik', 'hasil_kotor_pabrik', 'fee', 'pendapatan'].includes(key) ? 'desc' : 'asc'));
+    setDetailSort(current => getNextSort(current, key, ['tanggal', 'waktu', 'tonase', 'harga_pabrik', 'hasil_kotor_pabrik', 'fee', 'pendapatan'].includes(key) ? 'desc' : 'asc'));
   };
 
   if (userRole !== null && !canViewProfit(userRole)) {
@@ -537,6 +541,7 @@ export default function PendapatanOwnerPage() {
                   <thead>
                     <tr>
                       <SortableHeader label="Tanggal" sortKey="tanggal" sort={detailSort} onSort={handleDetailSort} />
+                      <SortableHeader label="Waktu" sortKey="waktu" sort={detailSort} onSort={handleDetailSort} />
                       <SortableHeader label="Mitra" sortKey="mitra" sort={detailSort} onSort={handleDetailSort} />
                       <SortableHeader label="Sopir / Plat" sortKey="sopir" sort={detailSort} onSort={handleDetailSort} />
                       <SortableHeader label="Tonase" sortKey="tonase" sort={detailSort} onSort={handleDetailSort} align="right" />
@@ -549,7 +554,7 @@ export default function PendapatanOwnerPage() {
                   <tbody>
                     {sortedDetailTransaksi.length === 0 ? (
                       <tr>
-                        <td colSpan={8} style={{ padding: 24, textAlign: 'center', color: 'var(--text-tertiary)' }}>
+                        <td colSpan={9} style={{ padding: 24, textAlign: 'center', color: 'var(--text-tertiary)' }}>
                           Tidak ada transaksi pada periode ini
                         </td>
                       </tr>
@@ -562,6 +567,7 @@ export default function PendapatanOwnerPage() {
                       return (
                         <tr key={row.id}>
                           <td>{row.tanggal}</td>
+                          <td className="table-mono">{formatWaktu(row.created_at)}</td>
                           <td style={{ fontWeight: 600 }}>{formatMitraLabel(row.master_mitra) || '-'}</td>
                           <td>
                             <div>{row.sopir_aktual_nama || row.sopir_default_nama || '-'}</div>
@@ -589,7 +595,7 @@ export default function PendapatanOwnerPage() {
                   {filteredTransaksi.length > 0 && (
                     <tfoot>
                       <tr>
-                        <td colSpan={3} style={{ textAlign: 'right', fontWeight: 800 }}>TOTAL</td>
+                        <td colSpan={4} style={{ textAlign: 'right', fontWeight: 800 }}>TOTAL</td>
                         <td className="table-mono" style={{ textAlign: 'right', fontWeight: 800 }}>{formatNumber(summary.totalTonase)} Kg</td>
                         <td></td>
                         <td className="table-mono" style={{ textAlign: 'right', fontWeight: 800 }}>{formatRupiah(summary.totalNilaiPabrik)}</td>

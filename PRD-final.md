@@ -8,6 +8,7 @@ Fitur utama yang telah live:
 5. **Laporan Mitra**: Ledger rekapan global seluruh transaksi pengiriman mitra.
 6. **Laporan Pendapatan Owner Bruto**: Rekap Fee Owner bruto dari transaksi mitra, hanya untuk Owner dan Super Admin.
 7. **Dashboard Multi-Harga**: Pemisahan input Harga Pabrik (TWB) untuk MVP dan Harga Beli Lokal untuk Tahap 2.
+8. **Pengaturan Web & Logo Kwitansi**: Owner dapat mengatur nama aplikasi, logo website berwarna, dan logo kwitansi.
 
 Aturan Fee Owner MVP:
 
@@ -32,6 +33,26 @@ Aturan Klasifikasi Mitra/Grup MVP:
 - Kode `BL`, `BL/...`, `SL`, dan `SL/...` diklasifikasikan sebagai `internal_owner` karena merupakan grup/timbangan milik owner.
 - Klasifikasi ini belum mengubah formula pembayaran atau kwitansi; fungsinya untuk filter dan konteks laporan.
 - Perlakuan biaya operasional, kepemilikan armada, status sopir, dan pendapatan bersih owner ditunda ke Tahap 2 agar tidak terjadi double count.
+
+Aturan Branding dan Waktu Transaksi MVP:
+
+- Rincian transaksi menampilkan label **Waktu** berdasarkan `transaksi_mitra.created_at`.
+- Label yang dipakai cukup **Waktu**, bukan "Waktu Input".
+- Pengaturan branding disimpan sebagai konfigurasi `web_branding`.
+- File logo disimpan sebagai objek di Storage khusus logo; database hanya menyimpan path/konfigurasi kecil agar tidak membebani Postgres.
+- Logo website memakai PNG berwarna.
+- Logo kwitansi boleh memakai PNG hitam khusus, tetapi jika tidak tersedia sistem boleh mengubah logo berwarna menjadi hitam saat cetak.
+- Fitur pengaturan branding hanya dapat dikelola Owner dan Super Admin.
+
+Aturan Status Pembayaran Mitra yang Direncanakan:
+
+- Status sudah dibayar dicatat sebagai batch pembayaran mitra, bukan checkbox bebas per baris transaksi.
+- Batch pembayaran dibuat dari kwitansi mitra berdasarkan mitra dan periode.
+- Batch menyimpan snapshot total tonase, nilai bersih TBS, potongan panjar, nominal dibayar, tanggal bayar, metode bayar, catatan, dan pencatat.
+- Daftar transaksi yang masuk pembayaran disimpan sebagai item batch agar bisa diaudit.
+- Kwitansi adalah bukti pembayaran utama setelah owner menandai batch pembayaran sebagai **Sudah Dibayar**.
+- Jika transaksi dalam batch diubah atau dibatalkan setelah pembayaran, status batch ditandai perlu review.
+- Lampiran transfer hanya menjadi bukti pendukung opsional dan disimpan di Storage, sedangkan database hanya menyimpan path/metadata.
 
 ## ADDENDUM MVP - Pengiriman Kwitansi Mitra via WhatsApp (Direncanakan - Juli 2026)
 

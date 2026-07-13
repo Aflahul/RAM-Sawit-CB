@@ -54,6 +54,9 @@ Status implementasi MVP live:
 - [x] `/owner/laporan-mitra` mendukung filter multi-mitra, mode gabung beberapa mitra, dan mode kelompok per mitra.
 - [x] `/owner/master-data` dan `/owner/laporan-mitra` mendukung export Excel `.xlsx` rapi dengan header berwarna dan row ganjil/genap beda warna.
 - [x] Dashboard MVP mengecualikan transaksi mitra `dibatalkan` dari total pengiriman pabrik dan jumlah mitra mengirim hari ini.
+- [x] Rincian transaksi memakai label **Waktu** dari `transaksi_mitra.created_at`, bukan label "Waktu Input".
+- [x] `/owner/riwayat-pengiriman-mitra`, `/owner/laporan-mitra`, `/owner/kwitansi-mitra`, dan `/owner/pendapatan-owner` menampilkan Waktu transaksi serta bisa mengurutkan berdasarkan Waktu pada halaman yang memakai tabel sortable.
+- [x] Sorting kolom **Waktu** memakai timestamp penuh `created_at` sampai detik/milidetik; UI tetap menampilkan jam dan menit saja.
 - [x] Halaman `/owner/pendapatan-owner` dibuat untuk laporan pendapatan owner dari snapshot Fee Owner transaksi mitra.
 - [x] Menu Pendapatan Owner Bruto hanya tampil untuk role yang boleh melihat profit (`owner`/`super_admin`).
 - [x] Migration non-destruktif `20260713074944_mvp_mitra_internal_owner_classification.sql` dibuat untuk `master_mitra.tipe_mitra`.
@@ -67,6 +70,12 @@ Status implementasi MVP live:
 - [x] Fee 20/Kg: `SL`, `BL`, `SL/NL`, `SL/CHT`.
 - [x] Fee 30/Kg: `SL/F`, `SL/MLD`, `SL/BS`, `SL/HB`, `SL/SW`, `SL/WRD`, `SL/ANC`, `SL/B`, `SL/IMAN` alias input `SL/IMN`, `SL/NSL`, `BL/P`, `BL/ML`.
 - [x] Catatan input fee: `BL/ML` muncul di fee 20 dan 30 sehingga nilai final mengikuti daftar terakhir = 30; `SL/WND` belum ada di master mitra.
+- [x] Halaman `/owner/pengaturan-web` dibuat untuk mengatur nama aplikasi, subjudul aplikasi, logo website berwarna, dan logo kwitansi.
+- [x] Sidebar dan kwitansi memakai pengaturan branding dari `pengaturan_bisnis.web_branding`.
+- [x] File logo disimpan di Supabase Storage bucket `branding`; database hanya menyimpan path logo agar hemat ukuran Postgres.
+- [x] Logo kwitansi mendukung satu PNG berwarna yang otomatis dibuat hitam saat cetak; PNG hitam khusus tetap bisa diupload sebagai override bila hasil print perlu lebih presisi.
+- [x] Migration non-destruktif `20260713123454_mvp_web_branding_waktu.sql` dibuat untuk seed `web_branding`, bucket Storage `branding`, policy upload/delete owner, dan index waktu transaksi `transaksi_mitra(tanggal, created_at)`.
+- [x] Migration `20260713123454_mvp_web_branding_waktu.sql` sudah dijalankan ke Supabase remote/production via CLI.
 - [ ] Tahap 2: biaya operasional owner, kepemilikan armada, status sopir, dan pendapatan owner bersih.
 - [ ] Review apakah `SL/MD` perlu dibuat sebagai master mitra baru atau tetap menjadi armada tanpa default mitra.
 
@@ -132,6 +141,67 @@ Acceptance:
 - [x] Kolom teks memakai urutan natural `id-ID`.
 - [x] Tabel utama MVP menampilkan 20 data per halaman.
 - [x] Tabel dashboard tetap ringkas dengan maksimal 10 data.
+
+### Agenda Baru - Pengaturan Web dan Logo Kwitansi MVP (13 Juli 2026)
+
+Identitas aplikasi perlu bisa dikelola dari UI agar logo dan nama usaha tidak terkunci di kode. Untuk kebutuhan kwitansi, sistem mendukung satu logo PNG berwarna transparan yang otomatis ditampilkan hitam saat cetak.
+
+Task:
+
+- [x] Buat helper branding default dan normalisasi data `web_branding`.
+- [x] Buat hook `useBrandingSettings` untuk membaca/menyimpan `pengaturan_bisnis.web_branding`.
+- [x] Buat komponen `BrandMark` untuk logo website dan logo print.
+- [x] Buat route `/owner/pengaturan-web`.
+- [x] Buat bucket Supabase Storage `branding` khusus logo aplikasi.
+- [x] Batasi menu dan akses halaman pengaturan web untuk `owner` dan `super_admin`.
+- [x] Upload logo website berwarna sebagai PNG.
+- [x] Upload logo kwitansi hitam sebagai PNG opsional.
+- [x] Simpan file logo di Supabase Storage, bukan sebagai base64 di Postgres.
+- [x] Simpan hanya path logo di `pengaturan_bisnis.web_branding`.
+- [x] Jika logo kwitansi hitam kosong, gunakan logo berwarna dengan mode otomatis hitam untuk cetak.
+- [x] Sidebar membaca nama aplikasi, subjudul, dan logo dari pengaturan branding.
+- [x] Kwitansi mitra memakai logo print dan nama aplikasi dari pengaturan branding.
+
+Acceptance:
+
+- [x] Satu PNG berwarna transparan cukup untuk logo website dan kwitansi.
+- [x] Sistem tetap menyediakan override PNG hitam untuk hasil print yang lebih presisi.
+- [x] Database hanya menyimpan konfigurasi kecil, bukan file logo.
+- [x] Pengaturan tidak terlihat oleh admin operasional/admin keuangan.
+- [x] Jika belum ada pengaturan tersimpan, aplikasi memakai fallback `SAWIT CB` dan `Manajemen RAM`.
+
+### Agenda Baru - Status Pembayaran Mitra (Direncanakan)
+
+Kwitansi menunjukkan nilai yang harus dibayar owner ke mitra, tetapi MVP perlu tambahan pencatatan agar owner tahu mitra mana yang sudah dibayarkan.
+
+Keputusan desain awal:
+
+- Status pembayaran tidak dicatat sebagai checkbox bebas di setiap transaksi.
+- Status pembayaran dicatat sebagai **batch pembayaran mitra** berdasarkan mitra dan periode kwitansi.
+- Batch menyimpan snapshot total tonase, total nilai bersih TBS, potongan panjar mitra, nominal dibayar, tanggal bayar, metode bayar, catatan, dan user pencatat.
+- Transaksi yang masuk batch pembayaran harus bisa ditelusuri kembali agar laporan bisa membedakan `belum dibayar`, `dibayar`, atau `perlu review` jika transaksi dikoreksi setelah pembayaran.
+- **Kwitansi adalah bukti pembayaran utama**. Setelah owner menandai pembayaran sebagai dibayar, kwitansi menjadi arsip/bukti pembayaran resmi untuk mitra.
+- Lampiran transfer hanya opsional sebagai bukti pendukung jika pembayaran dilakukan via transfer; file pendukung disimpan di Storage, bukan di database.
+
+Task:
+
+- [ ] Tambah migration `pembayaran_mitra` untuk header batch pembayaran.
+- [ ] Tambah migration `pembayaran_mitra_item` untuk mengunci daftar transaksi yang dibayar dalam batch.
+- [ ] Tambah status pembayaran di `/owner/kwitansi-mitra`: Belum Dibayar, Sudah Dibayar, atau Perlu Review.
+- [ ] Tambah tombol **Tandai Dibayar** setelah kwitansi selesai dicek owner.
+- [ ] Simpan snapshot nominal pembayaran agar perubahan transaksi setelahnya tidak diam-diam mengubah riwayat pembayaran.
+- [ ] Kwitansi yang sudah ditandai dibayar menampilkan status **Sudah Dibayar**, tanggal/jam bayar, metode bayar, dan pencatat.
+- [ ] Tambah filter pembayaran di `/owner/laporan-mitra`.
+- [ ] Tambah ringkasan mitra sudah/belum dibayar untuk periode tertentu.
+- [ ] Jika transaksi dalam batch dibatalkan/diedit setelah pembayaran, tampilkan badge **Perlu Review**.
+
+Acceptance:
+
+- [ ] Owner bisa melihat daftar mitra yang sudah dibayar untuk periode tertentu.
+- [ ] Owner bisa membedakan kwitansi yang belum dibayar dan sudah dibayar.
+- [ ] Kwitansi menjadi bukti pembayaran utama setelah statusnya ditandai **Sudah Dibayar**.
+- [ ] Pembayaran yang sudah tercatat tidak hilang walau transaksi lama diedit.
+- [ ] Lampiran pendukung opsional tidak disimpan sebagai blob di Postgres.
 
 ### Agenda Baru - Export Spreadsheet MVP (13 Juli 2026)
 

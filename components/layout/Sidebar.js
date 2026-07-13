@@ -2,10 +2,12 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { canViewProfit, getRoleLabel, normalizeRole } from '@/lib/roles';
+import BrandMark from '@/components/branding/BrandMark';
+import { useBrandingSettings } from '@/lib/use-branding-settings';
+import { canManageBusinessSettings, canViewProfit, getRoleLabel, normalizeRole } from '@/lib/roles';
 import {
   LayoutDashboard, Truck, ReceiptText, Database, Store,
-  Wallet, Calculator, FileText, Users, Box, TrendingUp, MapPin, Tag, ClipboardList, BadgeDollarSign
+  Wallet, Calculator, FileText, Users, Box, TrendingUp, MapPin, Tag, ClipboardList, BadgeDollarSign, Settings
 } from 'lucide-react';
 
 const menuSections = [
@@ -25,6 +27,7 @@ const menuSections = [
     title: 'Master Data MVP',
     items: [
       { href: '/owner/master-data', icon: <Database size={20} />, label: 'Master Mitra & Sopir' },
+      { href: '/owner/pengaturan-web', icon: <Settings size={20} />, label: 'Pengaturan Web', settingsOnly: true },
     ],
   },
   {
@@ -63,12 +66,14 @@ const menuSections = [
 
 function canSeeMenuItem(item, role) {
   if (item.profitOnly) return canViewProfit(role);
+  if (item.settingsOnly) return canManageBusinessSettings(role);
   return true;
 }
 
 export default function Sidebar({ isOpen, onClose, user }) {
   const pathname = usePathname();
   const userRole = normalizeRole(user?.role);
+  const { branding } = useBrandingSettings();
 
   return (
     <>
@@ -82,12 +87,10 @@ export default function Sidebar({ isOpen, onClose, user }) {
 
       <aside className={`sidebar glass-panel ${isOpen ? 'open' : ''}`} style={{ borderRadius: 0, borderTop: 'none', borderBottom: 'none', borderLeft: 'none' }}>
         <div className="sidebar-logo">
-          <div className="sidebar-logo-icon">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19 2c1 2 2 4.18 2 8 0 5.5-4.78 10-10 10Z"/><path d="M2 21c0-3 1.85-5.36 5.08-6C9.5 14.52 12 13 13 12"/></svg>
-          </div>
+          <BrandMark branding={branding} size={40} />
           <div>
-            <div className="sidebar-logo-text">SAWIT CB</div>
-            <div className="sidebar-logo-sub">Manajemen RAM</div>
+            <div className="sidebar-logo-text">{branding.appName}</div>
+            <div className="sidebar-logo-sub">{branding.appSubtitle}</div>
           </div>
         </div>
 

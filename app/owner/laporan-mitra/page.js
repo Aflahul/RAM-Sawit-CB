@@ -10,13 +10,14 @@ import { paginateRows } from '@/lib/pagination-utils';
 import { getNextSort, sortRows } from '@/lib/sort-utils';
 import { exportStyledWorkbook } from '@/lib/spreadsheet-export';
 import { supabase } from '@/lib/supabase';
-import { formatRupiah, getTodayISO } from '@/lib/utils';
+import { formatRupiah, formatWaktu, getTimestampMs, getTodayISO } from '@/lib/utils';
 import { FileSpreadsheet, Printer, X } from 'lucide-react';
 
 const TABLE_PAGE_SIZE = 20;
 
 const laporanSortAccessors = {
   tanggal: row => row.tanggal,
+  waktu: row => getTimestampMs(row.created_at || row.tanggal),
   mitra: row => formatMitraLabel(row.master_mitra),
   sopir: row => row.sopir_aktual_nama || row.sopir_default_nama,
   plat: row => row.plat_nomor,
@@ -35,7 +36,7 @@ export default function LaporanMitraPage() {
   const [transaksi, setTransaksi] = useState([]);
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
-  const [sort, setSort] = useState({ key: 'tanggal', direction: 'desc' });
+  const [sort, setSort] = useState({ key: 'waktu', direction: 'desc' });
   const [page, setPage] = useState(1);
 
   const loadMitras = useCallback(async () => {
@@ -62,6 +63,7 @@ export default function LaporanMitraPage() {
       .from('transaksi_mitra')
       .select(`
         id, mitra_id, tanggal, tonase, harga_harian, total_kotor,
+        created_at,
         harga_bersih_per_kg, total_nilai_bersih, plat_nomor,
         sopir_default_nama, sopir_aktual_nama, sopir_diganti_dari_default, catatan_sopir,
         master_mitra ( id, kode, alamat, nama )
@@ -74,7 +76,9 @@ export default function LaporanMitraPage() {
       query = query.in('mitra_id', selectedMitraIds);
     }
 
-    const { data, error } = await query.order('tanggal', { ascending: false });
+    const { data, error } = await query
+      .order('tanggal', { ascending: false })
+      .order('created_at', { ascending: false });
 
     if (error) {
       console.error('Gagal memuat laporan mitra:', error);
@@ -106,7 +110,7 @@ export default function LaporanMitraPage() {
 
   const handleSort = (key) => {
     setPage(1);
-    setSort(current => getNextSort(current, key, key === 'tanggal' ? 'desc' : 'asc'));
+    setSort(current => getNextSort(current, key, ['tanggal', 'waktu'].includes(key) ? 'desc' : 'asc'));
   };
 
   const handleDateFromChange = (value) => {
@@ -185,7 +189,7 @@ export default function LaporanMitraPage() {
     if (rows.length === 0) {
       return (
         <tr>
-          <td colSpan={7} style={{ padding: 24, textAlign: 'center', color: 'var(--text-tertiary)' }}>
+          <td colSpan={8} style={{ padding: 24, textAlign: 'center', color: 'var(--text-tertiary)' }}>
             Tidak ada transaksi pada periode ini
           </td>
         </tr>
@@ -195,6 +199,7 @@ export default function LaporanMitraPage() {
     return rows.map(t => (
       <tr key={t.id}>
         <td>{t.tanggal}</td>
+        <td className="table-mono">{formatWaktu(t.created_at)}</td>
         <td style={{ fontWeight: 600 }}>{formatMitraLabel(t.master_mitra) || '-'}</td>
         <td>
           <div style={{ fontWeight: 600 }}>{t.sopir_aktual_nama || t.sopir_default_nama || '-'}</div>
@@ -220,6 +225,7 @@ export default function LaporanMitraPage() {
     <thead>
       <tr>
         <SortableHeader label="Tanggal" sortKey="tanggal" sort={sort} onSort={handleSort} />
+        <SortableHeader label="Waktu" sortKey="waktu" sort={sort} onSort={handleSort} />
         <SortableHeader label="Mitra / Afiliasi" sortKey="mitra" sort={sort} onSort={handleSort} />
         <SortableHeader label="Sopir Aktual" sortKey="sopir" sort={sort} onSort={handleSort} />
         <SortableHeader label="Plat Nomor" sortKey="plat" sort={sort} onSort={handleSort} />
@@ -246,6 +252,7 @@ export default function LaporanMitraPage() {
           columns: [
             { header: 'No', value: (row, index) => row.__footer ? '' : index + 1, type: 'number', width: 6 },
             { header: 'Tanggal', key: 'tanggal', width: 14 },
+            { header: 'Waktu', value: row => row.__footer ? '' : formatWaktu(row.created_at), width: 12 },
             { header: 'Kode Mitra', value: row => row.__footer ? '' : row.master_mitra?.kode || '', width: 16 },
             { header: 'Alamat Mitra', value: row => row.__footer ? '' : row.master_mitra?.alamat || '', width: 24 },
             { header: 'Nama Mitra', value: row => row.__footer ? '' : row.master_mitra?.nama || '', width: 24 },
@@ -439,7 +446,7 @@ export default function LaporanMitraPage() {
               {transaksi.length > 0 && (
                 <tfoot>
                   <tr>
-                    <td colSpan={4} style={{ textAlign: 'right', fontWeight: 'bold' }}>TOTAL NILAI BERSIH:</td>
+                    <td colSpan={5} style={{ textAlign: 'right', fontWeight: 'bold' }}>TOTAL NILAI BERSIH:</td>
                     <td style={{ textAlign: 'right', fontWeight: 'bold', color: 'var(--color-success)' }}>{totalTonase.toLocaleString('id-ID')} Kg</td>
                     <td></td>
                     <td style={{ textAlign: 'right', fontWeight: 'bold' }}>{formatRupiah(totalNilaiBersih)}</td>
