@@ -256,10 +256,10 @@ export default function PendapatanOwnerPage() {
     return sortRows(filteredTransaksi, detailSort, {
       tanggal: row => row.tanggal,
       mitra: row => formatMitraLabel(row.master_mitra),
-      tipe: row => getMitraTypeLabel(row.master_mitra?.tipe_mitra),
       sopir: row => `${row.sopir_aktual_nama || row.sopir_default_nama || ''} ${row.plat_nomor || ''}`,
       tonase: row => toNumber(row.tonase),
       harga_pabrik: row => resolveHargaPabrik(row) ?? 0,
+      hasil_kotor_pabrik: row => resolveNilaiPabrik(row) ?? 0,
       fee: row => resolveFeePerKg(row),
       pendapatan: row => resolveTotalFeeOwner(row),
     });
@@ -282,7 +282,7 @@ export default function PendapatanOwnerPage() {
 
   const handleDetailSort = (key) => {
     setDetailPage(1);
-    setDetailSort(current => getNextSort(current, key, ['tanggal', 'tonase', 'harga_pabrik', 'fee', 'pendapatan'].includes(key) ? 'desc' : 'asc'));
+    setDetailSort(current => getNextSort(current, key, ['tanggal', 'tonase', 'harga_pabrik', 'hasil_kotor_pabrik', 'fee', 'pendapatan'].includes(key) ? 'desc' : 'asc'));
   };
 
   if (userRole !== null && !canViewProfit(userRole)) {
@@ -538,10 +538,10 @@ export default function PendapatanOwnerPage() {
                     <tr>
                       <SortableHeader label="Tanggal" sortKey="tanggal" sort={detailSort} onSort={handleDetailSort} />
                       <SortableHeader label="Mitra" sortKey="mitra" sort={detailSort} onSort={handleDetailSort} />
-                      <SortableHeader label="Tipe" sortKey="tipe" sort={detailSort} onSort={handleDetailSort} />
                       <SortableHeader label="Sopir / Plat" sortKey="sopir" sort={detailSort} onSort={handleDetailSort} />
                       <SortableHeader label="Tonase" sortKey="tonase" sort={detailSort} onSort={handleDetailSort} align="right" />
                       <SortableHeader label="Harga Pabrik" sortKey="harga_pabrik" sort={detailSort} onSort={handleDetailSort} align="right" />
+                      <SortableHeader label="Hasil Kotor Pabrik" sortKey="hasil_kotor_pabrik" sort={detailSort} onSort={handleDetailSort} align="right" />
                       <SortableHeader label="Fee/Kg" sortKey="fee" sort={detailSort} onSort={handleDetailSort} align="right" />
                       <SortableHeader label="Pendapatan Owner Bruto" sortKey="pendapatan" sort={detailSort} onSort={handleDetailSort} align="right" />
                     </tr>
@@ -555,19 +555,14 @@ export default function PendapatanOwnerPage() {
                       </tr>
                     ) : paginatedDetailTransaksi.rows.map((row) => {
                       const hargaPabrik = resolveHargaPabrik(row);
+                      const nilaiPabrik = resolveNilaiPabrik(row);
                       const feePerKg = resolveFeePerKg(row);
                       const totalFeeOwner = resolveTotalFeeOwner(row);
-                      const tipeMitra = row.master_mitra?.tipe_mitra || MITRA_TYPES.EKSTERNAL;
 
                       return (
                         <tr key={row.id}>
                           <td>{row.tanggal}</td>
                           <td style={{ fontWeight: 600 }}>{formatMitraLabel(row.master_mitra) || '-'}</td>
-                          <td>
-                            <span className={`badge ${getMitraTypeBadgeClass(tipeMitra)}`}>
-                              {getMitraTypeLabel(tipeMitra)}
-                            </span>
-                          </td>
                           <td>
                             <div>{row.sopir_aktual_nama || row.sopir_default_nama || '-'}</div>
                             <div className="table-mono" style={{ marginTop: 4, color: 'var(--text-tertiary)', fontSize: 12 }}>
@@ -577,6 +572,9 @@ export default function PendapatanOwnerPage() {
                           <td className="table-mono" style={{ textAlign: 'right' }}>{formatNumber(toNumber(row.tonase))} Kg</td>
                           <td className="table-mono" style={{ textAlign: 'right' }}>
                             {hargaPabrik == null ? '-' : formatRupiah(hargaPabrik)}
+                          </td>
+                          <td className="table-mono" style={{ textAlign: 'right', fontWeight: 700 }}>
+                            {nilaiPabrik == null ? '-' : formatRupiah(nilaiPabrik)}
                           </td>
                           <td className="table-mono" style={{ textAlign: 'right' }}>
                             {hasFeeSnapshot(row) ? formatRupiah(feePerKg) : <span className="badge badge-warning">Perlu koreksi</span>}
@@ -591,8 +589,9 @@ export default function PendapatanOwnerPage() {
                   {filteredTransaksi.length > 0 && (
                     <tfoot>
                       <tr>
-                        <td colSpan={4} style={{ textAlign: 'right', fontWeight: 800 }}>TOTAL</td>
+                        <td colSpan={3} style={{ textAlign: 'right', fontWeight: 800 }}>TOTAL</td>
                         <td className="table-mono" style={{ textAlign: 'right', fontWeight: 800 }}>{formatNumber(summary.totalTonase)} Kg</td>
+                        <td></td>
                         <td className="table-mono" style={{ textAlign: 'right', fontWeight: 800 }}>{formatRupiah(summary.totalNilaiPabrik)}</td>
                         <td></td>
                         <td className="table-mono" style={{ textAlign: 'right', fontWeight: 900, color: 'var(--color-success)' }}>

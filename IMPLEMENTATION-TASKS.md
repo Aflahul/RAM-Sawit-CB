@@ -61,6 +61,7 @@ Status implementasi MVP live:
 - [x] `/owner/master-data` mendukung edit tipe mitra/grup: Mitra Eksternal atau Internal Owner.
 - [x] `/owner/pendapatan-owner` diberi label **Pendapatan Owner Bruto**, filter tipe mitra, dan catatan belum dikurangi biaya operasional.
 - [x] `/owner/pendapatan-owner` menampilkan catatan kecil breakdown Pendapatan Owner Bruto per nilai Fee Owner aktif (mis. 40/kg, 30/kg, 20/kg) sesuai transaksi periode/filter.
+- [x] `/owner/pendapatan-owner` tabel rincian transaksi menampilkan Hasil Kotor Pabrik per transaksi dan menyembunyikan kolom tipe mitra di detail.
 - [x] Input Fee Owner nominal awal sudah dijalankan lewat migration `20260713092933_mvp_fee_owner_input_20260713.sql`.
 - [x] Tanggal berlaku Fee Owner dikoreksi menjadi mulai `2026-01-01` lewat migration `20260713093508_mvp_fee_owner_effective_20260101.sql`.
 - [x] Fee 20/Kg: `SL`, `BL`, `SL/NL`, `SL/CHT`.
