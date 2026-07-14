@@ -9,6 +9,13 @@ import Header from '@/components/layout/Header';
 import BottomNav from '@/components/layout/BottomNav';
 import { motion, AnimatePresence } from 'motion/react';
 
+const COMING_SOON_PATHS = [
+  '/transaksi/beli',
+  '/master/petani',
+  '/laporan/petani',
+  '/laporan/stok',
+];
+
 export default function AppShell({ children, title, subtitle }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -101,9 +108,7 @@ export default function AppShell({ children, title, subtitle }) {
             transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
           >
             {(() => {
-              const lockedPaths = [
-              ];
-              const isLocked = lockedPaths.some((p) => pathname?.startsWith(p));
+              const isLocked = COMING_SOON_PATHS.some((p) => pathname?.startsWith(p));
               
               if (isLocked) {
                 return (
@@ -115,9 +120,11 @@ export default function AppShell({ children, title, subtitle }) {
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
                           </svg>
                         </div>
-                        <h3 style={{ fontSize: 'var(--text-lg)', fontWeight: 700, color: 'var(--color-gold-400)', marginBottom: 8 }}>Tahap 2: Dalam Pengembangan</h3>
+                        <h3 style={{ fontSize: 'var(--text-lg)', fontWeight: 700, color: 'var(--color-gold-400)', marginBottom: 8 }}>Coming Soon</h3>
                         <p style={{ color: 'var(--text-secondary)', fontSize: 'var(--text-sm)', lineHeight: 1.5 }}>
-                          Fitur ini sedang dibangun dan akan tersedia pada rilis operasional lokal berikutnya.
+                          Modul lokal/petani sedang dibekukan sementara sampai alur pembelian,
+                          stok, dan laporan petani selesai. Data tetap bisa dilihat sebagai
+                          konteks, tetapi input dan aksi dinonaktifkan.
                         </p>
                       </div>
                     </div>

@@ -26,7 +26,7 @@ const menuSections = [
     items: [
       { href: '/admin/input-timbangan', icon: <Truck size={20} />, label: 'Pengiriman Mitra' },
       { href: '/owner/riwayat-pengiriman-mitra', icon: <ClipboardList size={20} />, label: 'Riwayat & Koreksi Mitra' },
-      { href: '/transaksi/beli', icon: <Store size={20} />, label: 'Pembelian Petani Lokal' },
+      { href: '/transaksi/beli', icon: <Store size={20} />, label: 'Pembelian Petani Lokal', badge: 'comingsoon' },
     ],
   },
   {
@@ -43,7 +43,7 @@ const menuSections = [
     items: [
       { href: '/owner/master-data', icon: <Database size={20} />, label: 'Mitra' },
       { href: '/master/armada', icon: <Truck size={20} />, label: 'Armada' },
-      { href: '/master/petani', icon: <Users size={20} />, label: 'Petani Lokal' },
+      { href: '/master/petani', icon: <Users size={20} />, label: 'Petani Lokal', badge: 'comingsoon' },
       { href: '/master/pabrik', icon: <MapPin size={20} />, label: 'Pabrik Tujuan' },
       { href: '/master/harga', icon: <Tag size={20} />, label: 'Harga TBS Lokal' },
     ],
@@ -51,10 +51,9 @@ const menuSections = [
   {
     title: 'Laporan',
     items: [
-      { href: '/laporan/harian', icon: <FileText size={20} />, label: 'Laporan Harian / Tutup Hari' },
       { href: '/owner/laporan-mitra', icon: <FileText size={20} />, label: 'Laporan Mitra' },
-      { href: '/laporan/petani', icon: <Users size={20} />, label: 'Laporan Petani' },
-      { href: '/laporan/stok', icon: <Box size={20} />, label: 'Stok Lokal' },
+      { href: '/laporan/petani', icon: <Users size={20} />, label: 'Laporan Petani', badge: 'comingsoon' },
+      { href: '/laporan/stok', icon: <Box size={20} />, label: 'Stok Lokal', badge: 'comingsoon' },
       { href: '/owner/pendapatan-owner', icon: <BadgeDollarSign size={20} />, label: 'Pendapatan Owner Bruto', profitOnly: true },
       { href: '/laporan/laba-rugi', icon: <TrendingUp size={20} />, label: 'Laba / Rugi', profitOnly: true },
     ],

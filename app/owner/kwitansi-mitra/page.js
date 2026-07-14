@@ -139,7 +139,7 @@ export default function KwitansiMitraPage() {
       .select(`
         id, status, periode_dari, periode_sampai, tanggal_bayar, dibayar_at, metode_bayar,
         total_tonase, total_nilai_bersih, total_panjar, nominal_dibayar, jumlah_transaksi,
-        catatan, created_at,
+        catatan, created_at, rekening_kas_id, kas_ledger_id,
         items:pembayaran_mitra_kwitansi_item (
           transaksi_mitra_id, tanggal, waktu_transaksi, sopir_aktual_nama, plat_nomor,
           tonase_snapshot, harga_bersih_per_kg_snapshot, total_nilai_bersih_snapshot, status_transaksi_snapshot,
@@ -201,6 +201,7 @@ export default function KwitansiMitraPage() {
   const displayTotalNilaiBersih = payment ? Number(payment.total_nilai_bersih) : totalNilaiBersih;
   const displayTotalPanjar = payment ? Number(payment.total_panjar) : totalPanjar;
   const sisaBersih = payment ? Number(payment.nominal_dibayar) : totalNilaiBersih - totalPanjar;
+  const isPaymentCashMissing = Boolean(payment && Number(payment.nominal_dibayar || 0) > 0 && !payment.kas_ledger_id);
   const selectedMitraData = mitras.find(m => m.id === selectedMitra);
   const canRecordPayment = canRecordMitraPayment(userRole);
   const displayPeriode = formatDateRangeDisplay(dateFrom, dateTo);
@@ -394,6 +395,18 @@ export default function KwitansiMitraPage() {
                 Setelah owner membayar kwitansi ini, klik <strong>Tandai Dibayar</strong> agar sistem mencatat mitra/periode ini sudah dibayarkan.
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {!loading && !errorMsg && selectedMitra && isPaymentCashMissing && (
+        <div className="alert alert-warning no-print">
+          <AlertTriangle size={18} />
+          <div>
+            <strong>Kas keluar belum tercatat di Buku Kas.</strong>
+            <div style={{ marginTop: 4 }}>
+              Kwitansi ini sudah berstatus dibayar, tetapi belum terhubung ke mutasi kas. Jalankan migration backfill agar pembayaran mitra muncul di Buku Kas dan Laba/Rugi.
+            </div>
           </div>
         </div>
       )}

@@ -59,14 +59,14 @@ Prinsip yang harus menjadi standar desain alur:
 | Mitra | `/owner/panjar-mitra` | Arsip panjar mitra | Bukan pintu input. Input panjar satu pintu lewat `/keuangan/hutang`. |
 | Mitra | `/owner/laporan-mitra` | Rekap pengiriman mitra | Cocok sebagai laporan operasional, bukan profit. |
 | Owner | `/owner/pendapatan-owner` | Pendapatan owner bruto | Harus tetap owner/super admin only. |
-| Lokal | `/transaksi/beli` | Pembelian TBS petani lokal | Sudah membuat stok/kas/hutang via RPC. |
+| Lokal | `/transaksi/beli` | Pembelian TBS petani lokal | Dibekukan sementara sebagai Coming Soon sampai alur lokal selesai. |
 | Lokal | `/transaksi/kirim` | Pengiriman lokal ke pabrik | Route lama/opsional. Alur utama sebaiknya memakai mitra internal agar tidak ada workflow pengiriman lokal yang dobel. |
 | Keuangan | `/keuangan/kas` | Buku kas | Sudah ledger-first, masih perlu bukti/ref/closing. |
 | Keuangan | `/keuangan/hutang` | Hutang dan panjar semua pihak | Sudah lintas pihak, approval limit belum final. |
 | Keuangan | `/keuangan/biaya` | Biaya operasional | Sudah kas ledger dan batal/reversal. |
-| Laporan | `/laporan/harian` | Rekap harian | Perlu dinaikkan menjadi pusat tutup-hari. |
-| Laporan | `/laporan/stok` | Rekonsiliasi stok lokal | Sudah ada koreksi stok. |
-| Laporan | `/laporan/laba-rugi` | Profit owner | Sudah membedakan laba kas dan estimasi transaksi. |
+| Laporan | `/laporan/harian` | Rekap harian lama | Disembunyikan dari navigasi. Akan dibangun ulang sebagai Closing Harian. |
+| Laporan | `/laporan/stok` | Rekonsiliasi stok lokal | Dibekukan sementara sebagai Coming Soon sampai alur stok lokal selesai. |
+| Laporan | `/laporan/laba-rugi` | Profit owner | Memakai kas ledger; laba final menunggu pembayaran pabrik tercatat sebagai kas masuk. |
 | Master | `/master/*`, `/owner/master-data` | Petani, pabrik, armada, mitra, sopir, harga | Perlu konsolidasi istilah dan searchable selector merata. |
 
 ## 4.1 Sumber Data Kanonik dan Legacy
@@ -75,27 +75,38 @@ Standar sumber data yang harus dipakai agar UI sinkron:
 
 | Area Data | Sumber Kanonik | Legacy / Perlu Ditahan | Aturan UI |
 | --- | --- | --- | --- |
-| Pengiriman mitra dan mitra internal | `transaksi_mitra` | `pengiriman` dengan `sumber = lokal` | Dashboard, Laporan Harian, Laporan Mitra, Kwitansi, dan Pendapatan Owner membaca `transaksi_mitra`. Route `/transaksi/kirim` hanya arsip legacy. |
-| Pembelian petani lokal | `transaksi_beli_tbs` + RPC `create_transaksi_beli_tbs` | Input manual langsung ke tabel | Semua input pembelian wajib lewat RPC agar stok, kas, dan hutang ikut terbentuk. |
-| Stok lokal | `stok_tbs_lokal_ledger` | Angka stok manual | Stok dihitung dari mutasi masuk/keluar/koreksi, bukan field saldo yang diedit. |
+| Pengiriman mitra dan mitra internal | `transaksi_mitra` | `pengiriman` dengan `sumber = lokal` | Dashboard, Laporan Mitra, Kwitansi, Pendapatan Owner, dan Closing Harian berikutnya membaca `transaksi_mitra`. Route `/transaksi/kirim` hanya arsip legacy. |
+| Pembelian petani lokal | `transaksi_beli_tbs` + RPC `create_transaksi_beli_tbs` | Input manual langsung ke tabel | Semua input pembelian wajib lewat RPC agar stok, kas, dan hutang ikut terbentuk. UI dikunci sementara sampai alur lokal final. |
+| Stok lokal | `stok_tbs_lokal_ledger` | Angka stok manual | Stok dihitung dari mutasi masuk/keluar/koreksi, bukan field saldo yang diedit. UI dikunci sementara sampai rekonsiliasi stok final. |
 | Kas | `kas_ledger` + RPC kas terkait | Catatan kas di tabel transaksi tanpa ledger | Buku Kas dan Laba/Rugi memakai kas ledger sebagai uang aktual. |
 | Hutang/panjar semua pihak | `hutang_ledger` | Angka sisa yang diedit manual | UI menyebut hasil hitungnya "Sisa Hutang/Panjar", bukan "saldo aktif". |
 | Panjar mitra yang dipotong kwitansi | `panjar_mitra` + `hutang_ledger` | Panjar mitra yang hanya dicatat di `hutang_ledger` | Input tetap satu pintu lewat Hutang & Panjar. Jika pihak Mitra dan jenis Panjar, sistem memanggil `create_panjar_mitra_kas` agar Kwitansi Mitra bisa memotongnya. |
 | Armada internal/perusahaan | `master_mitra` tipe internal + `sopir.mitra_id` + `sopir.plat_nomor` | `armada_perusahaan`, `kendaraan`, `sopir.armada_perusahaan_id`, `sopir.kendaraan_id` | Armada dikelola di menu Armada, tetapi tetap memakai tabel `sopir` dan afiliasi mitra agar alur pengiriman satu pintu. |
 | Sopir/plat default mitra | `sopir.mitra_id` + `sopir.plat_nomor` | `armada_mitra` lama/parsial | Menu Armada memakai tabel `sopir` sebagai default autofill transaksi mitra. |
 
+### 4.2 Status Modul Lokal/Petani
+
+Untuk rilis saat ini, modul lokal/petani dibekukan sementara sebagai **Coming Soon** agar user tidak memakai alur yang belum selesai:
+
+- `/transaksi/beli` - Pembelian Petani Lokal.
+- `/master/petani` - Petani Lokal.
+- `/laporan/petani` - Laporan Petani.
+- `/laporan/stok` - Stok Lokal.
+
+Halaman tetap boleh dibuka untuk melihat bentuk dan data konteks, tetapi input, tombol aksi, dan perubahan data dinonaktifkan. Alur lokal akan dibuka kembali setelah pembelian petani, stok lokal, laporan petani, dan rekonsiliasi ke mitra internal sudah satu sumber data dan lolos uji kas/stok.
+
 ## 5. Use Case Utama
 
 | ID | Use Case | Aktor Utama | Prasyarat | Hasil Bisnis | Status Saat Ini |
 | --- | --- | --- | --- | --- | --- |
 | UC-01 | Login dan validasi role | Semua user | Akun Supabase dan row `users` ada | User masuk sesuai role | Ada. |
-| UC-02 | Kelola master petani | Owner, Super Admin, Admin Operasional | Role operasi | Petani aktif untuk transaksi lokal | Ada. |
+| UC-02 | Kelola master petani | Owner, Super Admin, Admin Operasional | Role operasi | Petani aktif untuk transaksi lokal | Ada, tetapi UI dikunci sementara sebagai Coming Soon. |
 | UC-03 | Kelola master mitra, mitra internal, sopir, dan plat default | Owner, Super Admin, Admin Operasional | Role operasi | Mitra, fee owner, armada internal, sopir, plat siap dipakai | Ada. |
 | UC-04 | Kelola pabrik tujuan | Owner, Super Admin, Admin Operasional | Role operasi | Pabrik aktif untuk DO | Ada. |
 | UC-05 | Set harga pabrik/TWB | Owner, Super Admin, Admin Operasional sesuai kebijakan | Harga harian diketahui | Transaksi mitra menyimpan harga snapshot | Ada, masih perlu rule approval bila sensitif. |
 | UC-06 | Set harga beli lokal | Owner, Super Admin, Admin Operasional sesuai kebijakan | Harga pembelian diset | Pembelian petani dapat berjalan | Ada. |
-| UC-07 | Input pembelian TBS lokal | Admin Operasional | Petani dan harga aktif | Transaksi, stok masuk, kas keluar/potong hutang | Ada. |
-| UC-08 | Batalkan pembelian lokal | Owner, Super Admin, role yang diizinkan | Transaksi belum dikunci periode | Status batal dan reversal ledger | Ada. |
+| UC-07 | Input pembelian TBS lokal | Admin Operasional | Petani dan harga aktif | Transaksi, stok masuk, kas keluar/potong hutang | Ada, tetapi UI dikunci sementara sebagai Coming Soon. |
+| UC-08 | Batalkan pembelian lokal | Owner, Super Admin, role yang diizinkan | Transaksi belum dikunci periode | Status batal dan reversal ledger | Ada, tetapi UI dikunci sementara sebagai Coming Soon. |
 | UC-09 | Kirim hasil pembelian lokal sebagai mitra internal | Admin Operasional | Mitra internal, sopir/plat, harga pabrik aktif | Pengiriman masuk ke transaksi mitra internal | Perlu dirapikan dari route lokal lama. |
 | UC-10 | Rekam settlement/pembayaran pabrik | Admin Keuangan, Owner, Super Admin | Transaksi mitra internal ada | Kas masuk dan rekonsiliasi pembayaran | Target fase rekonsiliasi berikutnya. |
 | UC-11 | Input pengiriman mitra | Admin Operasional | Mitra, sopir, harga pabrik, fee aktif | Transaksi mitra dengan snapshot harga/fee | Ada. |
@@ -202,6 +213,61 @@ Target final:
 
 Status: belum lengkap dan sebaiknya masuk Fase 3.
 
+### 7.4 Mekanisme Pencatatan Laba/Rugi
+
+Prinsip utama: laba/rugi tidak diinput manual. Laba dihitung dari uang aktual dan snapshot transaksi agar laporan tidak bisa dimanipulasi dari satu form angka.
+
+Rumus operasional yang dipakai:
+
+```text
+Laba Kas = Uang diterima dari pabrik - Uang dibayar ke mitra/petani - Biaya operasional
+```
+
+Sumber datanya:
+
+- Pendapatan aktual: mutasi `kas_ledger` dengan sumber `pembayaran_pabrik`.
+- Pengeluaran aktual: mutasi `kas_ledger` untuk `pembayaran_mitra`, `pembelian_tbs`, panjar/hutang yang benar-benar keluar kas, dan `biaya_operasional`.
+- Laba bruto owner dari pengiriman mitra: snapshot `transaksi_mitra.total_fee_owner`. Ini berguna sebagai estimasi hak owner, tetapi belum menjadi laba final sebelum pembayaran pabrik dan biaya aktual masuk ledger.
+- Laba final owner: angka kas yang sudah direkonsiliasi, bukan hanya total fee di transaksi.
+
+Konsekuensi saat ini: jika pembayaran pabrik belum dicatat ke `kas_ledger`, halaman Laba/Rugi akan terlihat belum tracking karena pendapatan kas memang belum ada. Perbaikannya bukan membuat tabel laba manual, tetapi menambahkan flow **Pembayaran Pabrik** yang membuat kas masuk dan mengalokasikan uang itu ke transaksi mitra/internal.
+
+Alur target pencatatan laba:
+
+1. Admin Operasional input pengiriman mitra.
+2. Sistem menyimpan snapshot harga pabrik, fee owner, dan nilai bersih mitra di `transaksi_mitra`.
+3. Admin Keuangan menerima pembayaran pabrik.
+4. Admin Keuangan mencatat Pembayaran Pabrik.
+5. Sistem membuat mutasi kas masuk `pembayaran_pabrik`.
+6. Sistem mengalokasikan pembayaran ke transaksi mitra terkait.
+7. Admin Keuangan membayar mitra melalui Kwitansi Mitra.
+8. Sistem membuat kas keluar `pembayaran_mitra` dan snapshot item kwitansi.
+9. Laba/Rugi menghitung laba kas dari ledger dan menandai transaksi yang belum lengkap rekonsiliasinya.
+
+### 7.5 Tindak Lanjut Mitra yang Sudah Dibayar dan Diberi Kwitansi
+
+Laporan Mitra adalah rekap operasional pengiriman, sedangkan Kwitansi Mitra adalah bukti pembayaran. Keduanya harus terhubung lewat status pembayaran.
+
+Status tindak lanjut:
+
+| Status di Laporan Mitra | Arti Bisnis | Tindak Lanjut |
+| --- | --- | --- |
+| Belum Dibayar | Transaksi aktif belum masuk snapshot kwitansi bayar. | Masuk antrian pembayaran di Kwitansi Mitra. |
+| Sudah Dibayar | Transaksi sudah masuk `pembayaran_mitra_kwitansi_item` dan header kwitansi berstatus dibayar. | Arsipkan sebagai sudah lunas, cetak/kirim ulang dari Kwitansi Mitra bila diperlukan. |
+| Perlu Review | Ada transaksi baru, batal, atau berubah setelah kwitansi dibayar. | Owner/Keuangan wajib cek ulang sebelum mencetak ulang atau membuat revisi kwitansi. |
+
+Saat user klik **Tandai Dibayar** di Kwitansi Mitra:
+
+1. Sistem menyimpan header pembayaran di `pembayaran_mitra_kwitansi`.
+2. Sistem menyimpan snapshot transaksi di `pembayaran_mitra_kwitansi_item`.
+3. Sistem memotong panjar mitra yang belum lunas.
+4. Sistem mencatat kas keluar pembayaran mitra.
+5. Laporan Mitra membaca item kwitansi itu untuk menampilkan status Sudah Dibayar/Perlu Review.
+
+Catatan data historis: kwitansi yang sudah ditandai dibayar sebelum integrasi `kas_ledger` bisa berstatus dibayar tetapi belum muncul sebagai kas keluar. Jangan tandai ulang pembayaran. Jalankan migration backfill agar sistem membuat mutasi `kas_ledger` dengan sumber `pembayaran_mitra` dan menghubungkannya kembali ke header kwitansi.
+
+Dengan alur ini, transaksi yang sudah dibayar tidak hilang dari laporan. Ia tetap terlihat untuk audit, tetapi tidak lagi menjadi antrian pembayaran berikutnya.
+
 ## 8. Gap Analysis
 
 ### Proses Bisnis
@@ -260,7 +326,7 @@ Rekomendasi menu baru:
    - Pengaturan Bisnis
 
 5. **Laporan**
-   - Laporan Harian / Tutup Hari
+   - Closing Harian, pengembangan berikutnya
    - Stok Lokal
    - Petani
    - Mitra
@@ -411,7 +477,7 @@ Tambahkan:
 - Standarkan searchable combobox untuk master data besar.
 - Standarkan form: input -> kalkulasi -> review -> simpan -> bukti.
 - Kurangi hover scale/glow pada table/card operasional.
-- Jadikan Laporan Harian sebagai calon halaman Tutup Hari.
+- Bangun ulang Laporan Harian lama menjadi Closing Harian dengan checklist, exception, dan status kunci periode.
 
 ### P2 - Keuangan dan Rekonsiliasi
 
@@ -456,6 +522,10 @@ Tambahkan:
 Rencana teknis pembersihan tabel legacy, tabel kanonik, tabel baru yang direkomendasikan, dan opsi database baru yang bersih dipisahkan di dokumen [`docs/db-cleanup-migration-plan.md`](./db-cleanup-migration-plan.md). Hasil audit database aktual ada di [`docs/db-actual-audit-2026-07-14.md`](./db-actual-audit-2026-07-14.md).
 
 Prinsip keputusan utamanya: jangan menghapus tabel produksi secara langsung. Tabel lama seperti `pengiriman`, `pengiriman_lokal_detail`, `kendaraan`, `mitra`, `armada_mitra`, dan `fee_mitra_history` harus melalui audit, freeze, archive, validasi laporan, lalu baru dipertimbangkan untuk drop.
+
+## 12.2 Audit Isi Halaman
+
+Audit duplikasi isi halaman, keputusan navigasi, dan rekomendasi tindak lanjut UX dipisahkan di dokumen [`docs/page-content-audit.md`](./page-content-audit.md). Keputusan pentingnya: `/laporan/harian` disembunyikan dari navigasi saat ini dan nanti dibangun ulang sebagai **Closing Harian**, bukan laporan rekap biasa.
 
 ## 13. Kesimpulan
 

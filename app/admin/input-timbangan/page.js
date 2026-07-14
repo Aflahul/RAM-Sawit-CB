@@ -328,7 +328,7 @@ export default function InputTimbanganPage() {
   }
 
   return (
-    <AppShell title="Input Pengiriman" subtitle="Catat pengiriman mitra masuk">
+    <AppShell title="Pengiriman Mitra" subtitle="Catat pengiriman mitra masuk">
       <div className="page-header">
         <div>
           <p className="page-description">Harga Pabrik / TWB Hari Ini: <strong>{formatRupiah(latestHarga)} / Kg</strong></p>

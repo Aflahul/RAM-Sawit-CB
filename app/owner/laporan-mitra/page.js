@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
 import AppShell from '@/components/layout/AppShell';
 import SearchableCombobox from '@/components/ui/SearchableCombobox';
 import SortableHeader from '@/components/ui/SortableHeader';
@@ -16,7 +17,7 @@ import {
   resolveTotalNilaiBersihMitra,
 } from '@/lib/transaksi-mitra-calculations';
 import { formatDateDisplay, formatDateRangeDisplay, formatDateTimeDisplay, formatRupiah, formatWaktu, getTimestampMs, getTodayISO } from '@/lib/utils';
-import { FileSpreadsheet, Printer, X } from 'lucide-react';
+import { FileSpreadsheet, Printer, ReceiptText, X } from 'lucide-react';
 
 const TABLE_PAGE_SIZE = 20;
 
@@ -106,7 +107,7 @@ export default function LaporanMitraPage() {
           transaksi_mitra_id,
           tonase_snapshot,
           total_nilai_bersih_snapshot,
-          pembayaran:pembayaran_mitra_kwitansi ( id, status, tanggal_bayar, dibayar_at, metode_bayar )
+          pembayaran:pembayaran_mitra_kwitansi ( id, status, tanggal_bayar, dibayar_at, metode_bayar, nominal_dibayar, kas_ledger_id )
         `)
         .in('transaksi_mitra_id', trxIds);
 
@@ -121,6 +122,9 @@ export default function LaporanMitraPage() {
       rows = rows.map(row => {
         const paymentItem = paymentMap.get(row.id);
         const payment = paymentItem?.pembayaran;
+        const hasMissingCashLedger = payment?.status === 'dibayar'
+          && Number(payment?.nominal_dibayar || 0) > 0
+          && !payment?.kas_ledger_id;
         const hasChangedAfterPayment = payment
           && (
             Math.round(Number(row.tonase || 0) * 100) !== Math.round(Number(paymentItem.tonase_snapshot || 0) * 100)
@@ -129,7 +133,7 @@ export default function LaporanMitraPage() {
         return {
           ...row,
           payment,
-          payment_status: payment?.status === 'perlu_review' || hasChangedAfterPayment
+          payment_status: payment?.status === 'perlu_review' || hasChangedAfterPayment || hasMissingCashLedger
             ? 'perlu_review'
             : payment?.status === 'dibayar'
               ? 'sudah_dibayar'
@@ -255,13 +259,43 @@ export default function LaporanMitraPage() {
   }[paymentFilter] || 'Semua status bayar';
 
   function getPaymentBadge(row) {
+    const payment = row.payment;
+    const receiptId = payment?.id ? String(payment.id).slice(0, 8) : '';
+    const hasMissingCashLedger = payment?.status === 'dibayar'
+      && Number(payment?.nominal_dibayar || 0) > 0
+      && !payment?.kas_ledger_id;
+    const paymentMeta = payment
+      ? [
+          receiptId ? `Kwitansi ${receiptId}` : 'Kwitansi',
+          payment.tanggal_bayar ? formatDateDisplay(payment.tanggal_bayar) : null,
+          payment.metode_bayar ? payment.metode_bayar.replace(/_/g, ' ') : null,
+        ].filter(Boolean).join(' - ')
+      : '';
+
+    let badge;
     if (row.payment_status === 'sudah_dibayar') {
-      return <span className="badge badge-success">Sudah Dibayar</span>;
+      badge = <span className="badge badge-success">Sudah Dibayar</span>;
+    } else if (row.payment_status === 'perlu_review') {
+      badge = <span className="badge badge-warning">Perlu Review</span>;
+    } else {
+      badge = <span className="badge badge-neutral">Belum Dibayar</span>;
     }
-    if (row.payment_status === 'perlu_review') {
-      return <span className="badge badge-warning">Perlu Review</span>;
-    }
-    return <span className="badge badge-neutral">Belum Dibayar</span>;
+
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'flex-start' }}>
+        {badge}
+        {paymentMeta && (
+          <div className="table-mono" style={{ fontSize: 11, color: 'var(--text-tertiary)', lineHeight: 1.35 }}>
+            {paymentMeta}
+          </div>
+        )}
+        {hasMissingCashLedger && (
+          <div style={{ fontSize: 11, color: 'var(--color-warning)', lineHeight: 1.35 }}>
+            Kas belum tercatat
+          </div>
+        )}
+      </div>
+    );
   }
 
   const renderRows = (rows) => {
@@ -393,6 +427,9 @@ export default function LaporanMitraPage() {
           <p className="page-description">Rekap seluruh transaksi penerimaan TWB dari armada mitra</p>
         </div>
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+          <Link className="btn btn-outline" href="/owner/kwitansi-mitra">
+            <ReceiptText size={18} /> Kwitansi Mitra
+          </Link>
           <button className="btn btn-outline" onClick={handleExportExcel} disabled={transaksi.length === 0}>
             <FileSpreadsheet size={18} /> Export Excel
           </button>
@@ -400,6 +437,10 @@ export default function LaporanMitraPage() {
             <Printer size={18} /> Cetak Laporan
           </button>
         </div>
+      </div>
+
+      <div className="alert alert-info no-print" style={{ marginBottom: 'var(--space-lg)' }}>
+        Laporan ini adalah rekap transaksi mitra. Status <strong>Sudah Dibayar</strong> sudah masuk snapshot kwitansi dan tidak menjadi antrian pembayaran berikutnya; cetak, kirim ulang, atau review perubahan dilakukan dari halaman Kwitansi Mitra.
       </div>
 
       <div className="no-print card laporan-filter-card">

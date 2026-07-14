@@ -9,7 +9,7 @@ const navItems = [
   { href: '/admin/input-timbangan', icon: <Truck size={22} />, label: 'Mitra' },
   { href: '/transaksi/beli', icon: <Store size={22} />, label: 'Petani' },
   { href: '/keuangan/kas', icon: <BadgeDollarSign size={22} />, label: 'Kas' },
-  { href: '/laporan/harian', icon: <FileText size={22} />, label: 'Laporan' },
+  { href: '/owner/laporan-mitra', icon: <FileText size={22} />, label: 'Laporan' },
 ];
 
 export default function BottomNav() {

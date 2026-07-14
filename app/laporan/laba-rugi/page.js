@@ -201,8 +201,14 @@ export default function LabaRugiPage() {
       ) : !data ? null : (
         <>
           <div className="alert alert-info" style={{ marginBottom: 'var(--space-lg)' }}>
-            Laba Bersih Kas adalah angka utama karena memakai uang yang sudah diterima/dikeluarkan dari Buku Kas. Estimasi transaksi legacy tidak ditampilkan agar tidak bercampur dengan alur mitra internal.
+            Laba Bersih Kas dihitung dari uang aktual di Buku Kas: pembayaran pabrik yang sudah diterima dikurangi pembayaran mitra, pembelian lokal, dan biaya operasional. Angka ini tidak diinput manual agar tidak bercampur dengan estimasi transaksi.
           </div>
+
+          {data.jumlahTxPendapatanKas === 0 && (
+            <div className="alert alert-warning" style={{ marginBottom: 'var(--space-lg)' }}>
+              Belum ada mutasi pembayaran pabrik pada periode ini. Laba/Rugi belum bisa menunjukkan laba final sampai uang masuk pabrik dicatat ke Buku Kas atau flow Pembayaran Pabrik.
+            </div>
+          )}
 
           <div className="stats-grid" style={{ gridTemplateColumns: 'repeat(3, 1fr)' }}>
             <div className="card">
