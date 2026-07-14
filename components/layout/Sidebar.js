@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import BrandMark from '@/components/branding/BrandMark';
 import { useBrandingSettings } from '@/lib/use-branding-settings';
-import { canManageBusinessSettings, canViewProfit, getRoleLabel, normalizeRole } from '@/lib/roles';
+import { canManageBusinessSettings, canManageFinance, canViewProfit, getRoleLabel, normalizeRole } from '@/lib/roles';
 import {
   LayoutDashboard, Truck, ReceiptText, Database, Store,
   Wallet, Calculator, FileText, Users, Box, TrendingUp, MapPin, Tag, ClipboardList, BadgeDollarSign, Settings
@@ -31,35 +31,36 @@ const menuSections = [
     ],
   },
   {
-    title: 'Operasional (coming soon)',
+    title: 'Operasional Lokal',
     items: [
-      { href: '/transaksi/beli', icon: <Store size={20} />, label: 'Input TBS Lokal', badge: 'comingsoon' },
-      { href: '/transaksi/kirim', icon: <Truck size={20} />, label: 'Pengiriman Lokal', badge: 'comingsoon' },
+      { href: '/transaksi/beli', icon: <Store size={20} />, label: 'Input TBS Lokal' },
+      { href: '/transaksi/kirim', icon: <Truck size={20} />, label: 'Pengiriman Lokal' },
     ],
   },
   {
-    title: 'Keuangan (coming soon)',
+    title: 'Keuangan',
     items: [
-      { href: '/keuangan/hutang', icon: <Wallet size={20} />, label: 'Hutang Petani', badge: 'comingsoon' },
-      { href: '/keuangan/biaya', icon: <Calculator size={20} />, label: 'Biaya Operasional', badge: 'comingsoon' },
+      { href: '/keuangan/kas', icon: <BadgeDollarSign size={20} />, label: 'Buku Kas', financeOnly: true },
+      { href: '/keuangan/hutang', icon: <Wallet size={20} />, label: 'Hutang / Panjar', financeOnly: true },
+      { href: '/keuangan/biaya', icon: <Calculator size={20} />, label: 'Biaya Operasional' },
     ],
   },
   {
-    title: 'Laporan (coming soon)',
+    title: 'Laporan',
     items: [
       { href: '/laporan/harian', icon: <FileText size={20} />, label: 'Laporan Harian' },
-      { href: '/laporan/petani', icon: <Users size={20} />, label: 'Laporan Petani', badge: 'comingsoon' },
-      { href: '/laporan/stok', icon: <Box size={20} />, label: 'Stok Lokal', badge: 'comingsoon' },
-      { href: '/laporan/laba-rugi', icon: <TrendingUp size={20} />, label: 'Laba / Rugi', profitOnly: true, badge: 'comingsoon' },
+      { href: '/laporan/petani', icon: <Users size={20} />, label: 'Laporan Petani' },
+      { href: '/laporan/stok', icon: <Box size={20} />, label: 'Stok Lokal' },
+      { href: '/laporan/laba-rugi', icon: <TrendingUp size={20} />, label: 'Laba / Rugi', profitOnly: true },
     ],
   },
   {
-    title: 'Master Data (coming soon)',
+    title: 'Master Data Lokal',
     items: [
-      { href: '/master/petani', icon: <Users size={20} />, label: 'Petani Lokal', badge: 'comingsoon' },
-      { href: '/master/armada', icon: <Truck size={20} />, label: 'Armada & Sopir', badge: 'comingsoon' },
-      { href: '/master/pabrik', icon: <MapPin size={20} />, label: 'Pabrik Tujuan', badge: 'comingsoon' },
-      { href: '/master/harga', icon: <Tag size={20} />, label: 'Harga TBS', badge: 'comingsoon' },
+      { href: '/master/petani', icon: <Users size={20} />, label: 'Petani Lokal' },
+      { href: '/master/armada', icon: <Truck size={20} />, label: 'Armada & Sopir' },
+      { href: '/master/pabrik', icon: <MapPin size={20} />, label: 'Pabrik Tujuan' },
+      { href: '/master/harga', icon: <Tag size={20} />, label: 'Harga TBS' },
     ],
   },
 ];
@@ -67,6 +68,7 @@ const menuSections = [
 function canSeeMenuItem(item, role) {
   if (item.profitOnly) return canViewProfit(role);
   if (item.settingsOnly) return canManageBusinessSettings(role);
+  if (item.financeOnly) return canManageFinance(role);
   return true;
 }
 

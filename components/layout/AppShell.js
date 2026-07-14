@@ -102,17 +102,6 @@ export default function AppShell({ children, title, subtitle }) {
           >
             {(() => {
               const lockedPaths = [
-                '/transaksi/beli',
-                '/transaksi/kirim',
-                '/keuangan/hutang',
-                '/keuangan/biaya',
-                '/laporan/petani',
-                '/laporan/stok',
-                '/laporan/laba-rugi',
-                '/master/petani',
-                '/master/armada',
-                '/master/pabrik',
-                '/master/harga',
               ];
               const isLocked = lockedPaths.some((p) => pathname?.startsWith(p));
               

@@ -206,38 +206,32 @@ export default function PengirimanPage() {
     e.preventDefault();
     if (!showUpdateModal) return;
 
-    const nilai = hitungNilaiPabrik(updateForm);
     const tonasePabrik = Number(updateForm.tonase_pabrik || 0);
     const hargaPabrik = Number(updateForm.harga_pabrik_per_kg || 0);
-    const payload = {
-      status: updateForm.status,
-      tonase_pabrik: tonasePabrik || null,
-      tonase_dasar_settlement: nilai.tonaseDasar || null,
-      updated_at: new Date().toISOString(),
-    };
 
     if (updateForm.status === 'dibayar_pabrik') {
       if (tonasePabrik <= 0 || hargaPabrik <= 0) {
         showToast('Tonase pabrik dan harga pabrik wajib diisi sebelum status dibayar.', 'error');
         return;
       }
-
-      payload.harga_pabrik_per_kg = hargaPabrik;
-      payload.potongan_sortasi_type = updateForm.potongan_sortasi_type;
-      payload.potongan_sortasi_value = Number(updateForm.potongan_sortasi_value || 0);
-      payload.potongan_sortasi_rupiah = nilai.sortasiRupiah;
-      payload.biaya_timbang = Number(updateForm.biaya_timbang || 0);
-      payload.potongan_pabrik_lain = Number(updateForm.potongan_pabrik_lain || 0);
-      payload.total_pembayaran_pabrik = nilai.totalPembayaran;
-      payload.total_harga_pabrik = nilai.totalPembayaran;
-      payload.tanggal_bayar = updateForm.tanggal_bayar || getTodayISO();
+    } else if (tonasePabrik <= 0) {
+      showToast('Tonase pabrik wajib diisi.', 'error');
+      return;
     }
 
     setSaving(true);
-    const { error } = await supabase
-      .from('pengiriman')
-      .update(payload)
-      .eq('id', showUpdateModal.id);
+    const { error } = await supabase.rpc('record_pengiriman_lokal_status', {
+      p_pengiriman_id: showUpdateModal.id,
+      p_status: updateForm.status,
+      p_tonase_pabrik: tonasePabrik,
+      p_harga_pabrik_per_kg: updateForm.status === 'dibayar_pabrik' ? hargaPabrik : null,
+      p_potongan_sortasi_type: updateForm.potongan_sortasi_type,
+      p_potongan_sortasi_value: Number(updateForm.potongan_sortasi_value || 0),
+      p_biaya_timbang: Number(updateForm.biaya_timbang || 0),
+      p_potongan_pabrik_lain: Number(updateForm.potongan_pabrik_lain || 0),
+      p_tanggal_bayar: updateForm.tanggal_bayar || getTodayISO(),
+      p_rekening_kas_id: null,
+    });
     setSaving(false);
 
     if (error) {

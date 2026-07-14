@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import AppShell from '@/components/layout/AppShell';
-import ConfirmDialog from '@/components/ui/ConfirmDialog';
 import { supabase } from '@/lib/supabase';
 import { formatDateDisplay, formatRupiah, getTodayISO } from '@/lib/utils';
 import { exportToExcel } from '@/lib/export';
@@ -54,18 +53,22 @@ export default function BiayaPage() {
   async function handleSave(e) {
     e.preventDefault();
     setSaving(true);
-    const { data: { session } } = await supabase.auth.getSession();
 
-    await supabase.from('biaya_operasional').insert({
-      tanggal: form.tanggal,
-      kategori: form.kategori,
-      jumlah: parseFloat(form.jumlah),
-      keterangan: form.keterangan || null,
-      status: 'aktif',
-      created_by: session?.user?.id || null,
+    const { error } = await supabase.rpc('create_biaya_operasional_kas', {
+      p_tanggal: form.tanggal,
+      p_kategori: form.kategori,
+      p_jumlah: parseFloat(form.jumlah),
+      p_keterangan: form.keterangan || null,
+      p_rekening_kas_id: null,
     });
 
     setSaving(false);
+    if (error) {
+      setToast({ message: `Gagal mencatat biaya: ${error.message}`, type: 'error' });
+      setTimeout(() => setToast(null), 4000);
+      return;
+    }
+
     setShowModal(false);
     setForm({ tanggal: getTodayISO(), kategori: 'solar', jumlah: '', keterangan: '' });
     setToast({ message: 'Biaya berhasil dicatat!', type: 'success' });
@@ -77,16 +80,10 @@ export default function BiayaPage() {
     const alasan = prompt('Alasan pembatalan biaya:');
     if (!alasan || !alasan.trim()) return;
 
-    const { data: { user } } = await supabase.auth.getUser();
-    const { error } = await supabase
-      .from('biaya_operasional')
-      .update({
-        status: 'dibatalkan',
-        alasan_batal: alasan.trim(),
-        dibatalkan_at: new Date().toISOString(),
-        dibatalkan_by: user?.id || null,
-      })
-      .eq('id', id);
+    const { error } = await supabase.rpc('cancel_biaya_operasional_kas', {
+      p_biaya_id: id,
+      p_alasan: alasan.trim(),
+    });
 
     if (error) {
       setToast({ message: 'Gagal membatalkan biaya: ' + error.message, type: 'error' });

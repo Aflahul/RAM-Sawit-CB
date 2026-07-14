@@ -84,15 +84,13 @@ export default function PanjarMitraPage() {
       return;
     }
 
-    const payload = {
-      tanggal: form.tanggal,
-      mitra_id: form.mitra_id,
-      jumlah: parseFloat(form.jumlah) || 0,
-      keterangan: form.keterangan || null,
-      status: 'belum_lunas'
-    };
-
-    const { error } = await supabase.from('panjar_mitra').insert(payload);
+    const { error } = await supabase.rpc('create_panjar_mitra_kas', {
+      p_mitra_id: form.mitra_id,
+      p_tanggal: form.tanggal,
+      p_jumlah: parseFloat(form.jumlah) || 0,
+      p_keterangan: form.keterangan || null,
+      p_rekening_kas_id: null,
+    });
     
     if (error) {
       alert("Gagal menyimpan panjar: " + error.message);
@@ -105,9 +103,19 @@ export default function PanjarMitraPage() {
   }
 
   async function handleLunasi(id) {
-    if (!confirm('Tandai panjar ini sebagai LUNAS? (Biasanya dilakukan saat atau setelah cetak kwitansi)')) return;
-    
-    await supabase.from('panjar_mitra').update({ status: 'lunas' }).eq('id', id);
+    const alasan = prompt('Alasan pelunasan manual panjar:');
+    if (!alasan || !alasan.trim()) return;
+
+    const { error } = await supabase.rpc('settle_panjar_mitra_manual', {
+      p_panjar_id: id,
+      p_alasan: alasan.trim(),
+    });
+
+    if (error) {
+      alert('Gagal melunasi panjar: ' + error.message);
+      return;
+    }
+
     loadData();
   }
 
@@ -115,16 +123,10 @@ export default function PanjarMitraPage() {
     const alasan = prompt('Alasan pembatalan panjar:');
     if (!alasan || !alasan.trim()) return;
 
-    const { data: { user } } = await supabase.auth.getUser();
-    const { error } = await supabase
-      .from('panjar_mitra')
-      .update({
-        status: 'dibatalkan',
-        alasan_batal: alasan.trim(),
-        dibatalkan_at: new Date().toISOString(),
-        dibatalkan_by: user?.id || null,
-      })
-      .eq('id', id);
+    const { error } = await supabase.rpc('cancel_panjar_mitra_kas', {
+      p_panjar_id: id,
+      p_alasan: alasan.trim(),
+    });
 
     if (error) {
       alert('Gagal membatalkan panjar: ' + error.message);

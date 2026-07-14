@@ -88,7 +88,8 @@ export default function InputTBSPage() {
       .from('hutang_ledger')
       .select('tipe, jumlah')
       .eq('pihak_type', 'petani')
-      .eq('petani_id', petaniId);
+      .eq('petani_id', petaniId)
+      .neq('status', 'dibatalkan');
 
     if (error) {
       setSaldoHutang(0);

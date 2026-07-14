@@ -48,7 +48,8 @@ export default function LaporanPetaniPage() {
       supabase
         .from('hutang_ledger')
         .select('petani_id, tipe, jumlah')
-        .eq('pihak_type', 'petani'),
+        .eq('pihak_type', 'petani')
+        .neq('status', 'dibatalkan'),
     ]);
 
     if (tbsError || ledgerError) {
@@ -107,6 +108,7 @@ export default function LaporanPetaniPage() {
         .select('*')
         .eq('pihak_type', 'petani')
         .eq('petani_id', petaniId)
+        .neq('status', 'dibatalkan')
         .order('created_at', { ascending: false }),
     ]);
 

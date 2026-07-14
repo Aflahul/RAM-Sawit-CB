@@ -105,7 +105,8 @@ export default function DashboardPage() {
       supabase
         .from('hutang_ledger')
         .select('petani_id, tipe, jumlah')
-        .eq('pihak_type', 'petani'),
+        .eq('pihak_type', 'petani')
+        .neq('status', 'dibatalkan'),
       supabase
         .from('biaya_operasional')
         .select('jumlah')

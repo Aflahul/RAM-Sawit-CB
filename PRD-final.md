@@ -1,5 +1,5 @@
 # ADDENDUM MVP TAHAP 1 (Selesai - Juli 2026)
-Pengembangan Tahap 1 (MVP) berfokus pada **Pengiriman Mitra ke Pabrik** telah selesai. Menu operasional lain diberi label [Coming Soon].
+Pengembangan Tahap 1 (MVP) berfokus pada **Pengiriman Mitra ke Pabrik** telah selesai. Setelah pembaruan Fase 2 minimum pada 14 Juli 2026, sebagian menu operasional dan keuangan dasar sudah dibuka. Label [Coming Soon] hanya dipakai lagi untuk fitur Fase 3/Fase 4 yang belum aman dipakai.
 Fitur utama yang telah live:
 1. **Master Data Mitra & Sopir**: Relasi `sopir` ke `master_mitra`, termasuk pengaturan `fee_per_kg` sebagai **Fee Owner** per mitra.
 2. **Pengiriman Mitra**: Pencatatan armada masuk dengan perhitungan Skenario B (Harga Bersih ke Mitra = Harga Pabrik/TWB - Fee Owner).
@@ -9,6 +9,31 @@ Fitur utama yang telah live:
 6. **Laporan Pendapatan Owner Bruto**: Rekap Fee Owner bruto dari transaksi mitra, hanya untuk Owner dan Super Admin.
 7. **Dashboard Multi-Harga**: Pemisahan input Harga Pabrik (TWB) untuk MVP dan Harga Beli Lokal untuk Tahap 2.
 8. **Pengaturan Web & Logo Kwitansi**: Owner dapat mengatur nama aplikasi, logo website berwarna, dan logo kwitansi.
+
+# ADDENDUM FASE 2 MINIMUM (Diimplementasikan - 14 Juli 2026)
+
+Status: Fase 2 minimum sudah masuk sebagai fondasi sistem bisnis harian, tetapi belum boleh disebut aplikasi final/utuh.
+
+Yang sudah tersedia:
+
+1. **Buku Kas**: `rekening_kas` dan `kas_ledger` menjadi buku kas tunggal untuk arus uang aktual.
+2. **Uang Masuk Pabrik Dasar**: status pengiriman lokal dibayar pabrik membuat `pembayaran_pabrik` dan `kas_masuk`.
+3. **Uang Keluar Dasar**: pembelian petani lokal, biaya operasional, pembayaran mitra kwitansi, dan panjar/hutang baru membuat `kas_keluar`.
+4. **Hutang/Panjar Universal**: `hutang_ledger` diperluas untuk `petani`, `mitra`, `sopir`, `karyawan`, dan `lainnya`.
+5. **Panjar Mitra Baru**: input baru di `panjar_mitra` disambungkan ke `hutang_ledger` dan `kas_ledger`; data legacy lama tetap dipertahankan.
+6. **UI Minimum**: halaman Buku Kas, Hutang/Panjar, Biaya Operasional, Panjar Mitra, Pengiriman Lokal, Pembelian Lokal, dan Laba/Rugi sudah terhubung ke RPC/fondasi kas.
+7. **No Delete Finansial Dasar**: koreksi memakai status batal dan reversal ledger pada flow yang sudah dipindah ke RPC.
+
+Batasan yang sengaja belum disebut selesai:
+
+- Alokasi pembayaran pabrik satu transaksi ke banyak DO.
+- Upload bukti, nomor referensi wajib, atau lampiran pembayaran.
+- Limit kasbon/panjar dan approval otomatis.
+- Backfill panjar mitra legacy lama ke ledger universal.
+- Settlement mitra advanced, pembagian selisih tonase, tarif armada, dan biaya bantuan.
+- Test manual semua role dengan akun nyata dan SOP backup/rollback production.
+
+Kesimpulan produk: web sudah dapat dipakai sebagai **Sistem Bisnis Minimal Fase 2** untuk kontrol kas dan hutang harian, sambil pengembangan Fase 3 berjalan. Web belum boleh diposisikan sebagai sistem penuh/final sampai settlement, limit, bukti transaksi, dan hardening role selesai.
 
 Aturan Fee Owner MVP:
 
@@ -1852,7 +1877,7 @@ Batasan fase ini:
 
 #### Fase 2 - Sistem Bisnis Minimal
 
-Fase ini adalah batas pertama ketika web boleh disebut sistem bisnis minimal. MVP saat ini belum layak disebut sistem bisnis minimal, karena bisnis sawit tidak cukup hanya dengan input DO dan cetak kwitansi; uang, hutang/panjar, pembayaran, dan akses role harus terkunci dulu.
+Fase ini adalah batas pertama ketika web boleh disebut sistem bisnis minimal. Sebelum pembaruan 14 Juli 2026, MVP belum layak disebut sistem bisnis minimal karena bisnis sawit tidak cukup hanya dengan input DO dan cetak kwitansi; uang, hutang/panjar, pembayaran, dan akses role harus terkunci dulu. Setelah pembaruan Fase 2 minimum, fondasi kas dan hutang sudah tersedia untuk flow dasar, dengan catatan release gate manual tetap wajib sebelum ekspansi fitur yang lebih sensitif.
 
 Wajib selesai sebelum fase ini dianggap lulus:
 
@@ -1865,6 +1890,12 @@ Wajib selesai sebelum fase ini dianggap lulus:
 - Pembayaran mitra dasar bisa dicatat sebagai kas keluar dan status bayar.
 - Laporan owner dasar tersedia: posisi kas, uang masuk pabrik, uang keluar, DO belum dibayar, mitra belum dibayar, dan saldo hutang/panjar per pihak.
 - Backup production, staging test, dan rollback checklist tersedia sebelum release.
+
+Status implementasi 14 Juli 2026:
+
+- `rekening_kas`, `kas_ledger`, hutang/panjar universal, pembayaran pabrik dasar, pembayaran mitra dasar, biaya operasional, dan laporan kas minimum sudah diimplementasikan.
+- Test otomatis/build/lint dan lint database level error sudah lulus.
+- Test manual semua role, SOP backup/rollback production, alokasi pembayaran multi-DO, limit kasbon, dan bukti transaksi masih menjadi syarat sebelum menyebut sistem ini selesai penuh.
 
 Batasan fase ini:
 
@@ -1950,8 +1981,8 @@ Pada fase ini aplikasi bisa dianggap utuh dan matang, bukan hanya sistem operasi
 - Perluas hutang/panjar menjadi ledger pihak universal: petani, mitra, sopir, karyawan, dan pihak lain.
 - Migrasikan/sinkronkan `panjar_mitra` aktif ke ledger universal tanpa merusak histori MVP.
 - Kasbon/panjar bukan biaya laba-rugi; kasbon/panjar adalah saldo pihak dan arus kas.
-- Setiap kasbon/panjar yang mengeluarkan uang harus membuat mutasi ledger pihak dan kas ledger.
-- Setiap pengembalian kasbon/panjar harus membuat mutasi ledger pihak dan kas ledger.
+- Setiap kasbon/panjar yang mengeluarkan uang harus membuat mutasi ledger pihak dan Buku Kas (`kas_ledger`).
+- Setiap pengembalian kasbon/panjar harus membuat mutasi ledger pihak dan Buku Kas (`kas_ledger`).
 
 #### P0C - Alur Mitra dan Settlement
 

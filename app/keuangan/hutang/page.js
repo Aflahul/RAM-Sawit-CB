@@ -1,10 +1,39 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import AppShell from '@/components/layout/AppShell';
+import { formatMitraLabel } from '@/lib/display-labels';
 import { supabase } from '@/lib/supabase';
 import { formatDateDisplay, formatRupiah, getTodayISO } from '@/lib/utils';
 import { exportToExcel } from '@/lib/export';
+
+const PARTY_TYPES = [
+  { value: 'petani', label: 'Petani' },
+  { value: 'mitra', label: 'Mitra' },
+  { value: 'sopir', label: 'Sopir' },
+  { value: 'karyawan', label: 'Karyawan' },
+  { value: 'lainnya', label: 'Lainnya' },
+];
+
+const DEBIT_SOURCES = [
+  { value: 'kasbon', label: 'Kasbon' },
+  { value: 'panjar', label: 'Panjar' },
+  { value: 'peminjaman', label: 'Peminjaman' },
+  { value: 'uang_jalan', label: 'Uang Jalan' },
+  { value: 'pupuk', label: 'Bon Pupuk' },
+  { value: 'gaji', label: 'Gaji / Talangan' },
+  { value: 'operasional', label: 'Operasional' },
+  { value: 'lainnya', label: 'Lainnya' },
+];
+
+const CREDIT_SOURCES = [
+  { value: 'bayar_tunai', label: 'Bayar Tunai' },
+  { value: 'pelunasan_kas', label: 'Pelunasan Kas' },
+  { value: 'potong_tbs', label: 'Potong TBS' },
+  { value: 'potong_settlement', label: 'Potong Settlement' },
+  { value: 'koreksi', label: 'Koreksi' },
+  { value: 'lainnya', label: 'Lainnya' },
+];
 
 function hitungSaldoLedger(rows = []) {
   return rows.reduce((total, row) => {
@@ -17,10 +46,16 @@ function getLedgerLabel(row) {
   const labels = {
     kasbon: 'Kasbon',
     panjar: 'Panjar',
+    peminjaman: 'Peminjaman',
+    uang_jalan: 'Uang Jalan',
     pupuk: 'Bon Pupuk',
+    gaji: 'Gaji / Talangan',
+    operasional: 'Operasional',
     lainnya: 'Lainnya',
     bayar_tunai: 'Bayar Tunai',
+    pelunasan_kas: 'Pelunasan Kas',
     potong_tbs: 'Potong TBS',
+    potong_settlement: 'Potong Settlement',
     koreksi: 'Koreksi',
     reversal: 'Reversal',
   };
@@ -28,19 +63,86 @@ function getLedgerLabel(row) {
   return labels[row.sumber] || row.sumber || '-';
 }
 
+function getPartyTypeLabel(type) {
+  return PARTY_TYPES.find((item) => item.value === type)?.label || type || '-';
+}
+
+function getPartyKey(type, id, manualName = '') {
+  return `${type}:${id || manualName.trim().toLowerCase()}`;
+}
+
+function getPartyFromLedger(row) {
+  if (row.pihak_type === 'petani') {
+    return {
+      key: getPartyKey('petani', row.petani_id),
+      type: 'petani',
+      id: row.petani_id,
+      name: row.petani?.nama || 'Petani',
+      contact: row.petani?.no_hp || '',
+      batas: Number(row.petani?.batas_hutang || 0),
+    };
+  }
+
+  if (row.pihak_type === 'mitra') {
+    return {
+      key: getPartyKey('mitra', row.master_mitra_id || row.mitra_id),
+      type: 'mitra',
+      id: row.master_mitra_id || row.mitra_id,
+      name: row.master_mitra ? formatMitraLabel(row.master_mitra) : row.mitra?.nama || 'Mitra',
+      contact: row.master_mitra?.no_hp || '',
+      batas: 0,
+    };
+  }
+
+  if (row.pihak_type === 'sopir') {
+    const plat = row.sopir?.plat_nomor ? ` - ${row.sopir.plat_nomor}` : '';
+    return {
+      key: getPartyKey('sopir', row.sopir_id),
+      type: 'sopir',
+      id: row.sopir_id,
+      name: `${row.sopir?.nama || 'Sopir'}${plat}`,
+      contact: row.sopir?.no_hp || '',
+      batas: 0,
+    };
+  }
+
+  return {
+    key: getPartyKey(row.pihak_type, null, row.pihak_nama_manual || ''),
+    type: row.pihak_type,
+    id: null,
+    name: row.pihak_nama_manual || getPartyTypeLabel(row.pihak_type),
+    contact: '',
+    batas: 0,
+  };
+}
+
+function getDefaultSource(type, tipe) {
+  if (tipe === 'kredit') return 'bayar_tunai';
+  if (type === 'mitra') return 'panjar';
+  if (type === 'sopir') return 'uang_jalan';
+  if (type === 'karyawan') return 'kasbon';
+  return 'peminjaman';
+}
+
 export default function HutangPage() {
   const [petaniList, setPetaniList] = useState([]);
-  const [selectedPetani, setSelectedPetani] = useState(null);
-  const [ledgerList, setLedgerList] = useState([]);
-  const [saldo, setSaldo] = useState(0);
+  const [mitraList, setMitraList] = useState([]);
+  const [sopirList, setSopirList] = useState([]);
+  const [ledgerAll, setLedgerAll] = useState([]);
+  const [selectedParty, setSelectedParty] = useState(null);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState(null);
-  const [petaniSummary, setPetaniSummary] = useState([]);
-
+  const [selector, setSelector] = useState({ type: 'petani', id: '', manualName: '' });
   const [form, setForm] = useState({
-    jenis: 'kasbon',
+    pihak_type: 'petani',
+    petani_id: '',
+    master_mitra_id: '',
+    sopir_id: '',
+    pihak_nama_manual: '',
+    tipe: 'debit',
+    sumber: 'kasbon',
     jumlah: '',
     keterangan: '',
   });
@@ -48,34 +150,37 @@ export default function HutangPage() {
   const loadData = useCallback(async () => {
     setLoading(true);
 
-    const [{ data: petani }, { data: ledger, error: ledgerError }] = await Promise.all([
+    const [
+      { data: petani },
+      { data: mitra },
+      { data: sopir },
+      { data: ledger, error: ledgerError },
+    ] = await Promise.all([
       supabase.from('petani').select('*').eq('aktif', true).order('nama'),
+      supabase.from('master_mitra').select('id, kode, nama, alamat, no_hp').eq('aktif', true).order('kode'),
+      supabase.from('sopir').select('id, nama, no_hp, plat_nomor').eq('aktif', true).order('nama'),
       supabase
         .from('hutang_ledger')
-        .select('petani_id, tipe, jumlah')
-        .eq('pihak_type', 'petani'),
+        .select(`
+          *,
+          petani:petani_id(nama, no_hp, batas_hutang),
+          master_mitra:master_mitra_id(kode, nama, alamat, no_hp),
+          mitra:mitra_id(nama),
+          sopir:sopir_id(nama, no_hp, plat_nomor)
+        `)
+        .neq('status', 'dibatalkan')
+        .order('tanggal', { ascending: false })
+        .order('created_at', { ascending: false }),
     ]);
 
     if (ledgerError) {
       setToast({ message: `Gagal membaca ledger hutang: ${ledgerError.message}`, type: 'error' });
     }
 
-    const summary = {};
-    (ledger || []).forEach((row) => {
-      if (!summary[row.petani_id]) summary[row.petani_id] = [];
-      summary[row.petani_id].push(row);
-    });
-
-    const summaryArr = (petani || [])
-      .map((item) => ({
-        ...item,
-        saldo: Math.max(hitungSaldoLedger(summary[item.id] || []), 0),
-      }))
-      .filter((item) => item.saldo > 0)
-      .sort((a, b) => b.saldo - a.saldo);
-
     setPetaniList(petani || []);
-    setPetaniSummary(summaryArr);
+    setMitraList(mitra || []);
+    setSopirList(sopir || []);
+    setLedgerAll(ledger || []);
     setLoading(false);
   }, []);
 
@@ -84,129 +189,210 @@ export default function HutangPage() {
     loadData();
   }, [loadData]);
 
-  async function selectPetani(petaniId) {
-    const petani = petaniList.find((item) => item.id === petaniId);
-    setSelectedPetani(petani || null);
+  const summaryRows = useMemo(() => {
+    const groups = {};
 
-    const { data, error } = await supabase
-      .from('hutang_ledger')
-      .select('*')
-      .eq('pihak_type', 'petani')
-      .eq('petani_id', petaniId)
-      .order('created_at', { ascending: false });
+    ledgerAll.forEach((row) => {
+      const party = getPartyFromLedger(row);
+      if (!groups[party.key]) {
+        groups[party.key] = { ...party, rows: [] };
+      }
+      groups[party.key].rows.push(row);
+    });
 
-    if (error) {
-      setToast({ message: `Gagal membaca riwayat hutang: ${error.message}`, type: 'error' });
-      setLedgerList([]);
-      setSaldo(0);
+    return Object.values(groups)
+      .map((party) => ({
+        ...party,
+        saldo: Math.max(hitungSaldoLedger(party.rows), 0),
+      }))
+      .filter((party) => party.saldo > 0)
+      .sort((a, b) => b.saldo - a.saldo);
+  }, [ledgerAll]);
+
+  const ledgerList = useMemo(() => {
+    if (!selectedParty) return [];
+    return ledgerAll.filter((row) => getPartyFromLedger(row).key === selectedParty.key);
+  }, [ledgerAll, selectedParty]);
+
+  const saldo = useMemo(() => Math.max(hitungSaldoLedger(ledgerList), 0), [ledgerList]);
+
+  const selectorOptions = useMemo(() => {
+    if (selector.type === 'petani') {
+      return petaniList.map((item) => ({ value: item.id, label: item.nama }));
+    }
+    if (selector.type === 'mitra') {
+      return mitraList.map((item) => ({ value: item.id, label: formatMitraLabel(item) }));
+    }
+    if (selector.type === 'sopir') {
+      return sopirList.map((item) => ({
+        value: item.id,
+        label: `${item.nama}${item.plat_nomor ? ` - ${item.plat_nomor}` : ''}`,
+      }));
+    }
+    return [];
+  }, [mitraList, petaniList, selector.type, sopirList]);
+
+  function applySelectedParty(party) {
+    setSelectedParty(party);
+  }
+
+  function selectFromControl(nextSelector = selector) {
+    const { type, id, manualName } = nextSelector;
+    if (['petani', 'mitra', 'sopir'].includes(type) && !id) {
+      setSelectedParty(null);
       return;
     }
 
-    const rows = data || [];
-    setLedgerList(rows);
-    setSaldo(Math.max(hitungSaldoLedger(rows), 0));
+    let party = null;
+    if (type === 'petani') {
+      const item = petaniList.find((row) => row.id === id);
+      party = item ? {
+        key: getPartyKey('petani', item.id),
+        type: 'petani',
+        id: item.id,
+        name: item.nama,
+        contact: item.no_hp || '',
+        batas: Number(item.batas_hutang || 0),
+      } : null;
+    } else if (type === 'mitra') {
+      const item = mitraList.find((row) => row.id === id);
+      party = item ? {
+        key: getPartyKey('mitra', item.id),
+        type: 'mitra',
+        id: item.id,
+        name: formatMitraLabel(item),
+        contact: item.no_hp || '',
+        batas: 0,
+      } : null;
+    } else if (type === 'sopir') {
+      const item = sopirList.find((row) => row.id === id);
+      party = item ? {
+        key: getPartyKey('sopir', item.id),
+        type: 'sopir',
+        id: item.id,
+        name: `${item.nama}${item.plat_nomor ? ` - ${item.plat_nomor}` : ''}`,
+        contact: item.no_hp || '',
+        batas: 0,
+      } : null;
+    } else if (manualName.trim()) {
+      party = {
+        key: getPartyKey(type, null, manualName),
+        type,
+        id: null,
+        name: manualName.trim(),
+        contact: '',
+        batas: 0,
+      };
+    }
+
+    if (!party) return;
+    applySelectedParty(party);
   }
 
-  async function handleTambahHutang(e) {
-    e.preventDefault();
-    if (!selectedPetani) return;
+  function openModal(tipe = 'debit') {
+    const party = selectedParty;
+    const pihakType = party?.type || selector.type;
+    setForm({
+      pihak_type: pihakType,
+      petani_id: pihakType === 'petani' ? party?.id || selector.id : '',
+      master_mitra_id: pihakType === 'mitra' ? party?.id || selector.id : '',
+      sopir_id: pihakType === 'sopir' ? party?.id || selector.id : '',
+      pihak_nama_manual: ['karyawan', 'lainnya'].includes(pihakType) ? party?.name || selector.manualName : '',
+      tipe,
+      sumber: getDefaultSource(pihakType, tipe),
+      jumlah: '',
+      keterangan: '',
+    });
+    setShowModal(true);
+  }
 
+  async function handleSave(e) {
+    e.preventDefault();
     const jumlah = Number(form.jumlah);
     if (!jumlah || jumlah <= 0) return;
 
-    setSaving(true);
-    const { data: { session } } = await supabase.auth.getSession();
-
-    if (selectedPetani.batas_hutang > 0 && (saldo + jumlah) > selectedPetani.batas_hutang) {
+    if (form.tipe === 'debit' && selectedParty?.batas > 0 && (saldo + jumlah) > selectedParty.batas) {
       const lanjut = window.confirm(
-        `Hutang akan melebihi batas ${formatRupiah(selectedPetani.batas_hutang)}.\n\n` +
+        `Hutang akan melebihi batas ${formatRupiah(selectedParty.batas)}.\n\n` +
         `Saldo saat ini: ${formatRupiah(saldo)}\n` +
         `Tambahan: ${formatRupiah(jumlah)}\n` +
         `Total: ${formatRupiah(saldo + jumlah)}\n\n` +
         'Lanjutkan?'
       );
-
-      if (!lanjut) {
-        setSaving(false);
-        return;
-      }
+      if (!lanjut) return;
     }
 
-    const { error } = await supabase.from('hutang_ledger').insert({
-      pihak_type: 'petani',
-      petani_id: selectedPetani.id,
-      tanggal: getTodayISO(),
-      tipe: 'debit',
-      sumber: form.jenis,
-      jumlah,
-      keterangan: form.keterangan || null,
-      created_by: session?.user?.id || null,
+    setSaving(true);
+    const { error } = await supabase.rpc('create_hutang_pihak', {
+      p_pihak_type: form.pihak_type,
+      p_tipe: form.tipe,
+      p_sumber: form.sumber,
+      p_jumlah: jumlah,
+      p_tanggal: getTodayISO(),
+      p_petani_id: form.pihak_type === 'petani' ? form.petani_id || null : null,
+      p_master_mitra_id: form.pihak_type === 'mitra' ? form.master_mitra_id || null : null,
+      p_sopir_id: form.pihak_type === 'sopir' ? form.sopir_id || null : null,
+      p_pihak_nama_manual: ['karyawan', 'lainnya'].includes(form.pihak_type) ? form.pihak_nama_manual || null : null,
+      p_keterangan: form.keterangan || null,
+      p_rekening_kas_id: null,
+      p_catat_kas: true,
+      p_legacy_source_table: null,
+      p_legacy_source_id: null,
     });
-
     setSaving(false);
 
     if (error) {
-      setToast({ message: `Gagal menambah hutang: ${error.message}`, type: 'error' });
+      setToast({ message: `Gagal menyimpan hutang/panjar: ${error.message}`, type: 'error' });
+      setTimeout(() => setToast(null), 5000);
       return;
     }
 
     setShowModal(false);
-    setForm({ jenis: 'kasbon', jumlah: '', keterangan: '' });
-    setToast({ message: 'Hutang berhasil ditambahkan.', type: 'success' });
+    setToast({ message: 'Hutang/panjar berhasil dicatat.', type: 'success' });
     setTimeout(() => setToast(null), 3000);
-
-    await selectPetani(selectedPetani.id);
     await loadData();
   }
 
-  async function handleBayarTunai() {
-    if (!selectedPetani) return;
+  async function handleCancelLedger(id) {
+    const alasan = window.prompt('Alasan pembatalan / reversal hutang:');
+    if (!alasan || !alasan.trim()) return;
 
-    const jumlah = window.prompt('Masukkan jumlah pembayaran tunai (Rp):');
-    const jumlahNumber = Number(jumlah);
-    if (!jumlahNumber || jumlahNumber <= 0) return;
-
-    const { data: { session } } = await supabase.auth.getSession();
-    const { error } = await supabase.from('hutang_ledger').insert({
-      pihak_type: 'petani',
-      petani_id: selectedPetani.id,
-      tanggal: getTodayISO(),
-      tipe: 'kredit',
-      sumber: 'bayar_tunai',
-      jumlah: jumlahNumber,
-      keterangan: 'Pembayaran tunai',
-      created_by: session?.user?.id || null,
+    const { error } = await supabase.rpc('cancel_hutang_ledger', {
+      p_hutang_ledger_id: id,
+      p_alasan: alasan.trim(),
     });
 
     if (error) {
-      setToast({ message: `Gagal mencatat pembayaran: ${error.message}`, type: 'error' });
+      setToast({ message: `Gagal membatalkan hutang: ${error.message}`, type: 'error' });
+      setTimeout(() => setToast(null), 5000);
       return;
     }
 
-    setToast({ message: 'Pembayaran berhasil dicatat.', type: 'success' });
+    setToast({ message: 'Hutang/panjar berhasil dibatalkan dengan reversal.', type: 'success' });
     setTimeout(() => setToast(null), 3000);
-    await selectPetani(selectedPetani.id);
     await loadData();
   }
 
   function exportHutang() {
-    const data = petaniSummary.map((petani) => ({
-      nama: petani.nama,
-      no_hp: petani.no_hp || '-',
-      saldo: petani.saldo,
-      batas: petani.batas_hutang || 0,
+    const data = summaryRows.map((party) => ({
+      tipe: getPartyTypeLabel(party.type),
+      nama: party.name,
+      kontak: party.contact || '-',
+      saldo: party.saldo,
+      batas: party.batas || 0,
     }));
 
     exportToExcel(data, [
-      { key: 'nama', label: 'Nama Petani' },
-      { key: 'no_hp', label: 'No HP' },
+      { key: 'tipe', label: 'Tipe Pihak' },
+      { key: 'nama', label: 'Nama Pihak' },
+      { key: 'kontak', label: 'Kontak' },
       { key: 'saldo', label: 'Saldo Hutang' },
       { key: 'batas', label: 'Batas Hutang' },
-    ], 'Daftar_Hutang_Petani', 'Hutang');
+    ], 'Daftar_Hutang_Panjar', 'Hutang');
   }
 
   return (
-    <AppShell title="Hutang Petani" subtitle="Kelola kasbon, panjar, dan hutang petani lokal">
+    <AppShell title="Hutang / Panjar" subtitle="Kelola pinjaman uang lintas petani, mitra, sopir, karyawan, dan pihak lain">
       {toast && (
         <div className="toast-container">
           <div className={`toast toast-${toast.type}`}>
@@ -215,69 +401,105 @@ export default function HutangPage() {
         </div>
       )}
 
-      <div className="page-header" style={{ justifyContent: 'flex-end' }}>
-        <button className="btn btn-outline btn-sm" onClick={exportHutang}>Export Excel</button>
+      <div className="page-header">
+        <div>
+          <p className="page-description">Semua pencairan dan pelunasan tunai otomatis masuk Buku Kas.</p>
+        </div>
+        <div className="flex gap-sm" style={{ flexWrap: 'wrap' }}>
+          <button className="btn btn-outline btn-sm" onClick={exportHutang}>Export Excel</button>
+          <button className="btn btn-primary btn-sm" onClick={() => openModal('debit')}>Catat Hutang / Panjar</button>
+        </div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: selectedPetani ? '1fr 1.5fr' : '1fr', gap: 'var(--space-xl)' }}>
-        <div>
-          <div className="form-group">
-            <select className="form-input form-select" onChange={(e) => e.target.value && selectPetani(e.target.value)} defaultValue="">
-              <option value="">-- Pilih Petani --</option>
-              {petaniList.map((petani) => <option key={petani.id} value={petani.id}>{petani.nama}</option>)}
-            </select>
-          </div>
+      <div className="toolbar">
+        <select
+          className="form-input form-select"
+          value={selector.type}
+          onChange={(e) => {
+            const next = { type: e.target.value, id: '', manualName: '' };
+            setSelector(next);
+            setSelectedParty(null);
+          }}
+          style={{ maxWidth: 180 }}
+        >
+          {PARTY_TYPES.map((type) => <option key={type.value} value={type.value}>{type.label}</option>)}
+        </select>
 
-          <div className="card">
-            <div className="card-header">
-              <span className="card-title">Petani dengan Hutang Aktif</span>
-              <span className="badge badge-warning">{petaniSummary.length}</span>
-            </div>
-            {loading ? (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                {[1, 2, 3].map((item) => <div key={item} className="skeleton" style={{ height: 44 }} />)}
-              </div>
-            ) : petaniSummary.length === 0 ? (
-              <div className="empty-state" style={{ padding: 'var(--space-lg)' }}>
-                <div className="empty-state-title">Tidak ada hutang aktif</div>
-              </div>
-            ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                {petaniSummary.map((petani) => (
-                  <div
-                    key={petani.id}
-                    onClick={() => selectPetani(petani.id)}
-                    className="flex items-center justify-between"
-                    style={{
-                      padding: '10px 12px',
-                      borderRadius: 'var(--radius-md)',
-                      cursor: 'pointer',
-                      background: selectedPetani?.id === petani.id ? 'var(--color-primary-700)' : 'transparent',
-                      transition: 'background var(--transition-fast)',
-                    }}
-                  >
-                    <span style={{ fontWeight: 500 }}>{petani.nama}</span>
-                    <span className="text-mono text-warning" style={{ fontWeight: 600 }}>{formatRupiah(petani.saldo)}</span>
-                  </div>
-                ))}
-              </div>
-            )}
+        {['petani', 'mitra', 'sopir'].includes(selector.type) ? (
+          <select
+            className="form-input form-select"
+            value={selector.id}
+            onChange={(e) => {
+              const next = { ...selector, id: e.target.value };
+              setSelector(next);
+              if (e.target.value) selectFromControl(next);
+            }}
+          >
+            <option value="">-- Pilih {getPartyTypeLabel(selector.type)} --</option>
+            {selectorOptions.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
+          </select>
+        ) : (
+          <input
+            className="form-input"
+            value={selector.manualName}
+            onChange={(e) => setSelector({ ...selector, manualName: e.target.value })}
+            onBlur={() => selectFromControl({ ...selector })}
+            placeholder={`Nama ${getPartyTypeLabel(selector.type).toLowerCase()}...`}
+          />
+        )}
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: selectedParty ? 'minmax(260px, 0.9fr) minmax(0, 1.5fr)' : '1fr', gap: 'var(--space-xl)' }}>
+        <div className="card">
+          <div className="card-header">
+            <span className="card-title">Pihak dengan Saldo Aktif</span>
+            <span className="badge badge-warning">{summaryRows.length}</span>
           </div>
+          {loading ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {[1, 2, 3].map((item) => <div key={item} className="skeleton" style={{ height: 44 }} />)}
+            </div>
+          ) : summaryRows.length === 0 ? (
+            <div className="empty-state" style={{ padding: 'var(--space-lg)' }}>
+              <div className="empty-state-title">Tidak ada hutang aktif</div>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+              {summaryRows.map((party) => (
+                <button
+                  key={party.key}
+                  onClick={() => applySelectedParty(party)}
+                  className="btn btn-ghost"
+                  style={{
+                    justifyContent: 'space-between',
+                    background: selectedParty?.key === party.key ? 'var(--color-primary-700)' : 'transparent',
+                  }}
+                >
+                  <span style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 2 }}>
+                    <span style={{ fontWeight: 700 }}>{party.name}</span>
+                    <span className="text-tertiary text-xs">{getPartyTypeLabel(party.type)}</span>
+                  </span>
+                  <span className="text-mono text-warning" style={{ fontWeight: 700 }}>{formatRupiah(party.saldo)}</span>
+                </button>
+              ))}
+            </div>
+          )}
         </div>
 
-        {selectedPetani && (
+        {selectedParty && (
           <div>
             <div className="card" style={{ marginBottom: 'var(--space-lg)' }}>
-              <div className="flex items-center justify-between" style={{ marginBottom: 'var(--space-md)' }}>
+              <div className="flex items-center justify-between" style={{ marginBottom: 'var(--space-md)', gap: 12, flexWrap: 'wrap' }}>
                 <div>
-                  <h3 style={{ fontSize: 'var(--text-lg)', fontWeight: 700 }}>{selectedPetani.nama}</h3>
-                  <p className="text-tertiary text-sm">{selectedPetani.no_hp || 'No HP tidak tersedia'}</p>
+                  <h3 style={{ fontSize: 'var(--text-lg)', fontWeight: 700 }}>{selectedParty.name}</h3>
+                  <p className="text-tertiary text-sm">{getPartyTypeLabel(selectedParty.type)}{selectedParty.contact ? ` / ${selectedParty.contact}` : ''}</p>
                 </div>
-                <div className="flex gap-sm">
-                  <button className="btn btn-primary btn-sm" onClick={() => setShowModal(true)}>Tambah Kasbon</button>
-                  <button className="btn btn-outline btn-sm" onClick={handleBayarTunai}>Bayar Tunai</button>
+                <div className="flex gap-sm" style={{ flexWrap: 'wrap' }}>
+                  <button className="btn btn-primary btn-sm" onClick={() => openModal('debit')}>Tambah</button>
+                  <button className="btn btn-outline btn-sm" onClick={() => openModal('kredit')}>Bayar</button>
                 </div>
               </div>
+
               <div className="stats-grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))' }}>
                 <div style={{ textAlign: 'center', padding: 'var(--space-md)', background: 'var(--bg-surface)', borderRadius: 'var(--radius-md)' }}>
                   <div className="text-mono" style={{ fontSize: 'var(--text-2xl)', fontWeight: 700, color: saldo > 0 ? 'var(--color-warning)' : 'var(--color-success)' }}>
@@ -285,10 +507,10 @@ export default function HutangPage() {
                   </div>
                   <div className="text-tertiary text-sm">Saldo Hutang</div>
                 </div>
-                {selectedPetani.batas_hutang > 0 && (
+                {selectedParty.batas > 0 && (
                   <div style={{ textAlign: 'center', padding: 'var(--space-md)', background: 'var(--bg-surface)', borderRadius: 'var(--radius-md)' }}>
                     <div className="text-mono" style={{ fontSize: 'var(--text-2xl)', fontWeight: 700 }}>
-                      {formatRupiah(selectedPetani.batas_hutang)}
+                      {formatRupiah(selectedParty.batas)}
                     </div>
                     <div className="text-tertiary text-sm">Batas Maksimal</div>
                   </div>
@@ -313,6 +535,7 @@ export default function HutangPage() {
                         <th>Keterangan</th>
                         <th style={{ textAlign: 'right' }}>Debit</th>
                         <th style={{ textAlign: 'right' }}>Kredit</th>
+                        <th></th>
                       </tr>
                     </thead>
                     <tbody>
@@ -324,12 +547,18 @@ export default function HutangPage() {
                               {getLedgerLabel(item)}
                             </span>
                             {' '}{item.keterangan || ''}
+                            {item.status === 'reversal' && <span className="text-tertiary"> / reversal</span>}
                           </td>
                           <td className="table-mono text-danger" style={{ textAlign: 'right' }}>
                             {item.tipe === 'debit' ? formatRupiah(item.jumlah) : ''}
                           </td>
                           <td className="table-mono text-success" style={{ textAlign: 'right' }}>
                             {item.tipe === 'kredit' ? formatRupiah(item.jumlah) : ''}
+                          </td>
+                          <td style={{ textAlign: 'right' }}>
+                            {item.status === 'aktif' && (
+                              <button className="btn btn-ghost btn-sm" onClick={() => handleCancelLedger(item.id)}>Batalkan</button>
+                            )}
                           </td>
                         </tr>
                       ))}
@@ -346,24 +575,110 @@ export default function HutangPage() {
         <div className="modal-overlay" onClick={() => setShowModal(false)}>
           <div className="modal" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
-              <h3 className="modal-title">Tambah Hutang - {selectedPetani?.nama}</h3>
+              <h3 className="modal-title">{form.tipe === 'debit' ? 'Tambah Hutang / Panjar' : 'Catat Pembayaran'}</h3>
               <button className="modal-close" onClick={() => setShowModal(false)}>x</button>
             </div>
-            <form onSubmit={handleTambahHutang}>
+            <form onSubmit={handleSave}>
               <div className="modal-body">
-                <div className="form-group">
-                  <label className="form-label form-label-required">Jenis</label>
-                  <select
-                    className="form-input form-select"
-                    value={form.jenis}
-                    onChange={(e) => setForm({ ...form, jenis: e.target.value })}
-                  >
-                    <option value="kasbon">Kasbon</option>
-                    <option value="panjar">Panjar / Uang Muka</option>
-                    <option value="pupuk">Bon Pupuk</option>
-                    <option value="lainnya">Lainnya</option>
-                  </select>
+                <div className="form-grid">
+                  <div className="form-group">
+                    <label className="form-label form-label-required">Tipe Pihak</label>
+                    <select
+                      className="form-input form-select"
+                      value={form.pihak_type}
+                      onChange={(e) => {
+                        const pihakType = e.target.value;
+                        setForm({
+                          ...form,
+                          pihak_type: pihakType,
+                          petani_id: '',
+                          master_mitra_id: '',
+                          sopir_id: '',
+                          pihak_nama_manual: '',
+                          sumber: getDefaultSource(pihakType, form.tipe),
+                        });
+                      }}
+                    >
+                      {PARTY_TYPES.map((type) => <option key={type.value} value={type.value}>{type.label}</option>)}
+                    </select>
+                  </div>
+
+                  <div className="form-group">
+                    <label className="form-label form-label-required">Tanggal</label>
+                    <input className="form-input" type="date" value={getTodayISO()} readOnly />
+                  </div>
                 </div>
+
+                {form.pihak_type === 'petani' && (
+                  <div className="form-group">
+                    <label className="form-label form-label-required">Petani</label>
+                    <select className="form-input form-select" value={form.petani_id} onChange={(e) => setForm({ ...form, petani_id: e.target.value })} required>
+                      <option value="">-- Pilih Petani --</option>
+                      {petaniList.map((item) => <option key={item.id} value={item.id}>{item.nama}</option>)}
+                    </select>
+                  </div>
+                )}
+
+                {form.pihak_type === 'mitra' && (
+                  <div className="form-group">
+                    <label className="form-label form-label-required">Mitra</label>
+                    <select className="form-input form-select" value={form.master_mitra_id} onChange={(e) => setForm({ ...form, master_mitra_id: e.target.value })} required>
+                      <option value="">-- Pilih Mitra --</option>
+                      {mitraList.map((item) => <option key={item.id} value={item.id}>{formatMitraLabel(item)}</option>)}
+                    </select>
+                  </div>
+                )}
+
+                {form.pihak_type === 'sopir' && (
+                  <div className="form-group">
+                    <label className="form-label form-label-required">Sopir</label>
+                    <select className="form-input form-select" value={form.sopir_id} onChange={(e) => setForm({ ...form, sopir_id: e.target.value })} required>
+                      <option value="">-- Pilih Sopir --</option>
+                      {sopirList.map((item) => (
+                        <option key={item.id} value={item.id}>{item.nama}{item.plat_nomor ? ` - ${item.plat_nomor}` : ''}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
+                {['karyawan', 'lainnya'].includes(form.pihak_type) && (
+                  <div className="form-group">
+                    <label className="form-label form-label-required">Nama Pihak</label>
+                    <input
+                      className="form-input"
+                      value={form.pihak_nama_manual}
+                      onChange={(e) => setForm({ ...form, pihak_nama_manual: e.target.value })}
+                      placeholder="Contoh: Irfandi / Karyawan panen / Bengkel"
+                      required
+                    />
+                  </div>
+                )}
+
+                <div className="form-grid">
+                  <div className="form-group">
+                    <label className="form-label form-label-required">Aksi</label>
+                    <select
+                      className="form-input form-select"
+                      value={form.tipe}
+                      onChange={(e) => {
+                        const tipe = e.target.value;
+                        setForm({ ...form, tipe, sumber: getDefaultSource(form.pihak_type, tipe) });
+                      }}
+                    >
+                      <option value="debit">Tambah hutang / uang keluar</option>
+                      <option value="kredit">Pembayaran / uang masuk</option>
+                    </select>
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label form-label-required">Jenis</label>
+                    <select className="form-input form-select" value={form.sumber} onChange={(e) => setForm({ ...form, sumber: e.target.value })}>
+                      {(form.tipe === 'debit' ? DEBIT_SOURCES : CREDIT_SOURCES).map((item) => (
+                        <option key={item.value} value={item.value}>{item.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
                 <div className="form-group">
                   <label className="form-label form-label-required">Jumlah (Rp)</label>
                   <input
@@ -387,7 +702,7 @@ export default function HutangPage() {
               </div>
               <div className="modal-footer">
                 <button type="button" className="btn btn-outline" onClick={() => setShowModal(false)}>Batal</button>
-                <button type="submit" className="btn btn-primary" disabled={saving}>{saving ? 'Menyimpan...' : 'Tambah Hutang'}</button>
+                <button type="submit" className="btn btn-primary" disabled={saving}>{saving ? 'Menyimpan...' : 'Simpan'}</button>
               </div>
             </form>
           </div>

@@ -43,17 +43,17 @@ export default function LabaRugiPage() {
     }
 
     const [
-      { data: pendapatanKas, error: pendapatanKasError },
+      { data: kasLedger, error: kasLedgerError },
       { data: pendapatanTransaksi, error: pendapatanTransaksiError },
       { data: pembelian, error: pembelianError },
       { data: biaya, error: biayaError },
     ] = await Promise.all([
       supabase
-        .from('pengiriman')
-        .select('sumber, total_pembayaran_pabrik, total_harga_pabrik, tanggal_bayar, status')
-        .in('status', ['dibayar', 'dibayar_pabrik', 'selesai'])
-        .gte('tanggal_bayar', startDate)
-        .lte('tanggal_bayar', endDate),
+        .from('kas_ledger')
+        .select('tipe, sumber, jumlah, status')
+        .neq('status', 'dibatalkan')
+        .gte('tanggal', startDate)
+        .lte('tanggal', endDate),
       supabase
         .from('pengiriman')
         .select('sumber, total_pembayaran_pabrik, total_harga_pabrik, tanggal, status')
@@ -69,19 +69,28 @@ export default function LabaRugiPage() {
       supabase
         .from('biaya_operasional')
         .select('kategori, jumlah')
+        .neq('status', 'dibatalkan')
         .gte('tanggal', startDate)
         .lte('tanggal', endDate),
     ]);
 
-    const firstError = pendapatanKasError || pendapatanTransaksiError || pembelianError || biayaError;
+    const firstError = kasLedgerError || pendapatanTransaksiError || pembelianError || biayaError;
     if (firstError) {
       setToast({ type: 'error', message: firstError.message });
     }
 
-    const totalPendapatanKas = (pendapatanKas || []).reduce((sum, row) => sum + getNilaiPabrik(row), 0);
+    const kasRows = kasLedger || [];
+    const totalPendapatanKas = kasRows
+      .filter((row) => row.sumber === 'pembayaran_pabrik' && ['masuk', 'transfer_masuk'].includes(row.tipe))
+      .reduce((sum, row) => sum + Number(row.jumlah || 0), 0);
+    const totalPembelianKas = kasRows
+      .filter((row) => row.sumber === 'pembelian_tbs' && ['keluar', 'transfer_keluar'].includes(row.tipe))
+      .reduce((sum, row) => sum + Number(row.jumlah || 0), 0);
+    const totalPembayaranMitraKas = kasRows
+      .filter((row) => row.sumber === 'pembayaran_mitra' && ['keluar', 'transfer_keluar'].includes(row.tipe))
+      .reduce((sum, row) => sum + Number(row.jumlah || 0), 0);
     const totalPendapatanTransaksi = (pendapatanTransaksi || []).reduce((sum, row) => sum + getNilaiPabrik(row), 0);
 
-    const totalPembelianKas = (pembelian || []).reduce((sum, row) => sum + Number(row.total_bayar_tunai || 0), 0);
     const totalPembelianTransaksi = (pembelian || []).reduce((sum, row) => sum + Number(row.total_harga || 0), 0);
 
     const biayaPerKategori = {};
@@ -90,7 +99,7 @@ export default function LabaRugiPage() {
     });
     const totalBiaya = (biaya || []).reduce((sum, row) => sum + Number(row.jumlah || 0), 0);
 
-    const totalPengeluaranKas = totalPembelianKas + totalBiaya;
+    const totalPengeluaranKas = totalPembelianKas + totalPembayaranMitraKas + totalBiaya;
     const totalPengeluaranTransaksi = totalPembelianTransaksi + totalBiaya;
     const labaKas = totalPendapatanKas - totalPengeluaranKas;
     const labaTransaksi = totalPendapatanTransaksi - totalPengeluaranTransaksi;
@@ -105,12 +114,13 @@ export default function LabaRugiPage() {
       totalPendapatanKas,
       totalPendapatanTransaksi,
       totalPembelianKas,
+      totalPembayaranMitraKas,
       totalPembelianTransaksi,
       totalPengeluaranKas,
       totalPengeluaranTransaksi,
       labaKas,
       labaTransaksi,
-      jumlahTxPendapatanKas: pendapatanKas?.length || 0,
+      jumlahTxPendapatanKas: kasRows.filter((row) => row.sumber === 'pembayaran_pabrik').length,
       jumlahTxPendapatanTransaksi: pendapatanTransaksi?.filter((row) => getNilaiPabrik(row) > 0).length || 0,
       jumlahTxPembelian: pembelian?.length || 0,
     });
@@ -262,6 +272,10 @@ export default function LabaRugiPage() {
               <div className="calc-result-row">
                 <span className="calc-result-label">Pembayaran tunai TBS petani</span>
                 <span className="calc-result-value text-danger">{formatRupiah(data.totalPembelianKas)}</span>
+              </div>
+              <div className="calc-result-row">
+                <span className="calc-result-label">Pembayaran mitra</span>
+                <span className="calc-result-value text-danger">{formatRupiah(data.totalPembayaranMitraKas)}</span>
               </div>
               {Object.entries(data.biayaPerKategori).map(([kategori, jumlah]) => (
                 <div key={kategori} className="calc-result-row">
