@@ -33,6 +33,7 @@ const menuSections = [
     title: 'Keuangan',
     items: [
       { href: '/owner/kwitansi-mitra', icon: <ReceiptText size={20} />, label: 'Kwitansi & Pembayaran Mitra' },
+      { href: '/owner/pembayaran-pabrik', icon: <BadgeDollarSign size={20} />, label: 'Pembayaran Pabrik', financeOnly: true },
       { href: '/keuangan/kas', icon: <BadgeDollarSign size={20} />, label: 'Buku Kas', financeOnly: true },
       { href: '/keuangan/hutang', icon: <Wallet size={20} />, label: 'Hutang & Panjar Semua Pihak', financeOnly: true },
       { href: '/keuangan/biaya', icon: <Calculator size={20} />, label: 'Biaya Operasional' },

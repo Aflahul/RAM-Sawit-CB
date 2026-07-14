@@ -827,6 +827,9 @@ export default function DashboardPage() {
             <QuickAction href="/admin/input-timbangan" icon={<Truck size={20} />} title="Pengiriman Mitra" description="Input armada mitra masuk" />
             <QuickAction href="/transaksi/beli" icon={<Store size={20} />} title="Pembelian Petani" description="Coming Soon - hanya lihat konteks" />
             <QuickAction href="/owner/kwitansi-mitra" icon={<ReceiptText size={20} />} title="Kwitansi Mitra" description="Cetak, bayar, kirim WA" />
+            {canSeeFinance && (
+              <QuickAction href="/owner/pembayaran-pabrik" icon={<BadgeDollarSign size={20} />} title="Pembayaran Pabrik" description="Catat uang masuk pabrik" />
+            )}
             <QuickAction href="/keuangan/hutang" icon={<Wallet size={20} />} title="Hutang & Panjar" description="Catat kasbon dan pelunasan" tone="gold" />
             <QuickAction href="/owner/laporan-mitra" icon={<FileText size={20} />} title="Laporan Mitra" description="Rekap dan status bayar mitra" tone="outline" />
           </div>

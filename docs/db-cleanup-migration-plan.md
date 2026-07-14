@@ -86,8 +86,8 @@ Tabel ini tidak otomatis legacy, tetapi harus diputuskan fungsinya sebelum dipak
 
 | Tabel | Kemungkinan Fungsi | Rekomendasi |
 | --- | --- | --- |
-| `pembayaran_pabrik` | Uang masuk dari pabrik. | Pertahankan konsepnya, tetapi desain ulang sebagai rekonsiliasi multi-transaksi. |
-| `pembayaran_pabrik_detail` | Alokasi pembayaran pabrik ke DO/transaksi. | Perlu disesuaikan ke `transaksi_mitra`, bukan `pengiriman` lama. |
+| `pembayaran_pabrik` | Uang masuk dari pabrik versi desain lama. | Archive/legacy setelah flow baru `pembayaran_pabrik_batch` aktif. |
+| `pembayaran_pabrik_detail` | Detail pembayaran pabrik versi desain lama. | Archive/legacy karena mengarah ke `pengiriman` lama, bukan catatan timbang mitra aktif. |
 | `settlement_mitra` | Settlement final mitra per DO/periode. | Masuk Fase 3, jangan dicampur dengan kwitansi MVP sebelum desain final. |
 | `pembayaran_mitra` | Pembayaran mitra versi awal. | Jika kwitansi sudah menjadi jalur utama, archive atau jadikan kompatibilitas sementara. |
 | `tarif_armada` | Tarif armada perusahaan. | Dormant. Pakai lagi hanya jika Fase 3 membutuhkan tarif armada internal yang tidak cukup direpresentasikan oleh mitra internal. |
@@ -102,9 +102,9 @@ Tabel baru sebaiknya dibuat setelah alur P1/P2 stabil. Prioritasnya:
 | P1 | `lampiran_transaksi` | Satu tabel bukti untuk tiket timbang, DO, kwitansi, transfer, dan foto dokumen. |
 | P2 | `tutup_hari` | Mengunci periode harian setelah kas, stok, hutang, biaya, dan transaksi dicek. |
 | P2 | `approval_request` | Approval untuk panjar/kasbon melewati limit, override harga/fee, dan koreksi besar. |
-| P2 | `pembayaran_pabrik_batch` | Pembayaran pabrik satu kali yang bisa dialokasikan ke banyak transaksi mitra. |
-| P2 | `pembayaran_pabrik_item` | Detail alokasi batch pembayaran pabrik ke transaksi mitra. |
-| P3 | `settlement_mitra_item` | Settlement final per transaksi/DO, termasuk selisih tonase, potongan armada, panjar, dan biaya bantuan. |
+| P2 | `pembayaran_pabrik_batch` | Catatan uang masuk dari pabrik berdasarkan tonase bersih versi pabrik. |
+| P2 | `pembayaran_pabrik_item` | Data timbang internal yang dicocokkan dengan satu pembayaran pabrik. |
+| P3 | `settlement_mitra_item` | Settlement final per transaksi/DO, termasuk beda tonase, panjar, biaya bantuan, dan koreksi yang disetujui. |
 | P3 | `data_migration_map` | Mapping ID lama ke ID baru saat migrasi dari legacy atau DB lama ke DB v2. |
 
 Catatan desain:

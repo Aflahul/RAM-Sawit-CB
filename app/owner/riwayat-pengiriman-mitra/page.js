@@ -15,7 +15,7 @@ import {
 import { paginateRows } from '@/lib/pagination-utils';
 import { getNextSort, sortRows } from '@/lib/sort-utils';
 import { supabase } from '@/lib/supabase';
-import { resolveEffectiveMitraFeeSnapshot } from '@/lib/transaksi-mitra-calculations';
+import { resolveEffectiveMitraFeeSnapshot, resolveTotalNilaiBersihMitra } from '@/lib/transaksi-mitra-calculations';
 import { formatDateDisplay, formatRupiah, formatWaktu, getTimestampMs, getTodayISO } from '@/lib/utils';
 import { Ban, Pencil, RefreshCw } from 'lucide-react';
 
@@ -60,6 +60,9 @@ function getRowSearchText(row) {
     row.sopir_aktual_nama,
     row.plat_nomor,
     row.status,
+    row.payment_status,
+    row.payment?.penerima_label,
+    row.payment?.metode_bayar,
     row.alasan_batal,
     row.alasan_edit,
   ].filter(Boolean).join(' ').toLowerCase();
@@ -75,7 +78,36 @@ const riwayatSortAccessors = {
   tonase: row => toNumber(row.tonase),
   harga_bersih: row => toNumber(row.harga_bersih_per_kg ?? row.harga_harian),
   nilai_bersih: row => toNumber(row.total_nilai_bersih ?? row.total_kotor),
+  pembayaran: row => row.payment_status || 'belum_dibayar',
 };
+
+function getPaymentBadge(row) {
+  if (row.payment_status === 'perlu_review') {
+    return {
+      className: 'badge-warning',
+      label: 'Perlu Cek',
+      detail: row.payment
+        ? `Kwitansi ${formatDateDisplay(row.payment.tanggal_bayar)} ${formatWaktu(row.payment.dibayar_at)}`
+        : 'Kwitansi perlu dicek',
+    };
+  }
+
+  if (row.payment_status === 'sudah_dibayar') {
+    return {
+      className: 'badge-success',
+      label: 'Sudah Dibayar',
+      detail: row.payment
+        ? `${formatDateDisplay(row.payment.tanggal_bayar)} ${formatWaktu(row.payment.dibayar_at)} via ${row.payment.metode_bayar || '-'}`
+        : 'Sudah masuk kwitansi',
+    };
+  }
+
+  return {
+    className: 'badge-neutral',
+    label: 'Belum Dibayar',
+    detail: 'Belum masuk kwitansi',
+  };
+}
 
 export default function RiwayatPengirimanMitraPage() {
   const [dateFrom, setDateFrom] = useState(getTodayISO);
@@ -152,7 +184,57 @@ export default function RiwayatPengirimanMitraPage() {
       setErrorMsg(error.message);
       setTransaksi([]);
     } else {
-      setTransaksi(trxData || []);
+      let rows = trxData || [];
+
+      if (rows.length > 0) {
+        const trxIds = rows.map(row => row.id);
+        const { data: paymentItems, error: paymentError } = await supabase
+          .from('pembayaran_mitra_kwitansi_item')
+          .select(`
+            transaksi_mitra_id,
+            tonase_snapshot,
+            total_nilai_bersih_snapshot,
+            pembayaran:pembayaran_mitra_kwitansi (
+              id, status, tanggal_bayar, dibayar_at, metode_bayar, nominal_dibayar,
+              kas_ledger_id, penerima_label, mode_pembayaran
+            )
+          `)
+          .in('transaksi_mitra_id', trxIds);
+
+        if (paymentError) {
+          console.error('Gagal memuat status bayar riwayat mitra:', paymentError);
+        }
+
+        const paymentMap = new Map((paymentItems || []).map((item) => {
+          const payment = Array.isArray(item.pembayaran) ? item.pembayaran[0] : item.pembayaran;
+          return [item.transaksi_mitra_id, { ...item, pembayaran: payment }];
+        }));
+
+        rows = rows.map((row) => {
+          const paymentItem = paymentMap.get(row.id);
+          const payment = paymentItem?.pembayaran;
+          const hasMissingCashLedger = payment?.status === 'dibayar'
+            && Number(payment?.nominal_dibayar || 0) > 0
+            && !payment?.kas_ledger_id;
+          const hasChangedAfterPayment = payment
+            && (
+              Math.round(Number(row.tonase || 0) * 100) !== Math.round(Number(paymentItem.tonase_snapshot || 0) * 100)
+              || Math.round(resolveTotalNilaiBersihMitra(row)) !== Math.round(Number(paymentItem.total_nilai_bersih_snapshot || 0))
+            );
+
+          return {
+            ...row,
+            payment,
+            payment_status: payment?.status === 'perlu_review' || hasChangedAfterPayment || hasMissingCashLedger
+              ? 'perlu_review'
+              : payment?.status === 'dibayar'
+                ? 'sudah_dibayar'
+                : 'belum_dibayar',
+          };
+        });
+      }
+
+      setTransaksi(rows);
       setMitras(mitraData || []);
       setSopirs(sopirData || []);
       setFeeHistories(feeHistoryError ? [] : feeHistoryData || []);
@@ -537,6 +619,7 @@ export default function RiwayatPengirimanMitraPage() {
               <SortableHeader label="Tanggal" sortKey="waktu" sort={sort} onSort={handleSort} />
               <SortableHeader label="Mitra" sortKey="sopir" sort={sort} onSort={handleSort} />
               <SortableHeader label="Status" sortKey="status" sort={sort} onSort={handleSort} />
+              <SortableHeader label="Pembayaran" sortKey="pembayaran" sort={sort} onSort={handleSort} />
               <SortableHeader label="Tonase" sortKey="tonase" sort={sort} onSort={handleSort} align="right" />
               <SortableHeader label="Harga/Kg" sortKey="harga_bersih" sort={sort} onSort={handleSort} align="right" />
               <SortableHeader label="Bersih" sortKey="nilai_bersih" sort={sort} onSort={handleSort} align="right" />
@@ -545,13 +628,16 @@ export default function RiwayatPengirimanMitraPage() {
           </thead>
           <tbody>
             {loading ? (
-              <tr><td colSpan={7} style={{ padding: 24, textAlign: 'center' }}>Memuat riwayat...</td></tr>
+              <tr><td colSpan={8} style={{ padding: 24, textAlign: 'center' }}>Memuat riwayat...</td></tr>
             ) : errorMsg ? (
-              <tr><td colSpan={7} style={{ padding: 24, textAlign: 'center', color: 'var(--color-danger)' }}>Gagal memuat riwayat: {errorMsg}</td></tr>
+              <tr><td colSpan={8} style={{ padding: 24, textAlign: 'center', color: 'var(--color-danger)' }}>Gagal memuat riwayat: {errorMsg}</td></tr>
             ) : sortedTransaksi.length === 0 ? (
-              <tr><td colSpan={7} style={{ padding: 24, textAlign: 'center', color: 'var(--text-tertiary)' }}>Tidak ada transaksi pada filter ini</td></tr>
+              <tr><td colSpan={8} style={{ padding: 24, textAlign: 'center', color: 'var(--text-tertiary)' }}>Tidak ada transaksi pada filter ini</td></tr>
             ) : (
-              paginatedTransaksi.rows.map(row => (
+              paginatedTransaksi.rows.map((row) => {
+                const paymentBadge = getPaymentBadge(row);
+
+                return (
                 <tr key={row.id} style={row.status === 'dibatalkan' ? { opacity: 0.62 } : undefined}>
                   <td>
                     <div style={{ fontWeight: 700 }}>{formatDateDisplay(row.tanggal)}</div>
@@ -572,6 +658,19 @@ export default function RiwayatPengirimanMitraPage() {
                     </span>
                     {row.alasan_batal && (
                       <div style={{ color: 'var(--text-tertiary)', fontSize: 12, marginTop: 4 }}>{row.alasan_batal}</div>
+                    )}
+                  </td>
+                  <td>
+                    <span className={`badge ${paymentBadge.className}`}>
+                      {paymentBadge.label}
+                    </span>
+                    <div style={{ color: 'var(--text-tertiary)', fontSize: 12, marginTop: 4 }}>
+                      {paymentBadge.detail}
+                    </div>
+                    {row.payment?.penerima_label && (
+                      <div style={{ color: 'var(--text-tertiary)', fontSize: 12, marginTop: 2 }}>
+                        {row.payment.penerima_label}
+                      </div>
                     )}
                   </td>
                   <td style={{ textAlign: 'right', fontWeight: 700 }}>{toNumber(row.tonase).toLocaleString('id-ID')}</td>
@@ -603,7 +702,8 @@ export default function RiwayatPengirimanMitraPage() {
                     </div>
                   </td>
                 </tr>
-              ))
+                );
+              })
             )}
           </tbody>
         </table>

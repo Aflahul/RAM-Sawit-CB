@@ -30,10 +30,50 @@ function isValidWhatsappNumber(phone) {
   return /^62\d{8,13}$/.test(phone);
 }
 
-function buildWhatsappCaption({ appName, mitra, dateFrom, dateTo, totalTonase, totalNilaiBersih, totalPanjar, sisaBersih }) {
+function toNumber(value) {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : 0;
+}
+
+function compactJoin(values, separator = ', ') {
+  return values.map(value => String(value || '').trim()).filter(Boolean).join(separator);
+}
+
+function getRowMitraId(row) {
+  return row?.master_mitra_id || row?.mitra_id || row?.master_mitra?.id || row?.transaksi?.mitra_id || '';
+}
+
+function getRowMitraLabel(row, selectedMitras = []) {
+  const mitraId = getRowMitraId(row);
+  const selectedMitra = selectedMitras.find(mitra => mitra.id === mitraId);
+  return row?.mitra_label || row?.mitra_label_snapshot || formatMitraLabel(row?.master_mitra) || formatMitraLabel(selectedMitra) || 'Mitra';
+}
+
+function mapPaymentItemToRow(item) {
+  const transaksi = item?.transaksi || {};
+
+  return {
+    id: item.transaksi_mitra_id,
+    master_mitra_id: item.master_mitra_id || transaksi.mitra_id || transaksi.master_mitra?.id,
+    mitra_label: item.mitra_label_snapshot || formatMitraLabel(transaksi.master_mitra),
+    tanggal: item.tanggal,
+    created_at: item.waktu_transaksi,
+    tonase: item.tonase_snapshot,
+    harga_bersih_per_kg: item.harga_bersih_per_kg_snapshot,
+    total_nilai_bersih: item.total_nilai_bersih_snapshot,
+    plat_nomor: item.plat_nomor,
+    sopir_aktual_nama: item.sopir_aktual_nama,
+    sopir_default_nama: '',
+    sopir_diganti_dari_default: false,
+    catatan_sopir: '',
+    transaksi,
+  };
+}
+
+function buildWhatsappCaption({ appName, recipientLabel, dateFrom, dateTo, totalTonase, totalNilaiBersih, totalPanjar, sisaBersih }) {
   return [
     `Kwitansi Pembayaran ${appName}`,
-    `Mitra: ${formatMitraLabel(mitra) || '-'}`,
+    `Mitra: ${recipientLabel || '-'}`,
     `Periode: ${formatDateRangeDisplay(dateFrom, dateTo)}`,
     `Total Tonase: ${formatNumber(totalTonase)} Kg`,
     `Total Nilai Bersih TBS: ${formatRupiah(totalNilaiBersih)}`,
@@ -47,20 +87,22 @@ function buildWhatsappCaption({ appName, mitra, dateFrom, dateTo, totalTonase, t
 export default function KwitansiMitraPage() {
   const { branding } = useBrandingSettings();
   const [mitras, setMitras] = useState([]);
-  const [selectedMitra, setSelectedMitra] = useState('');
+  const [mitraPickerValue, setMitraPickerValue] = useState('');
+  const [selectedMitraIds, setSelectedMitraIds] = useState([]);
   const [dateFrom, setDateFrom] = useState(getTodayISO);
   const [dateTo, setDateTo] = useState(getTodayISO);
-  
+
   const [transaksi, setTransaksi] = useState([]);
   const [panjars, setPanjars] = useState([]);
   const [payment, setPayment] = useState(null);
+  const [paymentHistoryCount, setPaymentHistoryCount] = useState(0);
   const [userRole, setUserRole] = useState(null);
   const [loading, setLoading] = useState(false);
   const [savingPayment, setSavingPayment] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [showWhatsappPreview, setShowWhatsappPreview] = useState(false);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
-  const [paymentForm, setPaymentForm] = useState({ metode_bayar: 'tunai', catatan: '' });
+  const [paymentForm, setPaymentForm] = useState({ metode_bayar: 'tunai', catatan: '', penerima_label: '' });
 
   const checkRole = useCallback(async () => {
     const { data: { session } } = await supabase.auth.getSession();
@@ -81,96 +123,158 @@ export default function KwitansiMitraPage() {
       .select('id, kode, alamat, nama, penanggung_jawab, no_hp, fee_per_kg')
       .eq('aktif', true)
       .order('kode');
+
     setMitras(data || []);
   }, []);
 
-  const loadKwitansiData = useCallback(async () => {
-    setLoading(true);
-    setErrorMsg('');
-    
-    // 1. Fetch Transaksi Masuk
-    const { data: trxData, error: trxError } = await supabase
-      .from('transaksi_mitra')
-      .select(`
-        id, tanggal, tonase, harga_harian, total_kotor,
-        created_at,
-        harga_pabrik_per_kg, fee_owner_per_kg, harga_bersih_per_kg,
-        total_fee_owner, total_nilai_bersih, plat_nomor,
-        sopir_default_nama, sopir_aktual_nama, sopir_diganti_dari_default, catatan_sopir,
-        master_mitra ( id, kode, alamat, nama, fee_per_kg )
-      `)
-      .eq('mitra_id', selectedMitra)
-      .gte('tanggal', dateFrom)
-      .lte('tanggal', dateTo)
-      .neq('status', 'dibatalkan')
-      .order('tanggal', { ascending: true })
-      .order('created_at', { ascending: true });
+  const selectedMitras = useMemo(() => {
+    const selectedSet = new Set(selectedMitraIds);
+    return selectedMitraIds
+      .map(id => mitras.find(mitra => mitra.id === id))
+      .filter(Boolean)
+      .filter(mitra => selectedSet.has(mitra.id));
+  }, [mitras, selectedMitraIds]);
 
-    if (trxError) {
-      console.error('Gagal memuat transaksi kwitansi mitra:', trxError);
+  const availableMitras = useMemo(() => {
+    const selectedSet = new Set(selectedMitraIds);
+    return mitras.filter(mitra => !selectedSet.has(mitra.id));
+  }, [mitras, selectedMitraIds]);
+
+  const isCombinedReceipt = selectedMitraIds.length > 1;
+  const selectedMitraData = selectedMitras[0] || null;
+  const selectedRecipientLabel = compactJoin(selectedMitras.map(formatMitraLabel));
+  const recipientLabel = payment?.penerima_label || paymentForm.penerima_label.trim() || selectedRecipientLabel;
+
+  const loadKwitansiData = useCallback(async () => {
+    const mitraIds = selectedMitraIds.filter(Boolean);
+
+    if (mitraIds.length === 0 || !dateFrom || !dateTo) {
       setTransaksi([]);
       setPanjars([]);
-      setErrorMsg(trxError.message);
-      setLoading(false);
-      return;
-    }
-      
-    setTransaksi(trxData || []);
-
-    // 2. Fetch panjar mitra yang masih menjadi potongan pembayaran
-    const { data: pjrData, error: panjarError } = await supabase
-      .from('panjar_mitra')
-      .select('*')
-      .eq('mitra_id', selectedMitra)
-      .eq('status', 'belum_lunas');
-
-    if (panjarError) {
-      console.error('Gagal memuat panjar mitra:', panjarError);
-      setPanjars([]);
-      setErrorMsg(panjarError.message);
-      setLoading(false);
-      return;
-    }
-      
-    setPanjars(pjrData || []);
-
-    const { data: paymentData, error: paymentError } = await supabase
-      .from('pembayaran_mitra_kwitansi')
-      .select(`
-        id, status, periode_dari, periode_sampai, tanggal_bayar, dibayar_at, metode_bayar,
-        total_tonase, total_nilai_bersih, total_panjar, nominal_dibayar, jumlah_transaksi,
-        catatan, created_at, rekening_kas_id, kas_ledger_id,
-        items:pembayaran_mitra_kwitansi_item (
-          transaksi_mitra_id, tanggal, waktu_transaksi, sopir_aktual_nama, plat_nomor,
-          tonase_snapshot, harga_bersih_per_kg_snapshot, total_nilai_bersih_snapshot, status_transaksi_snapshot,
-          transaksi:transaksi_mitra (
-            id, status, tonase, harga_harian, total_nilai_bersih, total_kotor,
-            harga_pabrik_per_kg, fee_owner_per_kg, harga_bersih_per_kg, total_fee_owner,
-            updated_at,
-            master_mitra ( fee_per_kg )
-          )
-        )
-      `)
-      .eq('master_mitra_id', selectedMitra)
-      .eq('periode_dari', dateFrom)
-      .eq('periode_sampai', dateTo)
-      .neq('status', 'dibatalkan')
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .maybeSingle();
-
-    if (paymentError) {
-      console.error('Gagal memuat status pembayaran kwitansi:', paymentError);
       setPayment(null);
-      setErrorMsg(paymentError.message);
+      setPaymentHistoryCount(0);
+      setErrorMsg('');
+      return;
+    }
+
+    if (dateTo < dateFrom) {
+      setTransaksi([]);
+      setPanjars([]);
+      setPayment(null);
+      setPaymentHistoryCount(0);
+      setErrorMsg('Tanggal akhir tidak boleh lebih awal dari tanggal awal.');
+      return;
+    }
+
+    setLoading(true);
+    setErrorMsg('');
+
+    const [
+      trxResult,
+      paidItemResult,
+      panjarResult,
+      paymentResult,
+    ] = await Promise.all([
+      supabase
+        .from('transaksi_mitra')
+        .select(`
+          id, mitra_id, tanggal, tonase, harga_harian, total_kotor,
+          created_at,
+          harga_pabrik_per_kg, fee_owner_per_kg, harga_bersih_per_kg,
+          total_fee_owner, total_nilai_bersih, plat_nomor,
+          sopir_default_nama, sopir_aktual_nama, sopir_diganti_dari_default, catatan_sopir,
+          master_mitra ( id, kode, alamat, nama, fee_per_kg )
+        `)
+        .in('mitra_id', mitraIds)
+        .gte('tanggal', dateFrom)
+        .lte('tanggal', dateTo)
+        .neq('status', 'dibatalkan')
+        .order('tanggal', { ascending: true })
+        .order('created_at', { ascending: true }),
+      supabase
+        .from('pembayaran_mitra_kwitansi_item')
+        .select(`
+          transaksi_mitra_id,
+          master_mitra_id,
+          pembayaran:pembayaran_id (
+            id, status, tanggal_bayar, dibayar_at, metode_bayar, nominal_dibayar, penerima_label, mode_pembayaran
+          )
+        `)
+        .in('master_mitra_id', mitraIds)
+        .gte('tanggal', dateFrom)
+        .lte('tanggal', dateTo),
+      supabase
+        .from('panjar_mitra')
+        .select('id, mitra_id, tanggal, jumlah, keterangan, created_at')
+        .in('mitra_id', mitraIds)
+        .eq('status', 'belum_lunas')
+        .order('tanggal', { ascending: true })
+        .order('created_at', { ascending: true }),
+      supabase
+        .from('pembayaran_mitra_kwitansi')
+        .select(`
+          id, master_mitra_id, status, periode_dari, periode_sampai, tanggal_bayar, dibayar_at, metode_bayar,
+          mode_pembayaran, mitra_ids, penerima_label, jumlah_mitra,
+          total_tonase, total_nilai_bersih, total_panjar, nominal_dibayar, jumlah_transaksi,
+          panjar_snapshot_json, transaksi_snapshot_json, catatan, created_at, rekening_kas_id, kas_ledger_id,
+          items:pembayaran_mitra_kwitansi_item (
+            transaksi_mitra_id, master_mitra_id, mitra_label_snapshot, tanggal, waktu_transaksi,
+            sopir_aktual_nama, plat_nomor, tonase_snapshot, harga_bersih_per_kg_snapshot,
+            total_nilai_bersih_snapshot, status_transaksi_snapshot,
+            transaksi:transaksi_mitra (
+              id, mitra_id, status, tonase, harga_harian, total_nilai_bersih, total_kotor,
+              harga_pabrik_per_kg, fee_owner_per_kg, harga_bersih_per_kg, total_fee_owner,
+              updated_at,
+              master_mitra ( id, kode, alamat, nama, fee_per_kg )
+            )
+          ),
+          mitras:pembayaran_mitra_kwitansi_mitra (
+            master_mitra_id, mitra_label_snapshot, total_tonase, total_nilai_bersih, jumlah_transaksi
+          )
+        `)
+        .eq('periode_dari', dateFrom)
+        .eq('periode_sampai', dateTo)
+        .neq('status', 'dibatalkan')
+        .order('created_at', { ascending: false })
+        .limit(50),
+    ]);
+
+    const error = trxResult.error || paidItemResult.error || panjarResult.error || paymentResult.error;
+
+    if (error) {
+      console.error('Gagal memuat kwitansi mitra:', error);
+      setTransaksi([]);
+      setPanjars([]);
+      setPayment(null);
+      setPaymentHistoryCount(0);
+      setErrorMsg(error.message);
       setLoading(false);
       return;
     }
 
-    setPayment(paymentData || null);
-    
+    const paidTransactionIds = new Set(
+      (paidItemResult.data || [])
+        .filter(item => item.pembayaran && item.pembayaran.status !== 'dibatalkan')
+        .map(item => item.transaksi_mitra_id)
+    );
+    const unpaidTransactions = (trxResult.data || []).filter(row => !paidTransactionIds.has(row.id));
+    const selectedSet = new Set(mitraIds);
+    const relatedPayments = (paymentResult.data || []).filter((row) => {
+      const paymentMitraIds = [
+        row.master_mitra_id,
+        ...(row.mitra_ids || []),
+        ...(row.items || []).map(item => item.master_mitra_id),
+        ...(row.mitras || []).map(item => item.master_mitra_id),
+      ].filter(Boolean);
+      return paymentMitraIds.some(id => selectedSet.has(id));
+    });
+
+    setTransaksi(unpaidTransactions);
+    setPanjars(panjarResult.data || []);
+    setPayment(relatedPayments[0] || null);
+    setPaymentHistoryCount(relatedPayments.length);
     setLoading(false);
-  }, [dateFrom, dateTo, selectedMitra]);
+  }, [dateFrom, dateTo, selectedMitraIds]);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -179,88 +283,138 @@ export default function KwitansiMitraPage() {
   }, [checkRole, loadMitras]);
 
   useEffect(() => {
-    if (selectedMitra && dateFrom && dateTo) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      loadKwitansiData();
-    } else {
-      setTransaksi([]);
-      setPanjars([]);
-      setPayment(null);
-      setErrorMsg('');
-    }
-  }, [selectedMitra, dateFrom, dateTo, loadKwitansiData]);
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    loadKwitansiData();
+  }, [loadKwitansiData]);
 
-  const handlePrint = () => {
-    window.print();
-  };
-
-  const totalTonase = transaksi.reduce((sum, t) => sum + Number(t.tonase), 0);
-  const totalNilaiBersih = transaksi.reduce((sum, t) => sum + resolveTotalNilaiBersihMitra(t), 0);
-  const totalPanjar = panjars.reduce((sum, p) => sum + Number(p.jumlah), 0);
-  const displayTotalTonase = payment ? Number(payment.total_tonase) : totalTonase;
-  const displayTotalNilaiBersih = payment ? Number(payment.total_nilai_bersih) : totalNilaiBersih;
-  const displayTotalPanjar = payment ? Number(payment.total_panjar) : totalPanjar;
-  const sisaBersih = payment ? Number(payment.nominal_dibayar) : totalNilaiBersih - totalPanjar;
-  const isPaymentCashMissing = Boolean(payment && Number(payment.nominal_dibayar || 0) > 0 && !payment.kas_ledger_id);
-  const selectedMitraData = mitras.find(m => m.id === selectedMitra);
-  const canRecordPayment = canRecordMitraPayment(userRole);
-  const displayPeriode = formatDateRangeDisplay(dateFrom, dateTo);
+  const isShowingPaidSnapshot = transaksi.length === 0 && Boolean(payment);
   const kwitansiRows = useMemo(() => {
-    if (!payment) return transaksi;
+    if (transaksi.length > 0) {
+      return transaksi.map(row => ({
+        ...row,
+        master_mitra_id: row.mitra_id,
+        mitra_label: formatMitraLabel(row.master_mitra),
+      }));
+    }
+
+    if (!payment) return [];
 
     return [...(payment.items || [])]
-      .sort((a, b) => `${a.tanggal || ''} ${a.waktu_transaksi || ''}`.localeCompare(`${b.tanggal || ''} ${b.waktu_transaksi || ''}`))
-      .map(item => ({
-        id: item.transaksi_mitra_id,
-        tanggal: item.tanggal,
-        created_at: item.waktu_transaksi,
-        tonase: item.tonase_snapshot,
-        harga_bersih_per_kg: item.harga_bersih_per_kg_snapshot,
-        total_nilai_bersih: item.total_nilai_bersih_snapshot,
-        plat_nomor: item.plat_nomor,
-        sopir_aktual_nama: item.sopir_aktual_nama,
-        sopir_default_nama: '',
-        sopir_diganti_dari_default: false,
-        catatan_sopir: '',
-      }));
+      .sort((a, b) => `${a.mitra_label_snapshot || ''} ${a.tanggal || ''} ${a.waktu_transaksi || ''}`
+        .localeCompare(`${b.mitra_label_snapshot || ''} ${b.tanggal || ''} ${b.waktu_transaksi || ''}`))
+      .map(mapPaymentItemToRow);
   }, [payment, transaksi]);
-  const paymentReview = useMemo(() => {
-    if (!payment) return { status: 'belum_dibayar', label: 'Belum Dibayar', reason: '' };
 
-    const paidItems = payment.items || [];
-    const paidIds = new Set(paidItems.map(item => item.transaksi_mitra_id));
-    const currentIds = new Set(transaksi.map(item => item.id));
-    const hasNewTransaction = transaksi.some(item => !paidIds.has(item.id));
-    const hasMissingPaidTransaction = paidItems.some(item => !currentIds.has(item.transaksi_mitra_id));
-    const hasChangedTransaction = paidItems.some((item) => {
-      const trx = item.transaksi;
-      if (!trx || trx.status === 'dibatalkan') return true;
+  const panjarRows = useMemo(() => {
+    if (!isShowingPaidSnapshot) {
+      return panjars.map(row => ({
+        ...row,
+        master_mitra_id: row.mitra_id,
+        mitra_label: getRowMitraLabel({ ...row, master_mitra_id: row.mitra_id }, selectedMitras),
+      }));
+    }
 
-      const currentTonase = Number(trx.tonase || 0);
-      const currentTotal = resolveTotalNilaiBersihMitra(trx);
-      return Math.round(currentTonase * 100) !== Math.round(Number(item.tonase_snapshot || 0) * 100)
-        || Math.round(currentTotal) !== Math.round(Number(item.total_nilai_bersih_snapshot || 0));
+    const snapshot = Array.isArray(payment?.panjar_snapshot_json) ? payment.panjar_snapshot_json : [];
+    return snapshot.map(row => ({
+      ...row,
+      master_mitra_id: row.master_mitra_id || row.mitra_id,
+      mitra_label: row.mitra_label,
+    }));
+  }, [isShowingPaidSnapshot, panjars, payment, selectedMitras]);
+
+  const kwitansiGroups = useMemo(() => {
+    const groups = new Map();
+    const selectedOrder = new Map(selectedMitraIds.map((id, index) => [id, index]));
+
+    function ensureGroup(mitraId, label) {
+      const safeId = mitraId || `unknown-${label || groups.size}`;
+      if (!groups.has(safeId)) {
+        groups.set(safeId, {
+          mitraId: safeId,
+          label: label || 'Mitra',
+          rows: [],
+          panjars: [],
+          totalTonase: 0,
+          totalNilaiBersih: 0,
+          totalPanjar: 0,
+        });
+      }
+
+      return groups.get(safeId);
+    }
+
+    kwitansiRows.forEach((row) => {
+      const mitraId = getRowMitraId(row);
+      const group = ensureGroup(mitraId, getRowMitraLabel(row, selectedMitras));
+      const totalNilaiBersih = resolveTotalNilaiBersihMitra(row);
+
+      group.rows.push(row);
+      group.totalTonase += toNumber(row.tonase);
+      group.totalNilaiBersih += totalNilaiBersih;
     });
 
-    if (payment.status === 'perlu_review' || hasNewTransaction || hasMissingPaidTransaction || hasChangedTransaction) {
+    panjarRows.forEach((row) => {
+      const mitraId = getRowMitraId(row);
+      const group = ensureGroup(mitraId, getRowMitraLabel(row, selectedMitras));
+      const jumlah = toNumber(row.jumlah);
+
+      group.panjars.push(row);
+      group.totalPanjar += jumlah;
+    });
+
+    return [...groups.values()]
+      .filter(group => group.rows.length > 0 || group.panjars.length > 0)
+      .sort((a, b) => {
+        const aOrder = selectedOrder.has(a.mitraId) ? selectedOrder.get(a.mitraId) : 999;
+        const bOrder = selectedOrder.has(b.mitraId) ? selectedOrder.get(b.mitraId) : 999;
+        if (aOrder !== bOrder) return aOrder - bOrder;
+        return a.label.localeCompare(b.label);
+      });
+  }, [kwitansiRows, panjarRows, selectedMitraIds, selectedMitras]);
+
+  const currentTotalTonase = kwitansiGroups.reduce((sum, group) => sum + group.totalTonase, 0);
+  const currentTotalNilaiBersih = kwitansiGroups.reduce((sum, group) => sum + group.totalNilaiBersih, 0);
+  const currentTotalPanjar = kwitansiGroups.reduce((sum, group) => sum + group.totalPanjar, 0);
+  const displayTotalTonase = isShowingPaidSnapshot ? toNumber(payment?.total_tonase) : currentTotalTonase;
+  const displayTotalNilaiBersih = isShowingPaidSnapshot ? toNumber(payment?.total_nilai_bersih) : currentTotalNilaiBersih;
+  const displayTotalPanjar = isShowingPaidSnapshot ? toNumber(payment?.total_panjar) : currentTotalPanjar;
+  const sisaBersih = isShowingPaidSnapshot ? toNumber(payment?.nominal_dibayar) : displayTotalNilaiBersih - displayTotalPanjar;
+  const isPaymentCashMissing = Boolean(isShowingPaidSnapshot && toNumber(payment?.nominal_dibayar) > 0 && !payment?.kas_ledger_id);
+  const canRecordPayment = canRecordMitraPayment(userRole);
+  const displayPeriode = formatDateRangeDisplay(dateFrom, dateTo);
+  const hasNewUnpaidAfterPayment = Boolean(payment && transaksi.length > 0);
+
+  const paymentReview = useMemo(() => {
+    if (hasNewUnpaidAfterPayment) {
       return {
         status: 'perlu_review',
-        label: 'Perlu Review',
-        reason: hasNewTransaction
-          ? 'Ada transaksi baru pada periode ini setelah kwitansi dibayar.'
-          : hasMissingPaidTransaction
-            ? 'Ada transaksi yang dulu dibayar tetapi sekarang tidak aktif/berubah filter.'
-            : 'Ada transaksi yang berubah setelah kwitansi dibayar.',
+        label: 'Ada Kwitansi Sebelumnya',
+        reason: 'Data di bawah hanya transaksi baru yang belum dibayar. Transaksi yang sudah masuk kwitansi lama tidak ikut lagi.',
       };
     }
 
-    return { status: 'dibayar', label: 'Sudah Dibayar', reason: '' };
-  }, [payment, transaksi]);
+    if (payment) {
+      return {
+        status: payment.status === 'perlu_review' ? 'perlu_review' : 'dibayar',
+        label: payment.status === 'perlu_review' ? 'Perlu Review' : 'Sudah Dibayar',
+        reason: payment.status === 'perlu_review' ? 'Kwitansi lama perlu dicek ulang.' : '',
+      };
+    }
+
+    return {
+      status: 'belum_dibayar',
+      label: transaksi.length > 0 ? 'Belum Dibayar' : 'Belum Ada Transaksi Baru',
+      reason: transaksi.length > 0
+        ? 'Klik Tandai Dibayar setelah owner benar-benar membayar mitra.'
+        : 'Pilih periode lain atau tunggu transaksi baru masuk.',
+    };
+  }, [hasNewUnpaidAfterPayment, payment, transaksi.length]);
+
   const whatsappNumber = normalizeWhatsappNumber(selectedMitraData?.no_hp);
   const whatsappNumberValid = isValidWhatsappNumber(whatsappNumber);
   const whatsappCaption = buildWhatsappCaption({
     appName: branding.appName,
-    mitra: selectedMitraData,
+    recipientLabel,
     dateFrom,
     dateTo,
     totalTonase: displayTotalTonase,
@@ -268,12 +422,29 @@ export default function KwitansiMitraPage() {
     totalPanjar: displayTotalPanjar,
     sisaBersih,
   });
-  const canSendWhatsapp = Boolean(selectedMitra && kwitansiRows.length > 0 && whatsappNumberValid);
-  const whatsappWarning = selectedMitra && kwitansiRows.length > 0 && !whatsappNumberValid
-    ? selectedMitraData?.no_hp
-      ? 'Nomor WA penanggung jawab mitra belum valid. Perbarui nomor di menu Mitra.'
-      : 'Nomor WA penanggung jawab mitra belum diisi. Lengkapi nomor di menu Mitra.'
-    : '';
+  const canSendWhatsapp = Boolean(selectedMitraIds.length === 1 && kwitansiRows.length > 0 && whatsappNumberValid);
+  const whatsappWarning = selectedMitraIds.length > 1 && kwitansiRows.length > 0
+    ? 'WhatsApp otomatis hanya untuk satu mitra. Untuk kwitansi gabungan, cetak atau simpan PDF lalu kirim manual.'
+    : selectedMitraIds.length === 1 && kwitansiRows.length > 0 && !whatsappNumberValid
+      ? selectedMitraData?.no_hp
+        ? 'Nomor WA penanggung jawab mitra belum valid. Perbarui nomor di menu Mitra.'
+        : 'Nomor WA penanggung jawab mitra belum diisi. Lengkapi nomor di menu Mitra.'
+      : '';
+
+  function addSelectedMitra(mitraId) {
+    if (!mitraId) return;
+    setSelectedMitraIds(current => current.includes(mitraId) ? current : [...current, mitraId]);
+    setMitraPickerValue('');
+  }
+
+  function removeSelectedMitra(mitraId) {
+    setSelectedMitraIds(current => current.filter(id => id !== mitraId));
+    setPaymentForm(current => ({ ...current, penerima_label: '' }));
+  }
+
+  const handlePrint = () => {
+    window.print();
+  };
 
   const handleOpenWhatsappPreview = () => {
     if (!canSendWhatsapp) return;
@@ -288,11 +459,17 @@ export default function KwitansiMitraPage() {
 
   const handleMarkPaid = async (event) => {
     event.preventDefault();
-    if (!selectedMitra || savingPayment || payment) return;
+    if (selectedMitraIds.length === 0 || transaksi.length === 0 || savingPayment) return;
+
+    const finalRecipientLabel = paymentForm.penerima_label.trim() || selectedRecipientLabel;
 
     setSavingPayment(true);
+    setErrorMsg('');
+
     const { error } = await supabase.rpc('create_pembayaran_mitra_kwitansi', {
-      p_master_mitra_id: selectedMitra,
+      p_master_mitra_id: selectedMitraIds[0],
+      p_master_mitra_ids: selectedMitraIds,
+      p_penerima_label: finalRecipientLabel,
       p_periode_dari: dateFrom,
       p_periode_sampai: dateTo,
       p_metode_bayar: paymentForm.metode_bayar,
@@ -300,13 +477,13 @@ export default function KwitansiMitraPage() {
     });
 
     if (error) {
-      alert(`Gagal menandai dibayar: ${error.message}`);
+      setErrorMsg(`Gagal menandai dibayar: ${error.message}`);
       setSavingPayment(false);
       return;
     }
 
     setShowPaymentModal(false);
-    setPaymentForm({ metode_bayar: 'tunai', catatan: '' });
+    setPaymentForm({ metode_bayar: 'tunai', catatan: '', penerima_label: '' });
     await loadKwitansiData();
     setSavingPayment(false);
   };
@@ -315,14 +492,14 @@ export default function KwitansiMitraPage() {
     <AppShell title="Kwitansi Mitra" subtitle="Dashboard & Cetak Invoice Mitra">
       <div className="page-header no-print">
         <div>
-          <p className="page-description">Rekapitulasi otomatis armada dan panjar</p>
+          <p className="page-description">Pilih satu atau beberapa mitra, lalu sistem hanya mengambil transaksi yang belum dibayar.</p>
         </div>
         <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
           {canRecordPayment && (
             <button
               className="btn btn-outline"
               onClick={() => setShowPaymentModal(true)}
-              disabled={!selectedMitra || transaksi.length === 0 || Boolean(payment) || savingPayment}
+              disabled={selectedMitraIds.length === 0 || transaksi.length === 0 || savingPayment}
             >
               <CreditCard size={16} />
               Tandai Dibayar
@@ -332,108 +509,120 @@ export default function KwitansiMitraPage() {
             <MessageCircle size={16} />
             Kirim WhatsApp
           </button>
-          <button className="btn btn-primary" onClick={handlePrint} disabled={!selectedMitra || kwitansiRows.length === 0}>
+          <button className="btn btn-primary" onClick={handlePrint} disabled={selectedMitraIds.length === 0 || kwitansiRows.length === 0}>
             <Printer size={16} />
             Cetak PDF / Struk
           </button>
         </div>
       </div>
 
-      <div className="toolbar no-print card" style={{ padding: 'var(--space-md)', marginBottom: 'var(--space-lg)', display: 'flex', gap: 16, flexWrap: 'wrap' }}>
-        <div style={{ flex: 1, minWidth: 200 }}>
-          <label style={{ display: 'block', fontSize: 14, fontWeight: 500, marginBottom: 8 }}>Nama Mitra</label>
+      <div className="toolbar no-print card" style={{ padding: 'var(--space-md)', marginBottom: 'var(--space-lg)', display: 'grid', gap: 16, gridTemplateColumns: 'minmax(260px, 1fr) auto auto' }}>
+        <div style={{ minWidth: 0 }}>
+          <label style={{ display: 'block', fontSize: 14, fontWeight: 600, marginBottom: 8 }}>Mitra untuk Kwitansi</label>
           <SearchableCombobox
-            value={selectedMitra}
-            options={mitras}
-            onChange={setSelectedMitra}
+            value={mitraPickerValue}
+            options={availableMitras}
+            onChange={addSelectedMitra}
             getOptionLabel={formatMitraLabel}
             getSearchText={getMitraSearchText}
-            placeholder="Cari kode, alamat, atau nama mitra..."
-            emptyLabel="Mitra tidak ditemukan"
+            placeholder="Cari dan tambah mitra..."
+            emptyLabel="Semua mitra sudah dipilih"
           />
+          {selectedMitras.length > 0 && (
+            <div className="kwitansi-selected-mitras">
+              {selectedMitras.map(mitra => (
+                <span key={mitra.id} className="kwitansi-mitra-chip">
+                  {formatMitraLabel(mitra)}
+                  <button type="button" onClick={() => removeSelectedMitra(mitra.id)} aria-label={`Hapus ${formatMitraLabel(mitra)}`}>
+                    <X size={14} />
+                  </button>
+                </span>
+              ))}
+              <button type="button" className="btn btn-ghost btn-sm" onClick={() => setSelectedMitraIds([])}>
+                Bersihkan
+              </button>
+            </div>
+          )}
         </div>
         <div>
-          <label style={{ display: 'block', fontSize: 14, fontWeight: 500, marginBottom: 8 }}>Dari Tanggal</label>
-          <input type="date" className="form-input" value={dateFrom} onChange={e => setDateFrom(e.target.value)} />
+          <label style={{ display: 'block', fontSize: 14, fontWeight: 600, marginBottom: 8 }}>Dari Tanggal</label>
+          <input type="date" className="form-input" value={dateFrom} onChange={event => setDateFrom(event.target.value)} />
         </div>
         <div>
-          <label style={{ display: 'block', fontSize: 14, fontWeight: 500, marginBottom: 8 }}>Sampai Tanggal</label>
-          <input type="date" className="form-input" value={dateTo} onChange={e => setDateTo(e.target.value)} />
+          <label style={{ display: 'block', fontSize: 14, fontWeight: 600, marginBottom: 8 }}>Sampai Tanggal</label>
+          <input type="date" className="form-input" value={dateTo} onChange={event => setDateTo(event.target.value)} />
         </div>
       </div>
 
       {loading && <div style={{ textAlign: 'center', padding: 40 }}>Memuat data kwitansi...</div>}
 
       {!loading && errorMsg && (
-        <div className="card" style={{ padding: 24, color: 'var(--color-danger)', textAlign: 'center' }}>
-          Gagal memuat kwitansi: {errorMsg}
+        <div className="alert alert-warning no-print">
+          <AlertTriangle size={18} />
+          <div>{errorMsg}</div>
         </div>
       )}
 
       {!loading && !errorMsg && whatsappWarning && (
         <div className="alert alert-warning no-print">
           <div>
-            <strong>WhatsApp belum bisa digunakan.</strong>
+            <strong>Pengiriman WhatsApp perlu manual.</strong>
             <div style={{ marginTop: 4 }}>{whatsappWarning}</div>
           </div>
         </div>
       )}
 
-      {!loading && !errorMsg && selectedMitra && (
+      {!loading && !errorMsg && selectedMitraIds.length > 0 && (
         <div className={`alert no-print ${paymentReview.status === 'dibayar' ? 'alert-success' : paymentReview.status === 'perlu_review' ? 'alert-warning' : 'alert-info'}`}>
           {paymentReview.status === 'dibayar' ? <CheckCircle2 size={18} /> : paymentReview.status === 'perlu_review' ? <AlertTriangle size={18} /> : <CreditCard size={18} />}
           <div>
             <strong>Status Pembayaran: {paymentReview.label}</strong>
             {payment ? (
               <div style={{ marginTop: 4 }}>
-                Dibayar {formatDateDisplay(payment.tanggal_bayar)} {formatWaktu(payment.dibayar_at)} via {payment.metode_bayar}
+                Kwitansi terakhir dibayar {formatDateDisplay(payment.tanggal_bayar)} {formatWaktu(payment.dibayar_at)} via {payment.metode_bayar}
                 {' '}sebesar <span className="table-mono">{formatRupiah(payment.nominal_dibayar)}</span>.
+                {paymentHistoryCount > 1 ? ` Ada ${paymentHistoryCount} kwitansi pada periode ini.` : ''}
                 {paymentReview.reason ? ` ${paymentReview.reason}` : ''}
               </div>
             ) : (
-              <div style={{ marginTop: 4 }}>
-                Setelah owner membayar kwitansi ini, klik <strong>Tandai Dibayar</strong> agar sistem mencatat mitra/periode ini sudah dibayarkan.
-              </div>
+              <div style={{ marginTop: 4 }}>{paymentReview.reason}</div>
             )}
           </div>
         </div>
       )}
 
-      {!loading && !errorMsg && selectedMitra && isPaymentCashMissing && (
+      {!loading && !errorMsg && selectedMitraIds.length > 0 && isPaymentCashMissing && (
         <div className="alert alert-warning no-print">
           <AlertTriangle size={18} />
           <div>
             <strong>Kas keluar belum tercatat di Buku Kas.</strong>
             <div style={{ marginTop: 4 }}>
-              Kwitansi ini sudah berstatus dibayar, tetapi belum terhubung ke mutasi kas. Jalankan migration backfill agar pembayaran mitra muncul di Buku Kas dan Laba/Rugi.
+              Kwitansi ini sudah dibayar, tetapi belum terhubung ke mutasi kas. Jalankan migration backfill agar pembayaran muncul di Buku Kas dan Laba/Rugi.
             </div>
           </div>
         </div>
       )}
 
-      {!loading && !errorMsg && selectedMitra && (
+      {!loading && !errorMsg && selectedMitraIds.length > 0 && (
         <div className="print-area card kwitansi-preview" style={{ padding: 'var(--space-xl)' }}>
-          <div className="kwitansi-doc-header" style={{ borderBottom: '2px dashed var(--border-default)', paddingBottom: 20, marginBottom: 20, display: 'flex', alignItems: 'center', gap: 16 }}>
+          <div className="kwitansi-doc-header">
             <BrandMark branding={branding} mode="print" size={120} className="kwitansi-logo" />
-            <div className="kwitansi-header-info" style={{ display: 'flex', alignItems: 'flex-start', gap: 24, flex: '1 1 auto', minWidth: 0 }}>
+            <div className="kwitansi-header-info">
               <div className="kwitansi-title-block">
-                <h1 className="kwitansi-title" style={{ margin: 0, fontSize: 22, color: 'var(--text-primary)' }}>
-                  <span className="kwitansi-title-line">KWITANSI</span>
-                  <span className="kwitansi-title-line">PEMBAYARAN TBS</span>
+                <h1 className="kwitansi-title">
+                  <span>KWITANSI</span>
+                  <span>PEMBAYARAN TBS</span>
                 </h1>
-                <p className="kwitansi-brand-name" style={{ margin: '6px 0 0', color: 'var(--text-secondary)' }}>{branding.appName}</p>
+                <p className="kwitansi-brand-name">{branding.appName}</p>
               </div>
-              <div className="kwitansi-recipient" style={{ textAlign: 'left', marginLeft: 'auto' }}>
-                <div style={{ fontSize: 14, color: 'var(--text-secondary)' }}>Mitra:</div>
-                <h2 style={{ margin: '4px 0 0', fontSize: 20, color: 'var(--text-primary)' }}>{selectedMitraData?.nama}</h2>
-                <div style={{ fontSize: 13, color: 'var(--text-tertiary)', marginTop: 4 }}>
-                  {formatMitraLabel(selectedMitraData)}
-                </div>
+              <div className="kwitansi-recipient">
+                <div style={{ fontSize: 14, color: 'var(--text-secondary)' }}>{isCombinedReceipt ? 'Penerima Gabungan:' : 'Mitra:'}</div>
+                <h2>{recipientLabel || '-'}</h2>
                 <div style={{ fontSize: 14, color: 'var(--text-secondary)', marginTop: 4 }}>
                   Periode: {displayPeriode}
                 </div>
                 {payment && (
-                  <div style={{ marginTop: 10, display: 'inline-flex', padding: '6px 10px', border: '1px solid #111', borderRadius: 6, fontWeight: 800, color: '#111' }}>
+                  <div className="kwitansi-paid-stamp">
                     {paymentReview.status === 'perlu_review' ? 'PERLU REVIEW' : 'SUDAH DIBAYAR'}
                   </div>
                 )}
@@ -441,276 +630,396 @@ export default function KwitansiMitraPage() {
             </div>
           </div>
 
-          <h3 style={{ fontSize: 16, marginBottom: 16 }}>Rincian Armada Masuk:</h3>
-          <div className="kwitansi-table-wrap">
-            <table className="kwitansi-detail-table" style={{ width: '100%', borderCollapse: 'collapse', marginBottom: 24 }}>
-            <thead>
-              <tr style={{ background: 'var(--bg-surface)', borderBottom: '2px solid var(--border-default)' }}>
-                <th style={{ padding: 12, textAlign: 'left' }}>Tanggal</th>
-                <th style={{ padding: 12, textAlign: 'left' }}>Armada</th>
-                <th style={{ padding: 12, textAlign: 'right' }}>Tonase</th>
-                <th style={{ padding: 12, textAlign: 'right' }}>Harga/Kg</th>
-                <th style={{ padding: 12, textAlign: 'right' }}>Bersih</th>
-              </tr>
-            </thead>
-            <tbody>
-              {kwitansiRows.length === 0 ? (
-                <tr><td colSpan={5} style={{ padding: 24, textAlign: 'center', color: 'var(--text-tertiary)' }}>Tidak ada transaksi pada periode ini</td></tr>
-              ) : (
-                kwitansiRows.map((t) => (
-                  <tr key={t.id} style={{ borderBottom: '1px solid var(--border-default)' }}>
-                    <td style={{ padding: 12 }}>
-                      <div style={{ fontWeight: 700 }}>{formatDateDisplay(t.tanggal)}</div>
-                    </td>
-                    <td style={{ padding: 12 }}>
-                      <div style={{ fontWeight: 600 }}>{t.sopir_aktual_nama || t.sopir_default_nama || '-'}</div>
-                      <div className="table-mono" style={{ marginTop: 4, fontSize: 12, color: 'var(--text-tertiary)' }}>{t.plat_nomor || '-'}</div>
-                      {t.sopir_diganti_dari_default && (
-                        <div style={{ fontSize: 12, color: 'var(--text-tertiary)', marginTop: 4 }}>
-                          Pengganti dari {t.sopir_default_nama || '-'}
-                          {t.catatan_sopir ? ` - ${t.catatan_sopir}` : ''}
-                        </div>
-                      )}
-                    </td>
-                    <td style={{ padding: 12, textAlign: 'right' }}>{Number(t.tonase).toLocaleString('id-ID')}</td>
-                    <td style={{ padding: 12, textAlign: 'right' }} className="table-mono">{formatRupiah(resolveHargaBersihPerKg(t))}</td>
-                    <td style={{ padding: 12, textAlign: 'right' }} className="table-mono">{formatRupiah(resolveTotalNilaiBersihMitra(t))}</td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-            <tfoot>
-              <tr style={{ background: 'var(--bg-surface)', fontWeight: 'bold' }}>
-                <td colSpan={2} style={{ padding: 12, textAlign: 'right' }}>TOTAL NILAI BERSIH TBS:</td>
-                <td style={{ padding: 12, textAlign: 'right' }}>{displayTotalTonase.toLocaleString('id-ID')} Kg</td>
-                <td style={{ padding: 12, textAlign: 'right' }}></td>
-                <td style={{ padding: 12, textAlign: 'right', color: 'var(--text-primary)', fontSize: 16 }}>{formatRupiah(displayTotalNilaiBersih)}</td>
-              </tr>
-            </tfoot>
-            </table>
-          </div>
-
-          <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 24 }}>
-            <div className="kwitansi-total-box" style={{ width: 400, background: 'var(--bg-surface)', padding: 20, borderRadius: 8, border: '1px solid var(--border-default)' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 12 }}>
-                <span style={{ color: 'var(--text-secondary)' }}>Total Nilai Bersih TBS:</span>
-                <span style={{ fontWeight: 600 }} className="table-mono">{formatRupiah(displayTotalNilaiBersih)}</span>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 12, color: '#ef4444' }}>
-                <span>Potongan Panjar Mitra:</span>
-                <span style={{ fontWeight: 600 }} className="table-mono">- {formatRupiah(displayTotalPanjar)}</span>
-              </div>
-              <div className="kwitansi-total-divider" style={{ borderTop: '2px solid var(--border-default)', margin: '16px 0' }}></div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ fontSize: 18, fontWeight: 'bold' }}>SISA DIBAYAR KE MITRA:</span>
-                <span style={{ fontSize: 24, fontWeight: 'bold', color: 'var(--color-success)' }} className="table-mono">
-                  {formatRupiah(sisaBersih)}
-                </span>
-              </div>
+          {kwitansiRows.length === 0 ? (
+            <div className="kwitansi-empty">
+              Tidak ada transaksi baru yang belum dibayar pada periode ini.
             </div>
-          </div>
+          ) : (
+            <>
+              {kwitansiGroups.map((group) => (
+                <section key={group.mitraId} className="kwitansi-group">
+                  <div className="kwitansi-group-header">
+                    <div>
+                      <h3>{group.label}</h3>
+                      <p>{group.rows.length} transaksi, total tonase {formatNumber(group.totalTonase)} Kg</p>
+                    </div>
+                    <div className="kwitansi-group-subtotal">
+                      <span>Subtotal mitra</span>
+                      <strong>{formatRupiah(group.totalNilaiBersih - group.totalPanjar)}</strong>
+                    </div>
+                  </div>
+
+                  <div className="kwitansi-table-wrap">
+                    <table className="kwitansi-detail-table">
+                      <thead>
+                        <tr>
+                          <th>Tanggal</th>
+                          <th>Armada</th>
+                          <th style={{ textAlign: 'right' }}>Tonase</th>
+                          <th style={{ textAlign: 'right' }}>Harga/Kg</th>
+                          <th style={{ textAlign: 'right' }}>Bersih</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {group.rows.map((row) => (
+                          <tr key={row.id}>
+                            <td>
+                              <div style={{ fontWeight: 700 }}>{formatDateDisplay(row.tanggal)}</div>
+                              <div className="table-mono" style={{ marginTop: 4, fontSize: 12, color: 'var(--text-tertiary)' }}>{formatWaktu(row.created_at)}</div>
+                            </td>
+                            <td>
+                              <div style={{ fontWeight: 600 }}>{row.sopir_aktual_nama || row.sopir_default_nama || '-'}</div>
+                              <div className="table-mono" style={{ marginTop: 4, fontSize: 12, color: 'var(--text-tertiary)' }}>{row.plat_nomor || '-'}</div>
+                              {row.sopir_diganti_dari_default && (
+                                <div style={{ fontSize: 12, color: 'var(--text-tertiary)', marginTop: 4 }}>
+                                  Pengganti dari {row.sopir_default_nama || '-'}
+                                  {row.catatan_sopir ? ` - ${row.catatan_sopir}` : ''}
+                                </div>
+                              )}
+                            </td>
+                            <td style={{ textAlign: 'right' }}>{formatNumber(row.tonase)}</td>
+                            <td style={{ textAlign: 'right' }} className="table-mono">{formatRupiah(resolveHargaBersihPerKg(row))}</td>
+                            <td style={{ textAlign: 'right' }} className="table-mono">{formatRupiah(resolveTotalNilaiBersihMitra(row))}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                      <tfoot>
+                        <tr>
+                          <td colSpan={2} style={{ textAlign: 'right' }}>Subtotal nilai bersih:</td>
+                          <td style={{ textAlign: 'right' }}>{formatNumber(group.totalTonase)} Kg</td>
+                          <td></td>
+                          <td style={{ textAlign: 'right' }} className="table-mono">{formatRupiah(group.totalNilaiBersih)}</td>
+                        </tr>
+                      </tfoot>
+                    </table>
+                  </div>
+
+                  <div className="kwitansi-group-breakdown">
+                    <div>
+                      <span>Nilai bersih mitra</span>
+                      <strong>{formatRupiah(group.totalNilaiBersih)}</strong>
+                    </div>
+                    <div>
+                      <span>Panjar mitra ini</span>
+                      <strong className="danger-text">- {formatRupiah(group.totalPanjar)}</strong>
+                    </div>
+                    <div>
+                      <span>Dibayar untuk mitra ini</span>
+                      <strong className="success-text">{formatRupiah(group.totalNilaiBersih - group.totalPanjar)}</strong>
+                    </div>
+                  </div>
+
+                  {group.panjars.length > 0 && (
+                    <div className="kwitansi-panjar-list">
+                      <strong>Rincian panjar:</strong>
+                      {group.panjars.map(panjar => (
+                        <span key={panjar.id}>
+                          {formatDateDisplay(panjar.tanggal)} - {formatRupiah(panjar.jumlah)}
+                          {panjar.keterangan ? ` (${panjar.keterangan})` : ''}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </section>
+              ))}
+
+              <div className="kwitansi-total-row">
+                <div className="kwitansi-total-box">
+                  <div>
+                    <span>Total Nilai Bersih TBS</span>
+                    <strong className="table-mono">{formatRupiah(displayTotalNilaiBersih)}</strong>
+                  </div>
+                  <div>
+                    <span>Potongan Panjar Mitra</span>
+                    <strong className="table-mono danger-text">- {formatRupiah(displayTotalPanjar)}</strong>
+                  </div>
+                  <div className="kwitansi-total-divider"></div>
+                  <div className="kwitansi-final-total">
+                    <span>Sisa Dibayar ke Mitra</span>
+                    <strong className="table-mono">{formatRupiah(sisaBersih)}</strong>
+                  </div>
+                </div>
+              </div>
+            </>
+          )}
 
           {payment && (
-            <div style={{ marginTop: 24, padding: 16, border: '1px solid var(--border-default)', borderRadius: 8, color: 'var(--text-secondary)' }}>
-              <strong style={{ color: 'var(--text-primary)' }}>Status Pembayaran:</strong>{' '}
+            <div className="kwitansi-payment-note">
+              <strong>Status Pembayaran:</strong>{' '}
               {paymentReview.status === 'perlu_review' ? 'Perlu review' : 'Sudah dibayar'} pada {formatDateDisplay(payment.tanggal_bayar)} {formatWaktu(payment.dibayar_at)} via {payment.metode_bayar}.
               {payment.catatan ? ` Catatan: ${payment.catatan}` : ''}
             </div>
           )}
-          
-          <div style={{ marginTop: 40, textAlign: 'center', color: 'var(--text-tertiary)', fontSize: 12 }}>
-            Dicetak secara otomatis oleh Sistem {branding.appName} pada {formatDateTimeDisplay(new Date())}
+
+          <div className="kwitansi-print-footer">
+            Dicetak otomatis oleh Sistem {branding.appName} pada {formatDateTimeDisplay(new Date())}
           </div>
         </div>
       )}
 
       <style jsx global>{`
-        .kwitansi-table-wrap {
-          overflow-x: auto;
+        .kwitansi-selected-mitras {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 8px;
+          margin-top: 10px;
+        }
+        .kwitansi-mitra-chip {
+          display: inline-flex;
+          align-items: center;
+          gap: 8px;
+          max-width: 100%;
+          padding: 6px 10px;
+          border: 1px solid var(--border-default);
+          border-radius: 999px;
+          background: var(--bg-surface);
+          color: var(--text-primary);
+          font-size: 13px;
+          line-height: 1.25;
+        }
+        .kwitansi-mitra-chip button {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          width: 20px;
+          height: 20px;
+          border: 0;
+          border-radius: 999px;
+          background: transparent;
+          color: var(--text-tertiary);
+          cursor: pointer;
+        }
+        .kwitansi-mitra-chip button:hover {
+          background: var(--bg-input);
+          color: var(--text-primary);
+        }
+        .kwitansi-doc-header {
+          display: flex;
+          align-items: center;
+          gap: 16px;
+          padding-bottom: 20px;
+          margin-bottom: 20px;
+          border-bottom: 2px dashed var(--border-default);
+        }
+        .kwitansi-header-info {
+          display: flex;
+          align-items: flex-start;
+          gap: 24px;
+          flex: 1 1 auto;
+          min-width: 0;
+        }
+        .kwitansi-title-block {
+          flex: 0 0 auto;
         }
         .kwitansi-title {
           display: flex;
           flex-direction: column;
           gap: 2px;
+          margin: 0;
+          font-size: 22px;
+          line-height: 1.18;
+          color: var(--text-primary);
         }
-        .kwitansi-title-line {
+        .kwitansi-brand-name {
+          margin: 6px 0 0;
+          color: var(--text-secondary);
+        }
+        .kwitansi-recipient {
+          margin-left: auto;
+          text-align: left;
+          max-width: 460px;
+        }
+        .kwitansi-recipient h2 {
+          margin: 4px 0 0;
+          font-size: 20px;
+          line-height: 1.25;
+          color: var(--text-primary);
+        }
+        .kwitansi-paid-stamp {
+          display: inline-flex;
+          margin-top: 10px;
+          padding: 6px 10px;
+          border: 1px solid #111;
+          border-radius: 6px;
+          color: #111;
+          font-weight: 800;
+        }
+        .kwitansi-empty {
+          padding: 32px;
+          text-align: center;
+          color: var(--text-tertiary);
+          border: 1px dashed var(--border-default);
+          border-radius: 8px;
+        }
+        .kwitansi-group {
+          padding: 18px 0;
+          border-bottom: 1px solid var(--border-default);
+        }
+        .kwitansi-group:first-of-type {
+          padding-top: 0;
+        }
+        .kwitansi-group-header {
+          display: flex;
+          align-items: flex-start;
+          justify-content: space-between;
+          gap: 16px;
+          margin-bottom: 12px;
+        }
+        .kwitansi-group-header h3 {
+          margin: 0;
+          font-size: 16px;
+          color: var(--text-primary);
+        }
+        .kwitansi-group-header p {
+          margin: 4px 0 0;
+          color: var(--text-tertiary);
+          font-size: 13px;
+        }
+        .kwitansi-group-subtotal {
+          min-width: 180px;
+          text-align: right;
+        }
+        .kwitansi-group-subtotal span {
           display: block;
-          white-space: nowrap;
+          color: var(--text-tertiary);
+          font-size: 12px;
         }
-
-        @media screen {
-          .kwitansi-preview {
-            padding: 24px !important;
-            font-size: 13px !important;
+        .kwitansi-group-subtotal strong {
+          display: block;
+          margin-top: 3px;
+          font-size: 16px;
+          color: var(--color-success);
+        }
+        .kwitansi-table-wrap {
+          overflow-x: auto;
+        }
+        .kwitansi-detail-table {
+          width: 100%;
+          min-width: 620px;
+          border-collapse: collapse;
+          margin-bottom: 12px;
+          font-size: 13px;
+        }
+        .kwitansi-detail-table th,
+        .kwitansi-detail-table td {
+          padding: 10px 12px;
+          border-bottom: 1px solid var(--border-default);
+          vertical-align: top;
+        }
+        .kwitansi-detail-table thead tr,
+        .kwitansi-detail-table tfoot tr {
+          background: var(--bg-surface);
+          font-weight: 800;
+        }
+        .kwitansi-group-breakdown {
+          display: grid;
+          grid-template-columns: repeat(3, minmax(160px, 1fr));
+          gap: 10px;
+          margin-top: 12px;
+        }
+        .kwitansi-group-breakdown div {
+          padding: 12px;
+          border: 1px solid var(--border-default);
+          border-radius: 8px;
+          background: var(--bg-surface);
+        }
+        .kwitansi-group-breakdown span {
+          display: block;
+          color: var(--text-tertiary);
+          font-size: 12px;
+          margin-bottom: 4px;
+        }
+        .kwitansi-panjar-list {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 8px 12px;
+          margin-top: 12px;
+          color: var(--text-secondary);
+          font-size: 13px;
+        }
+        .kwitansi-total-row {
+          display: flex;
+          justify-content: flex-end;
+          margin-top: 24px;
+        }
+        .kwitansi-total-box {
+          width: min(440px, 100%);
+          padding: 20px;
+          border: 1px solid var(--border-default);
+          border-radius: 8px;
+          background: var(--bg-surface);
+        }
+        .kwitansi-total-box > div:not(.kwitansi-total-divider) {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 16px;
+          margin-bottom: 12px;
+        }
+        .kwitansi-total-divider {
+          border-top: 2px solid var(--border-default);
+          margin: 16px 0;
+        }
+        .kwitansi-final-total span {
+          font-size: 17px;
+          font-weight: 800;
+        }
+        .kwitansi-final-total strong {
+          font-size: 22px;
+          color: var(--color-success);
+        }
+        .danger-text {
+          color: var(--color-danger) !important;
+        }
+        .success-text {
+          color: var(--color-success) !important;
+        }
+        .kwitansi-payment-note {
+          margin-top: 24px;
+          padding: 16px;
+          border: 1px solid var(--border-default);
+          border-radius: 8px;
+          color: var(--text-secondary);
+        }
+        .kwitansi-print-footer {
+          margin-top: 40px;
+          text-align: center;
+          color: var(--text-tertiary);
+          font-size: 12px;
+        }
+        @media (max-width: 920px) {
+          .toolbar.no-print.card {
+            grid-template-columns: 1fr !important;
           }
-          .kwitansi-doc-header {
-            padding-bottom: 18px !important;
-            margin-bottom: 18px !important;
-          }
-          .kwitansi-header-info {
-            flex-wrap: nowrap;
-          }
-          .kwitansi-title-block {
-            flex: 0 0 auto;
-            transform: translateY(12px);
+          .kwitansi-doc-header,
+          .kwitansi-header-info,
+          .kwitansi-group-header {
+            flex-direction: column;
           }
           .kwitansi-recipient {
-            max-width: 300px;
-            margin-left: auto;
+            max-width: none;
+            margin-left: 0;
           }
-          .kwitansi-logo {
-            width: 104px !important;
-            height: 104px !important;
-            flex: 0 0 104px !important;
+          .kwitansi-group-subtotal {
+            text-align: left;
           }
-          .kwitansi-title {
-            font-size: 20px !important;
-            line-height: 1.2 !important;
+          .kwitansi-group-breakdown {
+            grid-template-columns: 1fr;
           }
-          .kwitansi-brand-name {
-            font-size: 15px !important;
-          }
-          .kwitansi-recipient,
-          .kwitansi-recipient div {
-            font-size: 13px !important;
-          }
-          .kwitansi-recipient h2 {
-            font-size: 18px !important;
-          }
-          .kwitansi-preview h3 {
-            font-size: 14px !important;
-            margin-bottom: 12px !important;
+          .kwitansi-preview {
+            font-size: 12px;
           }
           .kwitansi-detail-table {
-            min-width: 620px;
-            margin-bottom: 18px !important;
-            font-size: 13px !important;
+            font-size: 12px;
           }
           .kwitansi-detail-table th,
           .kwitansi-detail-table td {
-            padding: 8px 10px !important;
-            font-size: 13px !important;
-            line-height: 1.35 !important;
-          }
-          .kwitansi-total-box {
-            width: 360px !important;
-            padding: 16px !important;
-            font-size: 13px !important;
-          }
-          .kwitansi-total-box span {
-            font-size: 13px !important;
-          }
-          .kwitansi-total-box span[style*="font-size: 18px"] {
-            font-size: 15px !important;
-          }
-          .kwitansi-total-box span[style*="font-size: 24px"] {
-            font-size: 19px !important;
+            padding: 8px 10px;
           }
         }
-
-        @media screen and (min-width: 768px) and (max-width: 1440px) {
-          .kwitansi-preview {
-            padding: 20px !important;
-          }
-          .kwitansi-doc-header {
-            padding-bottom: 16px !important;
-            margin-bottom: 16px !important;
-          }
-          .kwitansi-header-info {
-            gap: 18px !important;
-          }
-          .kwitansi-title-block {
-            transform: translateY(11px);
-          }
-          .kwitansi-recipient {
-            margin-left: auto !important;
-          }
-          .kwitansi-logo {
-            width: 96px !important;
-            height: 96px !important;
-            flex-basis: 96px !important;
-          }
-          .kwitansi-title {
-            font-size: 18px !important;
-            line-height: 1.2 !important;
-          }
-          .kwitansi-brand-name {
-            font-size: 14px !important;
-          }
-          .kwitansi-recipient,
-          .kwitansi-recipient div {
-            font-size: 12px !important;
-          }
-          .kwitansi-recipient h2 {
-            font-size: 16px !important;
-          }
-          .kwitansi-preview h3 {
-            font-size: 14px !important;
-            margin-bottom: 10px !important;
-          }
-          .kwitansi-detail-table {
-            min-width: 620px;
-            margin-bottom: 16px !important;
-            font-size: 12px !important;
-          }
-          .kwitansi-detail-table th,
-          .kwitansi-detail-table td {
-            padding: 7px 9px !important;
-            font-size: 12px !important;
-            line-height: 1.35 !important;
-          }
-          .kwitansi-total-box {
-            width: 340px !important;
-            padding: 14px !important;
-            font-size: 12px !important;
-          }
-          .kwitansi-total-box span {
-            font-size: 12px !important;
-          }
-          .kwitansi-total-box span[style*="font-size: 18px"] {
-            font-size: 14px !important;
-          }
-          .kwitansi-total-box span[style*="font-size: 24px"] {
-            font-size: 18px !important;
-          }
-        }
-
-        @media screen and (max-width: 767px) {
-          .kwitansi-preview {
-            padding: 16px !important;
-          }
-          .kwitansi-doc-header {
-            flex-direction: column;
-            align-items: flex-start !important;
-          }
-          .kwitansi-header-info {
-            flex-direction: column;
-            gap: 10px !important;
-          }
-          .kwitansi-title-block {
-            transform: none;
-          }
-          .kwitansi-recipient {
-            max-width: none !important;
-            margin-left: 0 !important;
-          }
-          .kwitansi-logo {
-            width: 84px !important;
-            height: 84px !important;
-            flex-basis: 84px !important;
-          }
-          .kwitansi-recipient {
-            text-align: left !important;
-          }
-          .kwitansi-total-box {
-            width: 100% !important;
-          }
-        }
-
         @page {
           margin: 12mm;
         }
-
         @media print {
           html,
           body {
@@ -732,11 +1041,19 @@ export default function KwitansiMitraPage() {
           }
           .sidebar,
           .header,
-          .bottom-nav {
+          .bottom-nav,
+          .no-print {
             display: none !important;
           }
-          body * { visibility: hidden; }
-          .print-area, .print-area * { visibility: visible; color: #000 !important; background: #fff !important; }
+          body * {
+            visibility: hidden;
+          }
+          .print-area,
+          .print-area * {
+            visibility: visible;
+            color: #000 !important;
+            background: #fff !important;
+          }
           .print-area {
             position: static !important;
             left: auto !important;
@@ -749,123 +1066,60 @@ export default function KwitansiMitraPage() {
             margin: 0 !important;
             padding: 0 !important;
             transform: none !important;
+            font-size: 10.5px !important;
           }
-          .kwitansi-preview {
-            font-size: 11px !important;
-          }
-          .kwitansi-logo {
-            width: 100px !important;
-            height: 100px !important;
-            flex: 0 0 100px !important;
-          }
-          .kwitansi-table-wrap { overflow: visible !important; }
           .kwitansi-doc-header {
-            display: flex !important;
-            flex-direction: row !important;
-            align-items: center !important;
-            justify-content: flex-start !important;
             border-bottom: 1.5px dashed #111 !important;
-            gap: 14px !important;
-            width: 100% !important;
             padding-bottom: 12px !important;
             margin-bottom: 12px !important;
           }
-          .kwitansi-header-info {
-            display: flex !important;
-            flex-direction: row !important;
-            align-items: flex-start !important;
-            flex: 1 1 auto !important;
-            flex-wrap: nowrap !important;
-            gap: 18px !important;
-            min-width: 0 !important;
-          }
-          .kwitansi-title-block {
-            flex: 0 0 180px !important;
-            min-width: 0 !important;
-            transform: translateY(12px) !important;
+          .kwitansi-logo {
+            width: 90px !important;
+            height: 90px !important;
+            flex: 0 0 90px !important;
           }
           .kwitansi-title {
-            font-size: 18px !important;
-            line-height: 1.05 !important;
-            white-space: normal !important;
-            gap: 1px !important;
-          }
-          .kwitansi-brand-name {
-            font-size: 11px !important;
-          }
-          .kwitansi-preview h3 {
-            font-size: 12px !important;
-            margin-bottom: 8px !important;
-          }
-          .kwitansi-recipient {
-            flex: 0 1 260px !important;
-            min-width: 190px !important;
-            max-width: 260px !important;
-            margin-left: auto !important;
-            padding-left: 0 !important;
-            text-align: left !important;
-          }
-          .kwitansi-recipient,
-          .kwitansi-recipient div {
-            font-size: 10.5px !important;
-            line-height: 1.35 !important;
+            font-size: 17px !important;
           }
           .kwitansi-recipient h2 {
-            font-size: 14px !important;
-            line-height: 1.25 !important;
+            font-size: 13px !important;
+          }
+          .kwitansi-table-wrap {
+            overflow: visible !important;
           }
           .kwitansi-detail-table {
-            border-top: 1.5px solid #111 !important;
-            border-bottom: 1.5px solid #111 !important;
-            font-size: 10.5px !important;
-            margin-bottom: 14px !important;
             min-width: 0 !important;
-            width: 100% !important;
+            font-size: 10px !important;
           }
           .kwitansi-detail-table th,
           .kwitansi-detail-table td {
-            padding: 6px 8px !important;
-            font-size: 10.5px !important;
-            line-height: 1.3 !important;
-          }
-          .kwitansi-detail-table thead tr {
-            border-bottom: 1.5px solid #111 !important;
-          }
-          .kwitansi-detail-table tbody tr {
+            padding: 5px 6px !important;
+            font-size: 10px !important;
             border-bottom: 1px solid #b8b8b8 !important;
           }
-          .kwitansi-detail-table tbody tr:last-child {
-            border-bottom: 1.5px solid #111 !important;
+          .kwitansi-group-breakdown {
+            grid-template-columns: repeat(3, 1fr) !important;
+            gap: 6px !important;
           }
-          .kwitansi-detail-table tfoot tr {
-            border-top: 2px solid #111 !important;
-            border-bottom: 1.5px solid #111 !important;
-          }
-          .kwitansi-total-box {
-            border: 1.5px solid #111 !important;
-            width: 360px !important;
-            padding: 12px !important;
+          .kwitansi-group-breakdown div,
+          .kwitansi-total-box,
+          .kwitansi-payment-note {
+            border: 1px solid #111 !important;
             border-radius: 4px !important;
           }
-          .kwitansi-total-box span {
-            font-size: 10.5px !important;
+          .kwitansi-total-box {
+            width: 360px !important;
+            padding: 12px !important;
           }
-          .kwitansi-total-box span[style*="font-size: 18px"] {
-            font-size: 13px !important;
+          .kwitansi-final-total strong {
+            font-size: 15px !important;
           }
-          .kwitansi-total-box span[style*="font-size: 24px"] {
-            font-size: 16px !important;
-          }
-          .kwitansi-total-divider {
-            border-top: 1.5px solid #111 !important;
-          }
-          .no-print { display: none !important; }
         }
       `}</style>
 
       {showPaymentModal && (
         <div className="modal-overlay no-print" onClick={() => !savingPayment && setShowPaymentModal(false)}>
-          <div className="modal" onClick={event => event.stopPropagation()} style={{ maxWidth: 620 }}>
+          <div className="modal" onClick={event => event.stopPropagation()} style={{ maxWidth: 680 }}>
             <div className="modal-header">
               <h3 className="modal-title">Tandai Kwitansi Sudah Dibayar</h3>
               <button className="modal-close" disabled={savingPayment} onClick={() => setShowPaymentModal(false)} aria-label="Tutup">
@@ -879,25 +1133,49 @@ export default function KwitansiMitraPage() {
                   <div>
                     <strong>Kwitansi menjadi bukti pembayaran utama.</strong>
                     <div style={{ marginTop: 4 }}>
-                      Sistem akan menyimpan snapshot transaksi periode ini dan menandai panjar yang dipotong sebagai lunas agar tidak terpotong lagi di kwitansi berikutnya.
+                      Sistem akan menyimpan transaksi yang tampil saat ini saja. Jika mitra mengirim lagi setelah dibayar, transaksi baru itu akan masuk kwitansi berikutnya.
                     </div>
                   </div>
                 </div>
 
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12, marginBottom: 16 }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12, marginBottom: 16 }}>
                   <div className="card" style={{ padding: 14, borderRadius: 8 }}>
                     <div className="text-tertiary" style={{ fontSize: 12 }}>Total Nilai Bersih</div>
-                    <div className="table-mono" style={{ fontWeight: 800 }}>{formatRupiah(totalNilaiBersih)}</div>
+                    <div className="table-mono" style={{ fontWeight: 800 }}>{formatRupiah(displayTotalNilaiBersih)}</div>
                   </div>
                   <div className="card" style={{ padding: 14, borderRadius: 8 }}>
                     <div className="text-tertiary" style={{ fontSize: 12 }}>Potongan Panjar</div>
-                    <div className="table-mono" style={{ fontWeight: 800, color: 'var(--color-danger)' }}>{formatRupiah(totalPanjar)}</div>
+                    <div className="table-mono" style={{ fontWeight: 800, color: 'var(--color-danger)' }}>{formatRupiah(displayTotalPanjar)}</div>
                   </div>
                   <div className="card" style={{ padding: 14, borderRadius: 8 }}>
                     <div className="text-tertiary" style={{ fontSize: 12 }}>Dibayar ke Mitra</div>
-                    <div className="table-mono" style={{ fontWeight: 900, color: 'var(--color-success)' }}>{formatRupiah(totalNilaiBersih - totalPanjar)}</div>
+                    <div className="table-mono" style={{ fontWeight: 900, color: 'var(--color-success)' }}>{formatRupiah(sisaBersih)}</div>
                   </div>
                 </div>
+
+                <div style={{ display: 'grid', gap: 8, marginBottom: 16 }}>
+                  {kwitansiGroups.map(group => (
+                    <div key={group.mitraId} style={{ display: 'flex', justifyContent: 'space-between', gap: 12, padding: 12, border: '1px solid var(--border-default)', borderRadius: 8 }}>
+                      <div>
+                        <div style={{ fontWeight: 700 }}>{group.label}</div>
+                        <div style={{ color: 'var(--text-tertiary)', fontSize: 12 }}>{group.rows.length} transaksi, panjar {formatRupiah(group.totalPanjar)}</div>
+                      </div>
+                      <div className="table-mono" style={{ fontWeight: 800 }}>{formatRupiah(group.totalNilaiBersih - group.totalPanjar)}</div>
+                    </div>
+                  ))}
+                </div>
+
+                {isCombinedReceipt && (
+                  <div className="form-group">
+                    <label className="form-label">Nama Penerima di Kwitansi Gabungan</label>
+                    <input
+                      className="form-input"
+                      value={paymentForm.penerima_label}
+                      onChange={event => setPaymentForm(current => ({ ...current, penerima_label: event.target.value }))}
+                      placeholder={selectedRecipientLabel || 'Contoh: Gabungan SL/MD dan BL/LR'}
+                    />
+                  </div>
+                )}
 
                 <div className="form-group">
                   <label className="form-label form-label-required">Metode Bayar</label>

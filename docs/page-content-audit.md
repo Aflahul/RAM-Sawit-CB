@@ -17,7 +17,7 @@ Dokumen ini memetakan isi setiap halaman, potensi pengulangan data antar halaman
 
 | Keputusan | Halaman |
 | --- | --- |
-| Tetap tampil sebagai workflow utama | Dashboard, Pengiriman Mitra, Riwayat & Koreksi Mitra, Kwitansi Mitra, Buku Kas, Hutang & Panjar, Biaya Operasional, Mitra, Armada, Pabrik Tujuan, Laporan Mitra, Pendapatan Owner Bruto, Laba/Rugi, Pengaturan Web |
+| Tetap tampil sebagai workflow utama | Dashboard, Pengiriman Mitra, Riwayat & Koreksi Mitra, Kwitansi Mitra, Pembayaran Pabrik, Buku Kas, Hutang & Panjar, Biaya Operasional, Mitra, Armada, Pabrik Tujuan, Laporan Mitra, Pendapatan Owner Bruto, Laba/Rugi, Pengaturan Web |
 | Coming Soon / dikunci sementara | Pembelian Petani Lokal, Petani Lokal, Laporan Petani, Stok Lokal |
 | Sembunyikan dari navigasi | Laporan Harian, Arsip Panjar Mitra, Pengiriman Lokal Legacy |
 | Perlu evaluasi berikutnya | Harga TBS Lokal, karena hanya berguna jika modul lokal aktif |
@@ -30,16 +30,17 @@ Dokumen ini memetakan isi setiap halaman, potensi pengulangan data antar halaman
 | `/admin/input-timbangan` | Input pengiriman mitra ke `transaksi_mitra`, memakai master mitra, sopir, harga pabrik, dan fee owner. | Tidak overlap secara fungsi; ini pintu input utama. Judul harus konsisten sebagai Pengiriman Mitra. | Tetap tampil sebagai workflow operasional utama. |
 | `/owner/riwayat-pengiriman-mitra` | Daftar transaksi mitra, edit, batal, koreksi, audit log. | Overlap data dengan Laporan Mitra, tetapi tujuannya berbeda: koreksi operasional. | Tetap tampil. Jangan campur dengan laporan; fokus sebagai halaman koreksi dan audit transaksi. |
 | `/owner/kwitansi-mitra` | Preview kwitansi, panjar mitra, tandai dibayar, snapshot item pembayaran, WhatsApp. | Overlap transaksi dengan Laporan Mitra, tetapi ini halaman pembayaran dan bukti. | Tetap tampil. Ini sumber tindak lanjut pembayaran mitra. |
+| `/owner/pembayaran-pabrik` | Catat uang masuk dari pabrik berdasarkan tonase bersih versi pabrik, harga per kg, uang diterima, dan nomor bukti. Data timbang internal bisa dipilih untuk mencocokkan beda tonase. | Overlap dengan Buku Kas karena membuat kas masuk, tetapi halaman ini adalah pintu input pembayaran pabrik. Tidak menggantikan Laporan Mitra karena pabrik tidak perlu tahu mitra. | Tetap tampil di Keuangan. Pakai bahasa sederhana: uang masuk, tonase dari pabrik, dan cocokkan catatan kita. |
 | `/owner/laporan-mitra` | Rekap pengiriman mitra, status bayar, grouping mitra, export/cetak. | Overlap dengan Riwayat Mitra dan Kwitansi Mitra. Masih layak karena fokus laporan, bukan edit atau bayar. | Tetap tampil. Pastikan hanya read-only dan status bayar mengarah ke Kwitansi Mitra. |
 | `/owner/pendapatan-owner` | Fee owner bruto dari `transaksi_mitra`, koreksi/sinkron snapshot fee. | Overlap dengan Laba/Rugi, tetapi berbeda makna: bruto/estimasi hak owner, bukan laba kas final. | Tetap tampil khusus Owner/Super Admin. Label harus selalu "bruto" atau "estimasi". |
-| `/laporan/laba-rugi` | Laba kas dari `kas_ledger`, biaya, pembelian lokal, dan pembayaran mitra. | Overlap dengan Buku Kas dan Pendapatan Owner, tetapi menjawab pertanyaan profit. Belum final bila pembayaran pabrik belum tercatat. | Tetap tampil khusus Owner/Super Admin. Lanjutkan setelah flow Pembayaran Pabrik ada. |
+| `/laporan/laba-rugi` | Laba kas dari `kas_ledger`, biaya, pembelian lokal, pembayaran mitra, dan pembayaran pabrik. | Overlap dengan Buku Kas dan Pendapatan Owner, tetapi menjawab pertanyaan profit. Angka final tetap bergantung pada disiplin catat uang masuk/keluar. | Tetap tampil khusus Owner/Super Admin. Pastikan pembayaran pabrik masuk `kas_ledger` agar laba kas terbaca. |
 | `/keuangan/kas` | Buku mutasi uang aktual dari `kas_ledger`, rekening kas, mutasi manual. | Menjadi sumber data bagi laba/rugi dan dashboard. Tidak boleh digantikan laporan. | Tetap tampil sebagai sumber kebenaran uang aktual. |
 | `/keuangan/hutang` | Hutang/panjar semua pihak dari `hutang_ledger`, termasuk mitra, petani, sopir, karyawan, lainnya. | Menggantikan kebutuhan menu panjar terpisah. | Tetap tampil sebagai satu pintu hutang/panjar. |
 | `/keuangan/biaya` | Input dan pembatalan biaya operasional, membuat kas ledger via RPC. | Overlap dengan Buku Kas karena biaya muncul sebagai kas keluar. Namun halaman biaya adalah sumber input kategori biaya. | Tetap tampil. Nanti bisa masuk ke workspace Keuangan Hari Ini. |
 | `/owner/panjar-mitra` | Arsip panjar mitra dan aksi pelunasan/batal lama. | Banyak overlap dengan Hutang & Panjar dan Kwitansi Mitra. Berisiko membuat user bingung karena panjar sudah satu pintu. | Sembunyikan dari navigasi. Pertahankan sebagai arsip/internal sampai seluruh panjar mitra pindah ke detail Hutang & Panjar/Kwitansi. |
 | `/owner/master-data` | Master mitra eksternal/internal, fee owner, kontak, status aktif. | Tidak overlap dengan Armada; mitra adalah pihak bisnis, armada adalah sopir/plat default. | Tetap tampil dengan label "Mitra". |
 | `/master/armada` | Sopir, plat default, dan afiliasi mitra. | Pernah overlap dengan armada perusahaan, tetapi arah baru memakai mitra internal dan tabel sopir. | Tetap tampil sebagai "Armada". Jangan tampilkan armada perusahaan terpisah. |
-| `/master/pabrik` | Master pabrik tujuan. | Saat ini belum banyak dipakai di alur aktif, tetapi diperlukan untuk Pembayaran Pabrik/DO berikutnya. | Tetap tampil. Nanti hubungkan ke pembayaran pabrik dan referensi DO. |
+| `/master/pabrik` | Master pabrik tujuan. | Dipakai oleh Pembayaran Pabrik sebagai pihak pembayar ke owner. | Tetap tampil. Nanti bisa ditambah nomor DO/kontrak jika workflow pabrik semakin detail. |
 | `/master/harga` | Harga TBS lokal dari `harga_tbs_lokal`. | Overlap dengan kartu harga lokal di Dashboard. Karena modul lokal dikunci, manfaatnya sementara rendah. | Evaluasi untuk disembunyikan atau digabung ke "Harga & Fee" setelah alur harga pabrik/lokal dirapikan. |
 | `/master/petani` | Master petani lokal. | Terkait langsung modul lokal yang belum selesai. | Coming Soon/dikunci sementara. Buka kembali saat pembelian dan laporan petani siap. |
 | `/transaksi/beli` | Input pembelian petani lokal, stok, kas, hutang, struk, batal. | Terkait lokal dan sudah banyak muncul di Dashboard/Laporan Harian/Stok/Petani. | Coming Soon/dikunci sementara. Jangan dipakai operasional dulu. |
@@ -73,7 +74,7 @@ Setelah hari ditutup, transaksi tanggal tersebut tidak boleh diedit bebas. Perub
 
 ### 2. Pembayaran Pabrik
 
-Bangun flow pembayaran pabrik sebelum menyempurnakan Laba/Rugi. Tanpa kas masuk `pembayaran_pabrik`, laba kas tidak bisa final.
+Gunakan Pembayaran Pabrik sebagai pintu uang masuk dari pabrik. Input utama: pabrik, tanggal uang masuk, rekening kas, tonase bersih dari pabrik, harga per kg, uang diterima, dan nomor bukti. Pilih data timbang internal hanya untuk mencocokkan beda tonase.
 
 ### 3. Konsolidasi Harga
 

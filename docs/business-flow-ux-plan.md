@@ -8,7 +8,7 @@ Dokumen ini memetakan tujuan website, kondisi alur saat ini, use case, activity 
 
 Sawit CB sudah berada di arah yang benar sebagai sistem bisnis RAM sawit: ada pemisahan sumber TBS lokal dan mitra, ada snapshot harga/fee, ada buku kas, hutang/panjar universal, status pembayaran kwitansi, reversal untuk beberapa flow finansial, dan role Owner/Super Admin/Admin Operasional/Admin Keuangan.
 
-Kondisi saat ini paling tepat disebut **Sistem Bisnis Minimal Fase 2**. Sistem sudah dapat mendukung kontrol kas dan hutang harian, tetapi belum layak diposisikan sebagai sistem final karena settlement mitra advanced, alokasi pembayaran pabrik multi-transaksi, bukti/lampiran transaksi, approval limit kasbon, audit/role hardening penuh, dan tutup-harian belum lengkap.
+Kondisi saat ini paling tepat disebut **Sistem Bisnis Minimal Fase 2**. Sistem sudah dapat mendukung kontrol kas dan hutang harian, tetapi belum layak diposisikan sebagai sistem final karena settlement mitra advanced, pencocokan pembayaran pabrik yang lebih matang, bukti/lampiran transaksi, approval limit kasbon, audit/role hardening penuh, dan tutup-harian belum lengkap.
 
 Prioritas perbaikan terbaik bukan menambah halaman baru sebanyak mungkin, melainkan menata ulang workflow agar pengguna bekerja mengikuti siklus bisnis harian:
 
@@ -32,7 +32,7 @@ Sawit CB adalah aplikasi internal untuk bisnis RAM kelapa sawit yang harus menca
 - Uang masuk pabrik dan uang keluar ke petani/mitra/pihak lain.
 - Kwitansi, bukti pembayaran, laporan harian, laporan stok, laporan mitra, dan laba-rugi owner.
 
-Implikasi bisnisnya: sistem harus lebih dekat ke **ledger dan rekonsiliasi** daripada sekadar CRUD. Setiap transaksi yang menyentuh uang, stok, tonase, pembayaran, atau hutang harus punya sumber data, status, alasan koreksi, dan jejak audit.
+Implikasi bisnisnya: sistem harus lebih dekat ke **catatan mutasi dan pencocokan data** daripada sekadar CRUD. Setiap transaksi yang menyentuh uang, stok, tonase, pembayaran, atau hutang harus punya sumber data, status, alasan koreksi, dan jejak audit.
 
 ## 3. Prinsip Standar Business Management dan Pencatatan
 
@@ -108,7 +108,7 @@ Halaman tetap boleh dibuka untuk melihat bentuk dan data konteks, tetapi input, 
 | UC-07 | Input pembelian TBS lokal | Admin Operasional | Petani dan harga aktif | Transaksi, stok masuk, kas keluar/potong hutang | Ada, tetapi UI dikunci sementara sebagai Coming Soon. |
 | UC-08 | Batalkan pembelian lokal | Owner, Super Admin, role yang diizinkan | Transaksi belum dikunci periode | Status batal dan reversal ledger | Ada, tetapi UI dikunci sementara sebagai Coming Soon. |
 | UC-09 | Kirim hasil pembelian lokal sebagai mitra internal | Admin Operasional | Mitra internal, sopir/plat, harga pabrik aktif | Pengiriman masuk ke transaksi mitra internal | Perlu dirapikan dari route lokal lama. |
-| UC-10 | Rekam settlement/pembayaran pabrik | Admin Keuangan, Owner, Super Admin | Transaksi mitra internal ada | Kas masuk dan rekonsiliasi pembayaran | Target fase rekonsiliasi berikutnya. |
+| UC-10 | Catat pembayaran pabrik | Admin Keuangan, Owner, Super Admin | Nota pabrik dan rekening kas tersedia | Kas masuk tercatat dan data timbang bisa dicocokkan | Mulai diaktifkan sebagai satu pintu pembayaran pabrik. |
 | UC-11 | Input pengiriman mitra | Admin Operasional | Mitra, sopir, harga pabrik, fee aktif | Transaksi mitra dengan snapshot harga/fee | Ada. |
 | UC-12 | Koreksi/batalkan transaksi mitra | Owner, Super Admin, role terbatas | Ada alasan koreksi | Transaksi berubah/batal dengan audit | Ada dasar. |
 | UC-13 | Catat panjar/kasbon | Admin Keuangan, Owner, Super Admin | Pihak jelas | Hutang/panjar dan kas ledger tercatat | Ada. |
@@ -182,10 +182,10 @@ Kebutuhan UX: perlu menu Admin Sistem terpisah dari Owner agar tidak mencampur o
 5. Admin mencetak struk.
 6. Saat hasil lokal dikirim ke pabrik, operator memilih mitra internal terkait, sopir/plat, dan tonase.
 7. Sistem menyimpan pengiriman sebagai transaksi mitra internal agar laporan mitra, harga pabrik, fee, dan kwitansi tetap satu jalur.
-8. Saat pabrik membayar, Keuangan merekonsiliasi kas masuk terhadap transaksi mitra internal.
+8. Saat pabrik membayar, Keuangan mencatat uang masuk dan mencocokkan tonase dengan transaksi mitra internal bila datanya sudah siap.
 9. Laporan harian menunjukkan stok sisa, pengiriman mitra internal, kas masuk/keluar, dan margin estimasi.
 
-Gap utama: rekonsiliasi stok lokal ke transaksi mitra internal, bukti pembayaran pabrik, dan closing harian.
+Gap utama: pencocokan stok lokal ke transaksi mitra internal, bukti pembayaran pabrik, dan closing harian.
 
 ### 7.2 Alur B - Mitra Mengirim Sendiri ke Pabrik
 
@@ -228,21 +228,23 @@ Sumber datanya:
 - Pendapatan aktual: mutasi `kas_ledger` dengan sumber `pembayaran_pabrik`.
 - Pengeluaran aktual: mutasi `kas_ledger` untuk `pembayaran_mitra`, `pembelian_tbs`, panjar/hutang yang benar-benar keluar kas, dan `biaya_operasional`.
 - Laba bruto owner dari pengiriman mitra: snapshot `transaksi_mitra.total_fee_owner`. Ini berguna sebagai estimasi hak owner, tetapi belum menjadi laba final sebelum pembayaran pabrik dan biaya aktual masuk ledger.
-- Laba final owner: angka kas yang sudah direkonsiliasi, bukan hanya total fee di transaksi.
+- Laba final owner: angka kas yang sudah dicocokkan, bukan hanya total fee di transaksi.
 
-Konsekuensi saat ini: jika pembayaran pabrik belum dicatat ke `kas_ledger`, halaman Laba/Rugi akan terlihat belum tracking karena pendapatan kas memang belum ada. Perbaikannya bukan membuat tabel laba manual, tetapi menambahkan flow **Pembayaran Pabrik** yang membuat kas masuk dan mengalokasikan uang itu ke transaksi mitra/internal.
+Konsekuensi bisnis: jika pembayaran pabrik belum dicatat ke `kas_ledger`, halaman Laba/Rugi akan terlihat belum tracking karena uang masuk memang belum ada. Perbaikannya bukan membuat tabel laba manual, tetapi memakai flow **Pembayaran Pabrik** sebagai pintu uang masuk dari pabrik.
+
+Untuk fase sekarang, pabrik tidak perlu tahu mitra mana yang mengirim. Pabrik cukup membayar ke owner berdasarkan DO owner dan tonase bersih versi pabrik. Sistem Sawit CB mencatat uang masuk itu, lalu data timbang internal bisa dipilih hanya untuk mencocokkan tonase pabrik dengan catatan kita.
 
 Alur target pencatatan laba:
 
 1. Admin Operasional input pengiriman mitra.
 2. Sistem menyimpan snapshot harga pabrik, fee owner, dan nilai bersih mitra di `transaksi_mitra`.
 3. Admin Keuangan menerima pembayaran pabrik.
-4. Admin Keuangan mencatat Pembayaran Pabrik.
+4. Admin Keuangan mencatat tonase bersih dari pabrik, harga per kg, uang diterima, rekening kas, dan nomor bukti.
 5. Sistem membuat mutasi kas masuk `pembayaran_pabrik`.
-6. Sistem mengalokasikan pembayaran ke transaksi mitra terkait.
+6. Jika data timbang internal sudah siap, Admin Keuangan memilih transaksi mitra terkait untuk mencocokkan beda tonase.
 7. Admin Keuangan membayar mitra melalui Kwitansi Mitra.
 8. Sistem membuat kas keluar `pembayaran_mitra` dan snapshot item kwitansi.
-9. Laba/Rugi menghitung laba kas dari ledger dan menandai transaksi yang belum lengkap rekonsiliasinya.
+9. Laba/Rugi menghitung laba kas dari ledger dan menandai data yang belum lengkap dicocokkan.
 
 ### 7.5 Tindak Lanjut Mitra yang Sudah Dibayar dan Diberi Kwitansi
 
@@ -276,7 +278,7 @@ Dengan alur ini, transaksi yang sudah dibayar tidak hilang dari laporan. Ia teta
 - Belum ada halaman "Tutup Hari" yang menyatukan kas, stok, DO, hutang, biaya, dan exception.
 - Approval limit kasbon/panjar belum menjadi workflow terstruktur.
 - Settlement mitra belum menjadi sumber final hak mitra.
-- Pembayaran pabrik masih dasar per DO, belum mendukung satu pembayaran untuk banyak DO.
+- Pembayaran pabrik sudah diarahkan menjadi satu pintu uang masuk, tetapi masih perlu bukti/lampiran dan laporan beda tonase yang lebih matang.
 - Bukti transaksi dan nomor referensi belum menjadi standar wajib.
 
 ### Data dan Audit
@@ -386,8 +388,8 @@ Tambahkan:
 - Penanda tipe mitra "Internal Owner" yang jelas di menu Mitra.
 - Default sopir/plat untuk mitra internal.
 - Rekonsiliasi stok lokal ke transaksi mitra internal.
-- Pemisahan "nilai tagihan pabrik" dan "uang diterima aktual".
-- Pembayaran pabrik multi-transaksi di fase rekonsiliasi.
+- Pemisahan "nilai menurut catatan kita" dan "uang diterima dari pabrik".
+- Pembayaran pabrik satu pintu dengan pilihan cocokkan banyak data timbang.
 
 Route `/transaksi/kirim` boleh dipertahankan sementara sebagai route legacy/opsional sampai migrasi data dan SOP selesai.
 

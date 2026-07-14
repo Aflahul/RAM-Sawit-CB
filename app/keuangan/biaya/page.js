@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import AppShell from '@/components/layout/AppShell';
+import PromptDialog from '@/components/ui/PromptDialog';
 import { supabase } from '@/lib/supabase';
 import { formatDateDisplay, formatRupiah, getTodayISO } from '@/lib/utils';
 import { exportToExcel } from '@/lib/export';
@@ -23,6 +24,8 @@ export default function BiayaPage() {
   const [filterKategori, setFilterKategori] = useState('semua');
   const [filterTanggal, setFilterTanggal] = useState(getTodayISO());
   const [toast, setToast] = useState(null);
+  const [cancelTarget, setCancelTarget] = useState(null);
+  const [canceling, setCanceling] = useState(false);
 
   const [form, setForm] = useState({
     tanggal: getTodayISO(), kategori: 'solar', jumlah: '', keterangan: '',
@@ -76,14 +79,15 @@ export default function BiayaPage() {
     loadData();
   }
 
-  async function handleCancel(id) {
-    const alasan = prompt('Alasan pembatalan biaya:');
-    if (!alasan || !alasan.trim()) return;
+  async function handleCancel(reason) {
+    if (!cancelTarget || canceling) return;
 
+    setCanceling(true);
     const { error } = await supabase.rpc('cancel_biaya_operasional_kas', {
-      p_biaya_id: id,
-      p_alasan: alasan.trim(),
+      p_biaya_id: cancelTarget.id,
+      p_alasan: reason,
     });
+    setCanceling(false);
 
     if (error) {
       setToast({ message: 'Gagal membatalkan biaya: ' + error.message, type: 'error' });
@@ -92,6 +96,7 @@ export default function BiayaPage() {
     }
 
     setToast({ message: 'Biaya berhasil dibatalkan.', type: 'success' });
+    setCancelTarget(null);
     setTimeout(() => setToast(null), 3000);
     loadData();
   }
@@ -164,7 +169,7 @@ export default function BiayaPage() {
                   <td><span className="badge badge-neutral">{kategoriLabel(b.kategori)}</span></td>
                   <td>{b.keterangan || '-'}</td>
                   <td className="table-mono text-danger" style={{ textAlign: 'right', fontWeight: 600 }}>{formatRupiah(b.jumlah)}</td>
-                  <td><button className="btn btn-ghost btn-sm" onClick={() => handleCancel(b.id)}>Batalkan</button></td>
+                  <td><button className="btn btn-ghost btn-sm" onClick={() => setCancelTarget(b)}>Batalkan</button></td>
                 </tr>
               ))}
             </tbody>
@@ -212,6 +217,20 @@ export default function BiayaPage() {
           </div>
         </div>
       )}
+
+      <PromptDialog
+        open={!!cancelTarget}
+        title="Batalkan Biaya"
+        message={cancelTarget ? `Biaya ${kategoriLabel(cancelTarget.kategori)} sebesar ${formatRupiah(cancelTarget.jumlah)} akan dibatalkan.` : ''}
+        label="Alasan pembatalan"
+        placeholder="Contoh: salah input / biaya ganda"
+        confirmText="Batalkan Biaya"
+        cancelText="Kembali"
+        variant="danger"
+        loading={canceling}
+        onConfirm={handleCancel}
+        onCancel={() => !canceling && setCancelTarget(null)}
+      />
     </AppShell>
   );
 }
