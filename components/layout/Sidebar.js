@@ -25,7 +25,6 @@ const menuSections = [
     title: 'Operasi',
     items: [
       { href: '/admin/input-timbangan', icon: <Truck size={20} />, label: 'Pengiriman Mitra' },
-      { href: '/owner/riwayat-pengiriman-mitra', icon: <ClipboardList size={20} />, label: 'Riwayat & Koreksi Mitra' },
       { href: '/transaksi/beli', icon: <Store size={20} />, label: 'Pembelian Petani Lokal', badge: 'comingsoon' },
     ],
   },
@@ -252,3 +251,4 @@ export default function Sidebar({ isOpen, onClose, user }) {
     </>
   );
 }
+

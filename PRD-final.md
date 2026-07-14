@@ -2077,3 +2077,12 @@ Versi final dianggap berhasil jika:
 - Laporan bisa memisahkan sumber lokal dan mitra.
 - Biaya perusahaan tidak tercampur dengan biaya mitra.
 
+# ADDENDUM FASE 2 - UX BACK-OFFICE (15 Juli 2026)
+
+Berdasarkan tinjauan operasional, pengguna utama modul Pengiriman Mitra adalah **Admin Back-Office Owner** yang memasukkan data secara *batch* dari tumpukan kwitansi/nota fisik pabrik. 
+
+**Keputusan Pengembangan (P0 UX Refinement):**
+1. **Unified Interface:** Halaman "Input Timbangan" dan "Riwayat Pengiriman" disatukan menjadi satu halaman antarmuka bergaya *Data Grid* dengan *Quick Add Modal*. Tujuannya agar admin dapat melihat daftar transaksi hari ini untuk menghindari *double entry* sekaligus dapat menambah data baru tanpa pindah halaman.
+2. **Auto-Fill Mitra:** Pemilihan Mitra tidak lagi menjadi *blocker* (pengunci) untuk memilih Armada/Sopir. Admin dapat mengetik Plat Nomor armada terlebih dahulu, dan sistem akan meng-*auto-fill* Mitra berdasarkan afiliasi armada tersebut.
+3. **Sticky Date:** Tanggal transaksi dipertahankan setelah proses *submit* (tidak otomatis reset ke `today`) untuk mempercepat entri tumpukan nota dari hari sebelumnya.
+

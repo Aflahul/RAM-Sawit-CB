@@ -1008,3 +1008,14 @@ Mapping fase:
 - [ ] DO duplikat per pabrik ditolak saat bukan draft.
 - [ ] Admin biasa tidak bisa melihat laba-rugi lewat UI maupun query.
 - [ ] Batal transaksi membuat reversal, bukan delete.
+
+### P0: Unifikasi UX Back-Office Pengiriman Mitra (15 Juli 2026)
+
+Berdasarkan audit UX (15 Juli 2026), realita operasional Admin Owner adalah **High-Speed Batch Data Entry** dari nota fisik pabrik, bukan berinteraksi langsung dengan sopir di timbangan. Oleh karena itu, halaman riwayat dan form input harus disatukan agar lebih efisien.
+
+- [ ] Membuat komponen `components/ui/Modal.js` yang *reusable*.
+- [ ] Memindahkan form `app/admin/input-timbangan/page.js` ke dalam `components/transaksi/FormPengirimanModal.js`.
+- [ ] Mengubah urutan form agar ramah keyboard (Tab-friendly): Tanggal -> Sopir/Plat -> Mitra (Auto-fill) -> Berat Netto -> Potongan.
+- [ ] Memastikan tanggal transaksi bersifat *sticky* (tidak otomatis reset ke hari ini setelah simpan) untuk mempermudah entri nota kemarin.
+- [ ] Mengubah halaman `/admin/input-timbangan` menjadi Data Grid (menampilkan tabel riwayat transaksi) yang dilengkapi tombol "+ Tambah Pengiriman".
+- [ ] Menghapus halaman lama `/owner/riwayat-pengiriman-mitra` dan mengalihkan routing (sidebar) agar terpusat di `/admin/input-timbangan`.
