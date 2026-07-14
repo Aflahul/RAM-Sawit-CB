@@ -20,6 +20,8 @@ import { getNextSort, sortRows } from '@/lib/sort-utils';
 import { supabase } from '@/lib/supabase';
 import {
   hasFeeSnapshot,
+  resolveBeratDibayar,
+  resolveBiayaSewaArmada,
   resolveFeePerKg,
   resolveHargaPabrikPerKg,
   resolveTotalFeeOwner,
@@ -83,6 +85,8 @@ export default function PendapatanOwnerPage() {
         created_at,
         harga_pabrik_per_kg, fee_owner_per_kg, harga_bersih_per_kg,
         total_fee_owner, total_nilai_bersih, plat_nomor,
+        berat_netto_pabrik_kg, potongan_pabrik_kg, berat_dibayar_kg,
+        pakai_sewa_armada_bl, biaya_sewa_armada_total,
         sopir_aktual_nama, sopir_default_nama,
         master_mitra ( kode, alamat, nama, tipe_mitra, fee_per_kg )
       `)
@@ -133,18 +137,23 @@ export default function PendapatanOwnerPage() {
   }, [selectedTipeMitra, transaksi]);
 
   const summary = useMemo(() => {
-    const totalTonase = filteredTransaksi.reduce((sum, row) => sum + toNumber(row.tonase), 0);
+    const totalBeratNetto = filteredTransaksi.reduce((sum, row) => sum + toNumber(row.berat_netto_pabrik_kg ?? row.tonase), 0);
+    const totalBeratDibayar = filteredTransaksi.reduce((sum, row) => sum + resolveBeratDibayar(row), 0);
     const totalPendapatanOwner = filteredTransaksi.reduce((sum, row) => sum + resolveTotalFeeOwner(row), 0);
+    const totalSewaArmada = filteredTransaksi.reduce((sum, row) => sum + resolveBiayaSewaArmada(row), 0);
     const totalNilaiBersihMitra = filteredTransaksi.reduce((sum, row) => sum + resolveTotalNilaiBersihMitra(row), 0);
     const totalNilaiPabrik = filteredTransaksi.reduce((sum, row) => sum + resolveTotalKotorPabrik(row), 0);
     const missingSnapshots = filteredTransaksi.filter((row) => !hasFeeSnapshot(row)).length;
 
     return {
-      totalTonase,
+      totalBeratNetto,
+      totalBeratDibayar,
       totalPendapatanOwner,
+      totalSewaArmada,
+      totalPendapatanBruto: totalPendapatanOwner + totalSewaArmada,
       totalNilaiBersihMitra,
       totalNilaiPabrik,
-      rataFeeOwner: totalTonase > 0 ? totalPendapatanOwner / totalTonase : 0,
+      rataFeeOwner: totalBeratDibayar > 0 ? totalPendapatanOwner / totalBeratDibayar : 0,
       jumlahTransaksi: filteredTransaksi.length,
       missingSnapshots,
     };
@@ -158,12 +167,12 @@ export default function PendapatanOwnerPage() {
       const key = String(feePerKg);
       const current = grouped.get(key) || {
         feePerKg,
-        tonase: 0,
+        beratDibayar: 0,
         jumlahTransaksi: 0,
         pendapatanOwner: 0,
       };
 
-      current.tonase += toNumber(row.tonase);
+      current.beratDibayar += resolveBeratDibayar(row);
       current.jumlahTransaksi += 1;
       current.pendapatanOwner += resolveTotalFeeOwner(row);
       grouped.set(key, current);
@@ -186,18 +195,22 @@ export default function PendapatanOwnerPage() {
         label: formatMitraLabel(row.master_mitra) || 'Tanpa mitra',
         tipeMitra: row.master_mitra?.tipe_mitra || MITRA_TYPES.EKSTERNAL,
         jumlahTransaksi: 0,
-        tonase: 0,
+        beratNetto: 0,
+        beratDibayar: 0,
         nilaiPabrik: 0,
         nilaiBersihMitra: 0,
         pendapatanOwner: 0,
+        sewaArmada: 0,
         missingSnapshots: 0,
       };
 
       current.jumlahTransaksi += 1;
-      current.tonase += toNumber(row.tonase);
+      current.beratNetto += toNumber(row.berat_netto_pabrik_kg ?? row.tonase);
+      current.beratDibayar += resolveBeratDibayar(row);
       current.nilaiPabrik += resolveTotalKotorPabrik(row);
       current.nilaiBersihMitra += resolveTotalNilaiBersihMitra(row);
       current.pendapatanOwner += resolveTotalFeeOwner(row);
+      current.sewaArmada += resolveBiayaSewaArmada(row);
       current.missingSnapshots += hasFeeSnapshot(row) ? 0 : 1;
 
       grouped.set(key, current);
@@ -228,7 +241,8 @@ export default function PendapatanOwnerPage() {
       waktu: row => getTimestampMs(row.created_at || row.tanggal),
       mitra: row => formatMitraLabel(row.master_mitra),
       sopir: row => `${row.sopir_aktual_nama || row.sopir_default_nama || ''} ${row.plat_nomor || ''}`,
-      tonase: row => toNumber(row.tonase),
+      berat_netto: row => toNumber(row.berat_netto_pabrik_kg ?? row.tonase),
+      berat_dibayar: row => resolveBeratDibayar(row),
       harga_pabrik: row => resolveHargaPabrikPerKg(row),
       hasil_kotor_pabrik: row => resolveTotalKotorPabrik(row),
       fee: row => resolveFeePerKg(row),
@@ -426,14 +440,26 @@ export default function PendapatanOwnerPage() {
               <div className="card-icon card-icon-green"><BadgeDollarSign size={20} /></div>
             </div>
             <div className="card-value" style={{ color: 'var(--color-success)' }}>
-              {formatRupiah(summary.totalPendapatanOwner)}
+              {formatRupiah(summary.totalPendapatanBruto)}
             </div>
-            <div className="card-label">Total Fee Owner sebelum biaya operasional</div>
+            <div className="card-label">Fee Owner + Sewa Armada CB</div>
+            {summary.totalSewaArmada > 0 && (
+              <div className="owner-income-fee-breakdown">
+                <div className="owner-income-fee-breakdown-row">
+                  <span>Fee Owner</span>
+                  <strong>{formatRupiah(summary.totalPendapatanOwner)}</strong>
+                </div>
+                <div className="owner-income-fee-breakdown-row">
+                  <span>Sewa Armada CB</span>
+                  <strong>{formatRupiah(summary.totalSewaArmada)}</strong>
+                </div>
+              </div>
+            )}
             {(positiveFeeBreakdown.length > 0 || zeroFeeBreakdown) && (
               <div className="owner-income-fee-breakdown">
                 {positiveFeeBreakdown.map(item => (
                   <div key={item.feePerKg} className="owner-income-fee-breakdown-row">
-                    <span>Fee {formatRupiah(item.feePerKg)}/kg</span>
+                    <span>Fee {formatRupiah(item.feePerKg)}/kg ({formatNumber(item.beratDibayar)} kg dibayar)</span>
                     <strong>{formatRupiah(item.pendapatanOwner)}</strong>
                   </div>
                 ))}
@@ -448,11 +474,13 @@ export default function PendapatanOwnerPage() {
 
           <div className="card">
             <div className="card-header">
-              <span className="card-title">Total Tonase Mitra</span>
+              <span className="card-title">Berat Netto / Dibayar</span>
               <div className="card-icon card-icon-blue"><Scale size={20} /></div>
             </div>
-            <div className="card-value">{formatNumber(summary.totalTonase)} <span style={{ fontSize: 'var(--text-base)', fontWeight: 400 }}>Kg</span></div>
-            <div className="card-label">{summary.jumlahTransaksi} transaksi aktif</div>
+            <div className="card-value">{formatNumber(summary.totalBeratDibayar)} <span style={{ fontSize: 'var(--text-base)', fontWeight: 400 }}>Kg dibayar</span></div>
+            <div className="card-label">
+              Netto {formatNumber(summary.totalBeratNetto)} Kg | {summary.jumlahTransaksi} transaksi aktif
+            </div>
           </div>
 
           <div className="card">
@@ -460,8 +488,8 @@ export default function PendapatanOwnerPage() {
               <span className="card-title">Rata-rata Fee</span>
               <div className="card-icon card-icon-gold"><ReceiptText size={20} /></div>
             </div>
-            <div className="card-value">{formatRupiah(summary.rataFeeOwner)}<span style={{ fontSize: 'var(--text-base)', fontWeight: 400 }}>/Kg</span></div>
-            <div className="card-label">Berbobot dari tonase</div>
+            <div className="card-value">{formatRupiah(summary.rataFeeOwner)}<span style={{ fontSize: 'var(--text-base)', fontWeight: 400 }}>/Kg dibayar</span></div>
+            <div className="card-label">Berbobot dari berat dibayar</div>
           </div>
 
           <div className="card">
@@ -612,7 +640,7 @@ export default function PendapatanOwnerPage() {
                     <tfoot>
                       <tr>
                         <td colSpan={2} style={{ textAlign: 'right', fontWeight: 800 }}>TOTAL</td>
-                        <td className="table-mono" style={{ textAlign: 'right', fontWeight: 800 }}>{formatNumber(summary.totalTonase)} Kg</td>
+                        <td className="table-mono" style={{ textAlign: 'right', fontWeight: 800 }}>{formatNumber(summary.totalBeratDibayar)} Kg dibayar</td>
                         <td></td>
                         <td className="table-mono" style={{ textAlign: 'right', fontWeight: 800 }}>{formatRupiah(summary.totalNilaiPabrik)}</td>
                         <td></td>

@@ -246,6 +246,80 @@ Alur target pencatatan laba:
 8. Sistem membuat kas keluar `pembayaran_mitra` dan snapshot item kwitansi.
 9. Laba/Rugi menghitung laba kas dari ledger dan menandai data yang belum lengkap dicocokkan.
 
+### 7.4.1 Scope Urgent - Berat Netto, Potongan Pabrik, dan Sewa Armada BL/SL
+
+Status: **Urgent / P0**. Aturan ini harus dibereskan sebelum angka pendapatan owner, kwitansi mitra, dan laba/rugi dianggap final.
+
+Bahasa admin yang dipakai:
+
+- **Berat Netto dari Pabrik**: angka kg bersih yang tertulis di nota/timbangan pabrik. Di sistem lama angka ini masih disebut `tonase`.
+- **Potongan Pabrik**: kg yang masih harus dikurangkan dari berat netto. Jika nota pabrik sudah benar-benar final dan tidak ada potongan tambahan, isi `0`.
+- **Berat Dibayar**: berat yang dipakai untuk menghitung pembayaran, yaitu Berat Netto dari Pabrik dikurangi Potongan Pabrik.
+- **Harga Pabrik/TWB**: harga pabrik aktif yang diset di Dashboard.
+- **Fee Owner/kg**: bagian owner per kg yang dipotong dari harga pabrik sebelum menghitung hak mitra.
+
+Rumus yang wajib dipakai:
+
+```text
+Berat Dibayar = Berat Netto dari Pabrik - Potongan Pabrik
+Nilai Bersih Mitra = Berat Dibayar x (Harga Pabrik/TWB - Fee Owner/kg)
+Fee Owner Dasar = Berat Dibayar x Fee Owner/kg
+```
+
+Catatan istilah penting: rumus `Berat Dibayar x (Harga Pabrik - Fee Owner)` lebih tepat disebut **Nilai Bersih Mitra** atau uang yang menjadi dasar pembayaran mitra. Pendapatan owner yang murni dari fee tetap dihitung dari `Fee Owner Dasar`. Jika ada biaya sewa armada, itu ditampilkan sebagai komponen terpisah agar admin tidak bingung.
+
+Aturan sewa armada BL/SL:
+
+```text
+Biaya Sewa Armada = Rp150 x Berat Netto dari Pabrik
+```
+
+Aturan ini berlaku jika:
+
+1. Mitra transaksi bukan BL dan bukan SL.
+2. Armada/sopir yang dipakai berafiliasi dengan mitra BL atau SL.
+3. Biaya dihitung memakai Berat Netto dari Pabrik, bukan Berat Dibayar setelah potongan.
+
+Contoh awam:
+
+```text
+Berat netto pabrik: 10.000 kg
+Potongan pabrik: 200 kg
+Harga pabrik/TWB: Rp2.910/kg
+Fee owner: Rp30/kg
+
+Berat dibayar = 10.000 - 200 = 9.800 kg
+Nilai bersih mitra = 9.800 x (2.910 - 30)
+Fee owner dasar = 9.800 x 30
+
+Jika mitra luar memakai armada BL/SL:
+Biaya sewa armada = 10.000 x 150
+```
+
+Keputusan data:
+
+- Kolom lama `tonase` tidak langsung dihapus agar data lama dan laporan lama tidak rusak.
+- `tonase` selama masa transisi dibaca sebagai Berat Netto dari Pabrik.
+- Tambahkan kolom baru non-destruktif di `transaksi_mitra`: `berat_netto_pabrik_kg`, `potongan_pabrik_kg`, `berat_dibayar_kg`, `biaya_sewa_armada_per_kg`, `biaya_sewa_armada_total`, dan penanda apakah biaya sewa armada berlaku.
+- Backfill data lama: `berat_netto_pabrik_kg = tonase`, `potongan_pabrik_kg = 0`, `berat_dibayar_kg = tonase`, dan `biaya_sewa_armada_total = 0`.
+- Untuk kwitansi yang sudah dibayar, snapshot lama tidak dihitung ulang sembarangan. Jika butuh koreksi, gunakan kwitansi revisi atau transaksi baru.
+
+Dampak halaman:
+
+| Halaman | Perubahan yang dibutuhkan |
+| --- | --- |
+| Pengiriman Mitra | Ganti label Tonase menjadi Berat Netto dari Pabrik, tambah input Potongan Pabrik, tampilkan otomatis Berat Dibayar. |
+| Riwayat & Koreksi Mitra | Tampilkan Netto, Potongan, Berat Dibayar, dan biaya sewa armada jika ada. |
+| Kwitansi & Pembayaran Mitra | Rincian per mitra harus menampilkan transaksi, netto, potongan, berat dibayar, panjar, sewa armada, lalu total akhir. |
+| Laporan Mitra | Status sudah/belum dibayar tetap ada, tetapi angka berat harus jelas: netto vs berat dibayar. |
+| Pembayaran Pabrik | Pencocokan tetap memakai angka nota pabrik; data internal yang dipilih harus bisa menjumlahkan Berat Netto dan Berat Dibayar. |
+| Dashboard dan Laba/Rugi | Pendapatan owner memisahkan fee owner, kas masuk pabrik, pembayaran mitra, biaya operasional, dan sewa armada. |
+
+Pending konfirmasi:
+
+- Poin aturan nomor 3 dari bisnis belum diisi. Jangan menambah aturan lain sebelum owner mengonfirmasi.
+- Perlu dipastikan apakah biaya sewa armada Rp150/kg menjadi potongan dari hak mitra, pendapatan tambahan owner, atau catatan tagihan terpisah. Rekomendasi awal: tampilkan sebagai baris terpisah di kwitansi dan laporan agar transparan.
+
 ### 7.5 Tindak Lanjut Mitra yang Sudah Dibayar dan Diberi Kwitansi
 
 Laporan Mitra adalah rekap operasional pengiriman, sedangkan Kwitansi Mitra adalah bukti pembayaran. Keduanya harus terhubung lewat status pembayaran.
@@ -361,11 +435,21 @@ Tambahkan step visual:
 
 1. Tanggal dan mitra.
 2. Sopir/armada dan sopir aktual.
-3. Tonase.
-4. Review snapshot harga/fee.
-5. Simpan.
+3. Berat Netto dari Pabrik.
+4. Potongan Pabrik.
+5. Review Berat Dibayar, harga, fee, dan biaya sewa armada jika berlaku.
+6. Simpan.
 
-Form review snapshot harus jelas sebelum save: Harga Pabrik, Fee Owner, Harga Bersih Mitra, Total Fee, Total Hak Mitra.
+Label lama "Tonase" sebaiknya diganti bertahap menjadi "Berat Netto dari Pabrik" agar admin paham bahwa angka ini mengikuti nota/timbangan pabrik. Jika potongan tidak ada, admin cukup isi `0`.
+
+Form review snapshot harus jelas sebelum save: Harga Pabrik/TWB, Fee Owner, Harga Bersih Mitra, Berat Dibayar, Total Fee, Total Hak Mitra, dan Biaya Sewa Armada jika berlaku.
+
+Validasi wajib:
+
+- Berat Netto dari Pabrik harus lebih dari 0.
+- Potongan Pabrik tidak boleh minus.
+- Potongan Pabrik tidak boleh lebih besar dari Berat Netto dari Pabrik.
+- Jika mitra luar memakai armada BL/SL, sistem menampilkan info biaya sewa Rp150/kg x Berat Netto.
 
 ### Pembelian TBS Lokal
 
@@ -471,6 +555,9 @@ Tambahkan:
 - Hilangkan physical delete untuk semua transaksi finansial.
 - Tambahkan halaman Audit Log minimal.
 - Buat SOP backup, migration, dan rollback.
+- Kunci aturan berat transaksi mitra: Berat Netto dari Pabrik, Potongan Pabrik, Berat Dibayar, Fee Owner, dan biaya sewa armada BL/SL.
+- Tambahkan migration non-destruktif untuk kolom berat/potongan/sewa armada di `transaksi_mitra` dan backfill data lama.
+- Ubah helper kalkulasi agar semua halaman memakai Berat Dibayar untuk hak mitra dan fee owner, serta memakai Berat Netto untuk biaya sewa armada.
 
 ### P1 - UX Workflow Harian
 
@@ -480,6 +567,8 @@ Tambahkan:
 - Standarkan form: input -> kalkulasi -> review -> simpan -> bukti.
 - Kurangi hover scale/glow pada table/card operasional.
 - Bangun ulang Laporan Harian lama menjadi Closing Harian dengan checklist, exception, dan status kunci periode.
+- Update form Pengiriman Mitra agar admin mengisi Berat Netto dari Pabrik dan Potongan Pabrik, lalu sistem menampilkan Berat Dibayar otomatis.
+- Update Riwayat & Koreksi Mitra agar koreksi berat/potongan selalu punya alasan.
 
 ### P2 - Keuangan dan Rekonsiliasi
 
@@ -488,12 +577,14 @@ Tambahkan:
 - Saldo awal/akhir kas dan tutup kas harian.
 - Approval limit hutang/panjar.
 - Link semua ledger ke sumber transaksi.
+- Update Kwitansi Mitra, Laporan Mitra, Pembayaran Pabrik, Dashboard, dan Laba/Rugi agar semua membaca field berat baru.
+- Tampilkan biaya sewa armada sebagai baris sendiri, bukan disembunyikan dalam harga per kg.
 
 ### P3 - Settlement Mitra Final
 
 - Settlement per DO.
 - Selisih tonase mitra vs pabrik.
-- Potongan armada perusahaan.
+- Potongan/biaya armada BL/SL dengan riwayat tarif.
 - Biaya bantuan mitra.
 - Tarif armada history dan override approval.
 - Kwitansi final berdasarkan settlement.
@@ -505,6 +596,55 @@ Tambahkan:
 - Dashboard exception owner.
 - Monitoring error, backup health, dan audit export.
 - UI polish responsive untuk penggunaan HP di lapangan.
+
+### 11.1 Rencana Implementasi Scope Berat dan Sewa Armada
+
+Urutan implementasi yang disarankan:
+
+1. **Migration database aman**
+   - Tambahkan kolom baru di `transaksi_mitra` tanpa menghapus `tonase`.
+   - Isi data lama dengan aturan aman: netto = `tonase`, potongan = `0`, berat dibayar = `tonase`.
+   - Tambahkan constraint agar potongan tidak minus dan tidak lebih besar dari netto.
+   - Tambahkan indeks ringan untuk laporan periode jika diperlukan.
+
+2. **Helper kalkulasi satu pintu**
+   - Update `lib/transaksi-mitra-calculations.js`.
+   - Buat fungsi pembantu untuk mengambil `beratNettoPabrik`, `potonganPabrik`, dan `beratDibayar`.
+   - Semua halaman harus memakai helper ini agar rumus tidak berbeda-beda.
+   - Rumus hak mitra dan fee owner memakai Berat Dibayar.
+   - Rumus sewa armada memakai Berat Netto dari Pabrik.
+
+3. **Pengiriman Mitra**
+   - Ubah input `tonase` menjadi label "Berat Netto dari Pabrik (kg)".
+   - Tambah input "Potongan Pabrik (kg)" dengan default `0`.
+   - Tampilkan "Berat Dibayar" otomatis sebelum simpan.
+   - Deteksi jika mitra transaksi bukan BL/SL tetapi sopir/armada berafiliasi BL/SL.
+   - Jika aturan berlaku, tampilkan info "Biaya sewa armada Rp150/kg x berat netto".
+
+4. **Kwitansi dan pembayaran mitra**
+   - Snapshot kwitansi harus menyimpan netto, potongan, berat dibayar, harga bersih, total bersih, dan biaya sewa armada.
+   - Rincian multi-mitra tetap dipisah per mitra, lalu total akhir digabung.
+   - Transaksi yang sudah dibayar tetap terkunci di snapshot lama.
+   - Perubahan setelah dibayar masuk jalur koreksi/revisi, bukan mengubah kwitansi lama diam-diam.
+
+5. **Riwayat, laporan, dan dashboard**
+   - Riwayat & Koreksi Mitra menampilkan kolom berat baru.
+   - Laporan Mitra membedakan "Berat Netto" dan "Berat Dibayar".
+   - Pembayaran Pabrik memakai netto untuk pencocokan nota pabrik.
+   - Dashboard dan Laba/Rugi memisahkan fee owner, pembayaran mitra, kas masuk pabrik, dan sewa armada.
+
+6. **Validasi dan testing**
+   - Uji transaksi lama tetap muncul dengan angka yang sama setelah backfill.
+   - Uji potongan `0`, potongan normal, dan potongan lebih besar dari netto harus ditolak.
+   - Uji mitra BL/SL memakai armada sendiri tidak kena biaya sewa.
+   - Uji mitra selain BL/SL memakai armada BL/SL kena biaya sewa Rp150/kg.
+   - Uji kwitansi multi-mitra tetap memisahkan rincian per mitra dan total akhir.
+
+Keputusan implementasi awal:
+
+- Tarif Rp150/kg boleh hardcode dulu sebagai konstanta bisnis agar cepat jalan, tetapi harus diberi TODO untuk dipindah ke pengaturan/tarif history.
+- Penentuan BL/SL sementara bisa memakai kode mitra yang diawali `BL` atau `SL`. Implementasi jangka panjang lebih rapi memakai flag khusus di master mitra, misalnya "Mitra Armada Internal".
+- Jangan menghapus atau rename kolom `tonase` pada fase ini. Rename fisik baru dipertimbangkan setelah semua laporan sudah stabil.
 
 ## 12. Acceptance Criteria untuk Alur Baru
 
@@ -518,6 +658,10 @@ Tambahkan:
 - Kuitansi mitra yang sudah dibayar memakai snapshot, bukan hitung ulang bebas.
 - Jika data transaksi berubah setelah kwitansi dibayar, sistem menandai perlu review.
 - Closing harian dapat mengungkap selisih kas, stok, settlement pending, hutang aktif, dan transaksi koreksi.
+- Pengiriman Mitra menyimpan Berat Netto dari Pabrik, Potongan Pabrik, dan Berat Dibayar tanpa merusak data `tonase` lama.
+- Hak mitra dan fee owner dihitung dari Berat Dibayar.
+- Biaya sewa armada BL/SL dihitung dari Berat Netto dari Pabrik dan ditampilkan sebagai baris terpisah.
+- Kwitansi dan Laporan Mitra menampilkan rincian berat dan biaya secara mudah dipahami admin.
 
 ## 12.1 Rencana Cleanup Database
 

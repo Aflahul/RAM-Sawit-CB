@@ -15,7 +15,14 @@ import {
 import { paginateRows } from '@/lib/pagination-utils';
 import { getNextSort, sortRows } from '@/lib/sort-utils';
 import { supabase } from '@/lib/supabase';
-import { resolveEffectiveMitraFeeSnapshot, resolveTotalNilaiBersihMitra } from '@/lib/transaksi-mitra-calculations';
+import {
+  hitungSewaArmadaBL,
+  resolveBeratDibayar,
+  resolveBeratNettoPabrik,
+  resolveBiayaSewaArmada,
+  resolveEffectiveMitraFeeSnapshot,
+  resolveTotalNilaiBersihMitra,
+} from '@/lib/transaksi-mitra-calculations';
 import { formatDateDisplay, formatRupiah, formatWaktu, getTimestampMs, getTodayISO } from '@/lib/utils';
 import { Ban, Pencil, RefreshCw } from 'lucide-react';
 
@@ -35,7 +42,8 @@ const emptyEditForm = {
   sopir_aktual_nama: '',
   sopir_aktual_no_hp: '',
   catatan_sopir: '',
-  tonase: '',
+  berat_netto: '',
+  potongan_pabrik: '0',
   harga_dasar: 0,
   fee_owner_history_id: '',
   fee_owner_per_kg: 0,
@@ -43,6 +51,8 @@ const emptyEditForm = {
   total_kotor: 0,
   total_fee_owner: 0,
   total_nilai_bersih: 0,
+  pakai_sewa_armada_bl: false,
+  biaya_sewa_armada_total: 0,
   alasan_edit: '',
 };
 
@@ -75,7 +85,8 @@ const riwayatSortAccessors = {
   sopir: row => row.sopir_aktual_nama || row.sopir_default_nama,
   plat: row => row.plat_nomor,
   status: row => row.status,
-  tonase: row => toNumber(row.tonase),
+  berat_netto: row => resolveBeratNettoPabrik(row),
+  berat_dibayar: row => resolveBeratDibayar(row),
   harga_bersih: row => toNumber(row.harga_bersih_per_kg ?? row.harga_harian),
   nilai_bersih: row => toNumber(row.total_nilai_bersih ?? row.total_kotor),
   pembayaran: row => row.payment_status || 'belum_dibayar',
@@ -139,6 +150,8 @@ export default function RiwayatPengirimanMitraPage() {
         id, tanggal, sopir_id, mitra_id, plat_nomor, tonase, harga_harian, total_kotor,
         harga_pabrik_per_kg, fee_owner_per_kg, harga_bersih_per_kg, total_fee_owner,
         total_nilai_bersih, fee_owner_history_id,
+        berat_netto_pabrik_kg, potongan_pabrik_kg, berat_dibayar_kg,
+        pakai_sewa_armada_bl, biaya_sewa_armada_per_kg, biaya_sewa_armada_total,
         status, created_at, updated_at, updated_by, alasan_edit, dibatalkan_at, dibatalkan_by, alasan_batal,
         sopir_default_id, sopir_default_nama, sopir_aktual_id, sopir_aktual_nama,
         sopir_aktual_no_hp, sopir_aktual_source, sopir_diganti_dari_default, catatan_sopir,
@@ -219,7 +232,7 @@ export default function RiwayatPengirimanMitraPage() {
             && !payment?.kas_ledger_id;
           const hasChangedAfterPayment = payment
             && (
-              Math.round(Number(row.tonase || 0) * 100) !== Math.round(Number(paymentItem.tonase_snapshot || 0) * 100)
+              Math.round(resolveBeratDibayar(row) * 100) !== Math.round(Number(paymentItem.berat_dibayar_snapshot ?? paymentItem.tonase_snapshot ?? 0) * 100)
               || Math.round(resolveTotalNilaiBersihMitra(row)) !== Math.round(Number(paymentItem.total_nilai_bersih_snapshot || 0))
             );
 
@@ -265,9 +278,11 @@ export default function RiwayatPengirimanMitraPage() {
     return filteredTransaksi
       .filter(row => row.status !== 'dibatalkan')
       .reduce((acc, row) => ({
-        tonase: acc.tonase + toNumber(row.tonase),
+        berat_netto: acc.berat_netto + resolveBeratNettoPabrik(row),
+        berat_dibayar: acc.berat_dibayar + resolveBeratDibayar(row),
         total: acc.total + toNumber(row.total_nilai_bersih ?? row.total_kotor),
-      }), { tonase: 0, total: 0 });
+        sewa_armada: acc.sewa_armada + resolveBiayaSewaArmada(row),
+      }), { berat_netto: 0, berat_dibayar: 0, total: 0, sewa_armada: 0 });
   }, [filteredTransaksi]);
   const editFeeOwner = toNumber(editForm.fee_owner_per_kg);
 
@@ -302,26 +317,39 @@ export default function RiwayatPengirimanMitraPage() {
   }
 
   function recalculateTotals(nextForm) {
-    const feeOwner = toNumber(nextForm.fee_owner_per_kg);
+    const feeOwner    = toNumber(nextForm.fee_owner_per_kg);
     const hargaPabrik = toNumber(nextForm.harga_dasar);
-    const hargaHarian = Math.max(hargaPabrik - feeOwner, 0);
-    const tonase = toNumber(nextForm.tonase);
+    const hargaBersih = Math.max(hargaPabrik - feeOwner, 0);
+    const beratNetto  = Math.max(0, parseFloat(nextForm.berat_netto) || 0);
+    const potongan    = Math.max(0, parseFloat(nextForm.potongan_pabrik) || 0);
+    const beratDibayar = Math.max(0, beratNetto - potongan);
+
+    // Deteksi sewa armada dari form state (pakai_sewa_armada_bl sudah dihitung di openEdit)
+    const sewaArmadaTotal = nextForm.pakai_sewa_armada_bl
+      ? Math.round(beratNetto * 150)
+      : 0;
 
     return {
       ...nextForm,
-      harga_harian: hargaHarian,
-      total_kotor: Math.round(tonase * hargaPabrik),
-      total_fee_owner: Math.round(tonase * feeOwner),
-      total_nilai_bersih: Math.round(tonase * hargaHarian),
+      harga_harian: hargaBersih,
+      total_kotor:        Math.round(beratDibayar * hargaPabrik),
+      total_fee_owner:    Math.round(beratDibayar * feeOwner),
+      total_nilai_bersih: Math.round(beratDibayar * hargaBersih),
+      biaya_sewa_armada_total: sewaArmadaTotal,
     };
   }
 
   function openEdit(row) {
-    const isManual = row.sopir_aktual_source === 'manual';
+    const isManual  = row.sopir_aktual_source === 'manual';
     const isDefault = !isManual && String(row.sopir_aktual_id || '') === String(row.sopir_default_id || row.sopir_id || '');
     const effectiveFee = getEffectiveFeeSnapshot(row.mitra_id, row.tanggal);
-    const fallbackFee = toNumber(row.fee_owner_per_kg ?? effectiveFee.fee ?? row.master_mitra?.fee_per_kg);
-    const hargaDasar = toNumber(row.harga_pabrik_per_kg ?? (toNumber(row.harga_harian) + fallbackFee));
+    const fallbackFee  = toNumber(row.fee_owner_per_kg ?? effectiveFee.fee ?? row.master_mitra?.fee_per_kg);
+    const hargaDasar   = toNumber(row.harga_pabrik_per_kg ?? (toNumber(row.harga_harian) + fallbackFee));
+    const beratNetto   = resolveBeratNettoPabrik(row);
+    const potongan     = toNumber(row.potongan_pabrik_kg);
+    const beratDibayar = resolveBeratDibayar(row);
+    const pakaiSewa    = Boolean(row.pakai_sewa_armada_bl);
+    const sewaTotal    = toNumber(row.biaya_sewa_armada_total);
 
     setEditTarget(row);
     setEditForm({
@@ -335,14 +363,17 @@ export default function RiwayatPengirimanMitraPage() {
       sopir_aktual_nama: row.sopir_aktual_nama || '',
       sopir_aktual_no_hp: row.sopir_aktual_no_hp || '',
       catatan_sopir: row.catatan_sopir || '',
-      tonase: String(row.tonase || ''),
+      berat_netto: String(beratNetto || ''),
+      potongan_pabrik: String(potongan),
       harga_dasar: hargaDasar,
       fee_owner_history_id: row.fee_owner_history_id || effectiveFee.historyId,
       fee_owner_per_kg: fallbackFee,
       harga_harian: toNumber(row.harga_bersih_per_kg ?? row.harga_harian),
-      total_kotor: Math.round(toNumber(row.tonase) * hargaDasar),
-      total_fee_owner: toNumber(row.total_fee_owner),
+      total_kotor:        Math.round(beratDibayar * hargaDasar),
+      total_fee_owner:    toNumber(row.total_fee_owner),
       total_nilai_bersih: toNumber(row.total_nilai_bersih ?? row.total_kotor),
+      pakai_sewa_armada_bl: pakaiSewa,
+      biaya_sewa_armada_total: sewaTotal,
       alasan_edit: '',
     });
   }
@@ -385,8 +416,12 @@ export default function RiwayatPengirimanMitraPage() {
     setEditForm(recalculateTotals(applyFeeSnapshot({ ...editForm, tanggal }, editForm.mitra_id, tanggal)));
   }
 
-  function handleEditTonaseChange(value) {
-    setEditForm(recalculateTotals({ ...editForm, tonase: value }));
+  function handleEditBeratNettoChange(value) {
+    setEditForm(recalculateTotals({ ...editForm, berat_netto: value }));
+  }
+
+  function handleEditPotonganChange(value) {
+    setEditForm(recalculateTotals({ ...editForm, potongan_pabrik: value }));
   }
 
   function handleEditHargaDasarChange(value) {
@@ -460,11 +495,16 @@ export default function RiwayatPengirimanMitraPage() {
     event.preventDefault();
     if (!editTarget || saving) return;
 
-    const tonase = toNumber(editForm.tonase);
+    const beratNetto  = parseFloat(editForm.berat_netto) || 0;
+    const potongan    = parseFloat(editForm.potongan_pabrik) || 0;
+    const beratDibayar = Math.max(0, beratNetto - potongan);
+
     if (!editForm.sopir_default_id) return showToast('Pilih armada / sopir default.');
     if (!editForm.mitra_id) return showToast('Pilih mitra transaksi.');
     if (!editForm.sopir_aktual_nama.trim()) return showToast('Sopir aktual wajib diisi.');
-    if (tonase <= 0) return showToast('Tonase harus lebih dari 0.');
+    if (beratNetto <= 0) return showToast('Berat Netto dari Pabrik harus lebih dari 0.');
+    if (potongan < 0) return showToast('Potongan Pabrik tidak boleh negatif.');
+    if (potongan > beratNetto) return showToast('Potongan Pabrik tidak boleh lebih besar dari Berat Netto.');
     if (!editForm.alasan_edit.trim()) return showToast('Alasan edit wajib diisi.');
 
     setSaving(true);
@@ -490,15 +530,25 @@ export default function RiwayatPengirimanMitraPage() {
       sopir_aktual_source: editForm.sopir_aktual_mode === SOPIR_AKTUAL_MANUAL ? 'manual' : 'master',
       sopir_diganti_dari_default: sopirDiganti,
       catatan_sopir: editForm.catatan_sopir || null,
-      tonase,
-      harga_harian: toNumber(editForm.harga_dasar),
-      total_kotor: editForm.total_kotor,
+      // Field berat (P0) — tonase backward-compat
+      tonase:                beratNetto,
+      berat_netto_pabrik_kg: beratNetto,
+      potongan_pabrik_kg:    potongan,
+      berat_dibayar_kg:      beratDibayar,
+      // Snapshot harga
+      harga_harian:        toNumber(editForm.harga_dasar),
       harga_pabrik_per_kg: toNumber(editForm.harga_dasar),
-      fee_owner_per_kg: toNumber(editForm.fee_owner_per_kg),
+      fee_owner_per_kg:    toNumber(editForm.fee_owner_per_kg),
       harga_bersih_per_kg: editForm.harga_harian,
-      total_fee_owner: editForm.total_fee_owner,
-      total_nilai_bersih: editForm.total_nilai_bersih,
       fee_owner_history_id: editForm.fee_owner_history_id || null,
+      // Total nilai (basis berat_dibayar)
+      total_kotor:        editForm.total_kotor,
+      total_fee_owner:    editForm.total_fee_owner,
+      total_nilai_bersih: editForm.total_nilai_bersih,
+      // Sewa armada
+      pakai_sewa_armada_bl:     editForm.pakai_sewa_armada_bl,
+      biaya_sewa_armada_per_kg: editForm.pakai_sewa_armada_bl ? 150 : null,
+      biaya_sewa_armada_total:  editForm.biaya_sewa_armada_total,
       updated_by: userId,
       alasan_edit: editForm.alasan_edit.trim(),
     };
@@ -616,13 +666,23 @@ export default function RiwayatPengirimanMitraPage() {
             <div style={{ fontWeight: 800, fontSize: 20 }}>{filteredTransaksi.length}</div>
           </div>
           <div>
-            <div className="text-tertiary" style={{ fontSize: 12 }}>Total Tonase Aktif</div>
-            <div style={{ fontWeight: 800, fontSize: 20 }}>{totals.tonase.toLocaleString('id-ID')} Kg</div>
+            <div className="text-tertiary" style={{ fontSize: 12 }}>Total Berat Netto Aktif</div>
+            <div style={{ fontWeight: 800, fontSize: 20 }}>{totals.berat_netto.toLocaleString('id-ID')} Kg</div>
           </div>
           <div>
-            <div className="text-tertiary" style={{ fontSize: 12 }}>Total Nilai Aktif</div>
+            <div className="text-tertiary" style={{ fontSize: 12 }}>Total Berat Dibayar Aktif</div>
+            <div style={{ fontWeight: 800, fontSize: 20 }}>{totals.berat_dibayar.toLocaleString('id-ID')} Kg</div>
+          </div>
+          <div>
+            <div className="text-tertiary" style={{ fontSize: 12 }}>Total Nilai Bersih</div>
             <div style={{ fontWeight: 800, fontSize: 20 }}>{formatRupiah(totals.total)}</div>
           </div>
+          {totals.sewa_armada > 0 && (
+            <div>
+              <div className="text-tertiary" style={{ fontSize: 12 }}>Sewa Armada CB</div>
+              <div style={{ fontWeight: 800, fontSize: 20, color: 'var(--color-warning)' }}>{formatRupiah(totals.sewa_armada)}</div>
+            </div>
+          )}
         </div>
       </div>
 
@@ -634,7 +694,8 @@ export default function RiwayatPengirimanMitraPage() {
               <SortableHeader label="Mitra" sortKey="sopir" sort={sort} onSort={handleSort} />
               <SortableHeader label="Status" sortKey="status" sort={sort} onSort={handleSort} />
               <SortableHeader label="Pembayaran" sortKey="pembayaran" sort={sort} onSort={handleSort} />
-              <SortableHeader label="Tonase" sortKey="tonase" sort={sort} onSort={handleSort} align="right" />
+              <SortableHeader label="Berat Netto" sortKey="berat_netto" sort={sort} onSort={handleSort} align="right" />
+              <SortableHeader label="Berat Dibayar" sortKey="berat_dibayar" sort={sort} onSort={handleSort} align="right" />
               <SortableHeader label="Harga/Kg" sortKey="harga_bersih" sort={sort} onSort={handleSort} align="right" />
               <SortableHeader label="Bersih" sortKey="nilai_bersih" sort={sort} onSort={handleSort} align="right" />
               <th style={{ textAlign: 'center' }}>Aksi</th>
@@ -642,11 +703,11 @@ export default function RiwayatPengirimanMitraPage() {
           </thead>
           <tbody>
             {loading ? (
-              <tr><td colSpan={8} style={{ padding: 24, textAlign: 'center' }}>Memuat riwayat...</td></tr>
+              <tr><td colSpan={9} style={{ padding: 24, textAlign: 'center' }}>Memuat riwayat...</td></tr>
             ) : errorMsg ? (
-              <tr><td colSpan={8} style={{ padding: 24, textAlign: 'center', color: 'var(--color-danger)' }}>Gagal memuat riwayat: {errorMsg}</td></tr>
+              <tr><td colSpan={9} style={{ padding: 24, textAlign: 'center', color: 'var(--color-danger)' }}>Gagal memuat riwayat: {errorMsg}</td></tr>
             ) : sortedTransaksi.length === 0 ? (
-              <tr><td colSpan={8} style={{ padding: 24, textAlign: 'center', color: 'var(--text-tertiary)' }}>Tidak ada transaksi pada filter ini</td></tr>
+              <tr><td colSpan={9} style={{ padding: 24, textAlign: 'center', color: 'var(--text-tertiary)' }}>Tidak ada transaksi pada filter ini</td></tr>
             ) : (
               paginatedTransaksi.rows.map((row) => {
                 const paymentBadge = getPaymentBadge(row);
@@ -687,7 +748,18 @@ export default function RiwayatPengirimanMitraPage() {
                       </div>
                     )}
                   </td>
-                  <td style={{ textAlign: 'right', fontWeight: 700 }}>{toNumber(row.tonase).toLocaleString('id-ID')}</td>
+                  <td style={{ textAlign: 'right', fontWeight: 700 }}>
+                    {resolveBeratNettoPabrik(row).toLocaleString('id-ID')}
+                    {toNumber(row.potongan_pabrik_kg) > 0 && (
+                      <div style={{ fontSize: 11, color: 'var(--color-warning)', fontWeight: 400 }}>−{toNumber(row.potongan_pabrik_kg).toLocaleString('id-ID')} ptg</div>
+                    )}
+                  </td>
+                  <td style={{ textAlign: 'right', fontWeight: 700 }}>
+                    {resolveBeratDibayar(row).toLocaleString('id-ID')}
+                    {row.pakai_sewa_armada_bl && (
+                      <div style={{ fontSize: 11, color: 'var(--color-warning)', fontWeight: 400 }}>sewa armada</div>
+                    )}
+                  </td>
                   <td style={{ textAlign: 'right' }} className="table-mono">{formatRupiah(row.harga_bersih_per_kg ?? row.harga_harian)}</td>
                   <td style={{ textAlign: 'right' }} className="table-mono">{formatRupiah(row.total_nilai_bersih ?? row.total_kotor)}</td>
                   <td>
@@ -746,8 +818,12 @@ export default function RiwayatPengirimanMitraPage() {
                     <input className="form-input" type="date" required value={editForm.tanggal} onChange={event => handleEditTanggalChange(event.target.value)} />
                   </div>
                   <div className="form-group">
-                    <label className="form-label form-label-required">Tonase (Kg)</label>
-                    <input className="form-input form-input-mono" type="number" required min={1} value={editForm.tonase} onChange={event => handleEditTonaseChange(event.target.value)} />
+                    <label className="form-label form-label-required">Berat Netto dari Pabrik (kg)</label>
+                    <input className="form-input form-input-mono" type="number" required min={1} value={editForm.berat_netto} onChange={event => handleEditBeratNettoChange(event.target.value)} />
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label">Potongan Pabrik (kg)</label>
+                    <input className="form-input form-input-mono" type="number" min={0} value={editForm.potongan_pabrik} onChange={event => handleEditPotonganChange(event.target.value)} />
                   </div>
                 </div>
 
@@ -867,13 +943,41 @@ export default function RiwayatPengirimanMitraPage() {
                 )}
 
                 <div className="card" style={{ padding: 'var(--space-md)', marginBottom: 'var(--space-lg)' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
-                    <span>Harga Pabrik/TWB: <strong>{formatRupiah(editForm.harga_dasar)}</strong></span>
-                    <span>Fee Owner: <strong>{formatRupiah(editFeeOwner)}</strong></span>
-                    <span>Harga Bersih/Kg: <strong>{formatRupiah(editForm.harga_harian)}</strong></span>
-                    <span>Nilai Kotor Pabrik: <strong>{formatRupiah(editForm.total_kotor)}</strong></span>
-                    <span>Nilai Bersih: <strong>{formatRupiah(editForm.total_nilai_bersih)}</strong></span>
-                  </div>
+                  {(() => {
+                    const beratNetto   = parseFloat(editForm.berat_netto) || 0;
+                    const potongan     = parseFloat(editForm.potongan_pabrik) || 0;
+                    const beratDibayar = Math.max(0, beratNetto - potongan);
+                    return (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
+                          <span style={{ color: 'var(--text-tertiary)', fontSize: 13 }}>Berat Netto dari Pabrik:</span>
+                          <strong>{beratNetto.toLocaleString('id-ID')} kg</strong>
+                        </div>
+                        {potongan > 0 && (
+                          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
+                            <span style={{ color: 'var(--color-warning)', fontSize: 13 }}>Potongan Pabrik:</span>
+                            <strong style={{ color: 'var(--color-warning)' }}>−{potongan.toLocaleString('id-ID')} kg</strong>
+                          </div>
+                        )}
+                        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, borderTop: '1px solid var(--border-default)', paddingTop: 6 }}>
+                          <span style={{ fontSize: 13, fontWeight: 600 }}>Berat Dibayar:</span>
+                          <strong>{beratDibayar.toLocaleString('id-ID')} kg</strong>
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', paddingTop: 6, borderTop: '1px solid var(--border-default)' }}>
+                          <span style={{ fontSize: 13 }}>Harga Pabrik/TWB: <strong>{formatRupiah(editForm.harga_dasar)}</strong></span>
+                          <span style={{ fontSize: 13 }}>Fee Owner: <strong>{formatRupiah(editFeeOwner)}</strong></span>
+                          <span style={{ fontSize: 13 }}>Harga Bersih/Kg: <strong>{formatRupiah(editForm.harga_harian)}</strong></span>
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+                          <span style={{ fontSize: 13 }}>Total Kotor: <strong>{formatRupiah(editForm.total_kotor)}</strong></span>
+                          <span style={{ fontSize: 13 }}>Nilai Bersih Mitra: <strong style={{ color: 'var(--color-success)' }}>{formatRupiah(editForm.total_nilai_bersih)}</strong></span>
+                          {editForm.pakai_sewa_armada_bl && (
+                            <span style={{ fontSize: 13 }}>Sewa Armada CB: <strong style={{ color: 'var(--color-warning)' }}>{formatRupiah(editForm.biaya_sewa_armada_total)}</strong></span>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })()}
                 </div>
 
                 <div className="form-group">

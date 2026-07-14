@@ -11,7 +11,11 @@ import {
   getSopirArmadaSearchText,
 } from '@/lib/display-labels';
 import { supabase } from '@/lib/supabase';
-import { resolveEffectiveMitraFeeSnapshot } from '@/lib/transaksi-mitra-calculations';
+import {
+  hitungSewaArmadaBL,
+  kalkulasiTransaksiMitra,
+  resolveEffectiveMitraFeeSnapshot,
+} from '@/lib/transaksi-mitra-calculations';
 import { formatRupiah, getTodayISO } from '@/lib/utils';
 
 const SOPIR_AKTUAL_DEFAULT = 'default';
@@ -42,14 +46,20 @@ export default function InputTimbanganPage() {
     sopir_aktual_nama: '',
     sopir_aktual_no_hp: '',
     catatan_sopir: '',
-    tonase: '',
+    berat_netto: '',
+    potongan_pabrik: '0',
+    pakai_sewa_armada_cb: false,
   });
 
   const loadData = useCallback(async () => {
     setLoading(true);
-    
-    // Load Sopir + Relasi Mitra
-    const [{ data: sopirData }, { data: mitraData }, { data: hargaData }, { data: feeHistoryData, error: feeHistoryError }] = await Promise.all([
+
+    const [
+      { data: sopirData },
+      { data: mitraData },
+      { data: hargaData },
+      { data: feeHistoryData, error: feeHistoryError },
+    ] = await Promise.all([
       supabase
         .from('sopir')
         .select(`
@@ -79,11 +89,10 @@ export default function InputTimbanganPage() {
     setMitras(mitraData || []);
     setFeeHistories(feeHistoryError ? [] : feeHistoryData || []);
 
-    // Load Harga Terbaru
     if (hargaData && hargaData.length > 0) {
       setLatestHarga(hargaData[0].harga_per_kg);
     }
-    
+
     setLoading(false);
   }, []);
 
@@ -92,13 +101,25 @@ export default function InputTimbanganPage() {
     loadData();
   }, [loadData]);
 
+  // ---------------------------------------------------------------------------
+  // Derived state
+  // ---------------------------------------------------------------------------
+
   const selectedDefaultSopir = useMemo(() => (
     sopirs.find(s => s.id === form.sopir_id) || null
   ), [form.sopir_id, sopirs]);
 
+  const mitraTransaksi = useMemo(() => (
+    mitras.find(m => m.id === form.mitra_id) || null
+  ), [form.mitra_id, mitras]);
+
+  const mitraAfiliasiSopir = useMemo(() => {
+    if (!selectedDefaultSopir?.mitra_id) return null;
+    return mitras.find(m => m.id === selectedDefaultSopir.mitra_id) || null;
+  }, [selectedDefaultSopir, mitras]);
+
   const prioritizedSopirs = useMemo(() => {
     if (!form.mitra_id) return sopirs;
-
     return [...sopirs].sort((a, b) => {
       const getRank = (sopir) => {
         if (sopir.mitra_id === form.mitra_id) return 0;
@@ -117,6 +138,48 @@ export default function InputTimbanganPage() {
     && form.mitra_id
     && selectedDefaultSopir.mitra_id !== form.mitra_id
   );
+
+  /** Kalkulasi real-time berdasarkan input form saat ini */
+  const kalkulasi = useMemo(() => {
+    const beratNetto = parseFloat(form.berat_netto) || 0;
+    const potongan   = parseFloat(form.potongan_pabrik) || 0;
+    const beratDibayar = Math.max(0, beratNetto - potongan);
+
+    const hargaPabrik = latestHarga;
+    const feeOwner    = form.mitra_fee;
+    const hargaBersih = Math.max(0, hargaPabrik - feeOwner);
+
+    const totalKotor        = Math.round(beratDibayar * hargaPabrik);
+    const totalFeeOwner     = Math.round(beratDibayar * feeOwner);
+    const totalNilaiBersih  = Math.round(beratDibayar * hargaBersih);
+
+    const pakaiSewaArmada = form.pakai_sewa_armada_cb;
+    const sewaArmada = {
+      pakaiSewaArmada,
+      biayaSewaArmadaPerKg: pakaiSewaArmada ? 150 : 0,
+      biayaSewaArmadaTotal: pakaiSewaArmada ? Math.round(beratNetto * 150) : 0,
+    };
+
+    const totalBersihMitra = totalNilaiBersih - sewaArmada.biayaSewaArmadaTotal;
+
+    return {
+      beratNetto,
+      potongan,
+      beratDibayar,
+      hargaPabrik,
+      feeOwner,
+      hargaBersih,
+      totalKotor,
+      totalFeeOwner,
+      totalNilaiBersih,
+      totalBersihMitra,
+      ...sewaArmada,
+    };
+  }, [form.berat_netto, form.potongan_pabrik, form.mitra_fee, form.pakai_sewa_armada_cb, latestHarga]);
+
+  // ---------------------------------------------------------------------------
+  // Helpers mitra/sopir
+  // ---------------------------------------------------------------------------
 
   function getEffectiveFeeSnapshot(mitraId, tanggal) {
     return resolveEffectiveMitraFeeSnapshot({
@@ -157,6 +220,7 @@ export default function InputTimbanganPage() {
         sopir_aktual_nama: '',
         sopir_aktual_no_hp: '',
         catatan_sopir: '',
+        pakai_sewa_armada_cb: false,
       });
       return;
     }
@@ -164,6 +228,11 @@ export default function InputTimbanganPage() {
     const sopir = sopirs.find(s => s.id === selectedId);
     if (sopir) {
       const nextMitraId = form.mitra_id || sopir.mitra_id || '';
+      
+      const mitraTx = mitras.find(m => m.id === nextMitraId);
+      const mitraAfiliasi = mitras.find(m => m.id === sopir.mitra_id);
+      const autoSewa = hitungSewaArmadaBL({ mitraTransaksi: mitraTx, mitraAfiliasiSopir: mitraAfiliasi, beratNettoPabrikKg: 0 }).pakaiSewaArmada;
+
       setForm(applyMitraSnapshot({
         ...form,
         sopir_id: sopir.id,
@@ -175,6 +244,7 @@ export default function InputTimbanganPage() {
         sopir_aktual_nama: sopir.nama,
         sopir_aktual_no_hp: sopir.no_hp || '',
         catatan_sopir: '',
+        pakai_sewa_armada_cb: autoSewa,
       }, nextMitraId, form.tanggal));
     }
   }
@@ -191,12 +261,17 @@ export default function InputTimbanganPage() {
         sopir_aktual_nama: '',
         sopir_aktual_no_hp: '',
         catatan_sopir: '',
-        tonase: '',
+        berat_netto: '',
+        potongan_pabrik: '0',
       }, '', form.tanggal));
       return;
     }
+    const mitraTx = mitras.find(m => m.id === selectedId);
+    const sopir = sopirs.find(s => s.id === form.sopir_id);
+    const mitraAfiliasi = mitras.find(m => m.id === sopir?.mitra_id);
+    const autoSewa = hitungSewaArmadaBL({ mitraTransaksi: mitraTx, mitraAfiliasiSopir: mitraAfiliasi, beratNettoPabrikKg: 0 }).pakaiSewaArmada;
 
-    setForm(applyMitraSnapshot({ ...form }, selectedId, form.tanggal));
+    setForm(applyMitraSnapshot({ ...form, pakai_sewa_armada_cb: autoSewa }, selectedId, form.tanggal));
   }
 
   function handleSopirAktualModeChange(mode) {
@@ -230,7 +305,6 @@ export default function InputTimbanganPage() {
 
   function handleSopirAktualMasterChange(selectedId) {
     const selectedSopir = sopirs.find(s => s.id === selectedId);
-
     setForm({
       ...form,
       sopir_aktual_id: selectedId,
@@ -244,14 +318,31 @@ export default function InputTimbanganPage() {
     setTimeout(() => setToast(null), 4000);
   }
 
+  // ---------------------------------------------------------------------------
+  // Submit
+  // ---------------------------------------------------------------------------
+
   async function handleSubmit(e) {
     e.preventDefault();
     setSaving(true);
     setSuccessMsg('');
 
-    const tonase = parseFloat(form.tonase);
-    if (isNaN(tonase) || tonase <= 0) {
-      showToast('Tonase tidak valid.');
+    const beratNetto = parseFloat(form.berat_netto);
+    if (isNaN(beratNetto) || beratNetto <= 0) {
+      showToast('Berat Netto dari Pabrik harus lebih dari 0.');
+      setSaving(false);
+      return;
+    }
+
+    const potongan = parseFloat(form.potongan_pabrik) || 0;
+    if (potongan < 0) {
+      showToast('Potongan Pabrik tidak boleh negatif.');
+      setSaving(false);
+      return;
+    }
+
+    if (potongan > beratNetto) {
+      showToast('Potongan Pabrik tidak boleh lebih besar dari Berat Netto.');
       setSaving(false);
       return;
     }
@@ -269,11 +360,7 @@ export default function InputTimbanganPage() {
       return;
     }
 
-    const hargaPabrik = latestHarga;
-    const hargaBeliMitra = Math.max(hargaPabrik - form.mitra_fee, 0);
-    const totalKotorPabrik = tonase * hargaPabrik;
-    const totalNilaiBersih = tonase * hargaBeliMitra;
-    const totalFeeOwner = tonase * form.mitra_fee;
+    const k = kalkulasi; // pakai kalkulasi yang sudah dihitung di useMemo
     const sopirDiganti = form.sopir_aktual_mode === SOPIR_AKTUAL_MANUAL
       || (form.sopir_aktual_mode === SOPIR_AKTUAL_MASTER && form.sopir_aktual_id !== form.sopir_id);
     const sopirAktualId = form.sopir_aktual_mode === SOPIR_AKTUAL_DEFAULT
@@ -283,35 +370,53 @@ export default function InputTimbanganPage() {
         : null;
 
     const { error } = await supabase.from('transaksi_mitra').insert({
-      tanggal: form.tanggal,
-      sopir_id: form.sopir_id,
-      mitra_id: form.mitra_id,
-      plat_nomor: form.plat_nomor,
-      sopir_default_id: form.sopir_id,
+      tanggal:            form.tanggal,
+      sopir_id:           form.sopir_id,
+      mitra_id:           form.mitra_id,
+      plat_nomor:         form.plat_nomor,
+      sopir_default_id:   form.sopir_id,
       sopir_default_nama: form.sopir_default_nama,
-      sopir_aktual_id: sopirAktualId,
-      sopir_aktual_nama: sopirAktualNama,
+      sopir_aktual_id:    sopirAktualId,
+      sopir_aktual_nama:  sopirAktualNama,
       sopir_aktual_no_hp: form.sopir_aktual_no_hp || null,
       sopir_aktual_source: form.sopir_aktual_mode === SOPIR_AKTUAL_MANUAL ? 'manual' : 'master',
       sopir_diganti_dari_default: sopirDiganti,
-      catatan_sopir: form.catatan_sopir || null,
-      tonase: tonase,
-      harga_harian: hargaPabrik,
-      total_kotor: totalKotorPabrik,
-      harga_pabrik_per_kg: hargaPabrik,
-      fee_owner_per_kg: form.mitra_fee,
-      harga_bersih_per_kg: hargaBeliMitra,
-      total_fee_owner: totalFeeOwner,
-      total_nilai_bersih: totalNilaiBersih,
-      fee_owner_history_id: form.fee_owner_history_id || null
+      catatan_sopir:      form.catatan_sopir || null,
+
+      // Field berat (P0)
+      tonase:                 k.beratNetto,          // backward-compat: tonase = berat netto
+      berat_netto_pabrik_kg:  k.beratNetto,
+      potongan_pabrik_kg:     k.potongan,
+      berat_dibayar_kg:       k.beratDibayar,
+
+      // Snapshot harga
+      harga_harian:       k.hargaPabrik,
+      harga_pabrik_per_kg: k.hargaPabrik,
+      fee_owner_per_kg:    k.feeOwner,
+      harga_bersih_per_kg: k.hargaBersih,
+      fee_owner_history_id: form.fee_owner_history_id || null,
+
+      // Total nilai (semua basis berat_dibayar)
+      total_kotor:        k.totalKotor,
+      total_fee_owner:    k.totalFeeOwner,
+      total_nilai_bersih: k.totalNilaiBersih,
+
+      // Sewa armada CB
+      pakai_sewa_armada_bl:      form.pakai_sewa_armada_cb,
+      biaya_sewa_armada_per_kg:  form.pakai_sewa_armada_cb ? k.biayaSewaArmadaPerKg : null,
+      biaya_sewa_armada_total:   form.pakai_sewa_armada_cb ? k.biayaSewaArmadaTotal : 0,
     });
 
     if (error) {
       showToast(`Gagal menyimpan data: ${error.message}`);
     } else {
-      const infoSopir = sopirDiganti ? `, sopir aktual: ${sopirAktualNama}` : '';
-      setSuccessMsg(`Berhasil menyimpan ${tonase} Kg untuk armada ${form.plat_nomor}${infoSopir} (Mitra: ${form.mitra_nama}).`);
-      // Reset form but keep date
+      const infoSopir   = sopirDiganti ? `, sopir aktual: ${sopirAktualNama}` : '';
+      const infoPotongan = k.potongan > 0 ? `, potongan ${k.potongan.toLocaleString('id-ID')} kg` : '';
+      const infoSewa     = k.pakaiSewaArmada ? `, sewa armada ${formatRupiah(k.biayaSewaArmadaTotal)}` : '';
+      setSuccessMsg(
+        `Berhasil menyimpan ${k.beratNetto.toLocaleString('id-ID')} kg (berat dibayar ${k.beratDibayar.toLocaleString('id-ID')} kg)${infoPotongan} untuk armada ${form.plat_nomor}${infoSopir}${infoSewa} (Mitra: ${form.mitra_nama}).`
+      );
+      // Reset form, pertahankan tanggal
       setForm({
         ...form,
         sopir_id: '',
@@ -326,12 +431,24 @@ export default function InputTimbanganPage() {
         sopir_aktual_nama: '',
         sopir_aktual_no_hp: '',
         catatan_sopir: '',
-        tonase: '',
+        berat_netto: '',
+        potongan_pabrik: '0',
+        pakai_sewa_armada_cb: false,
       });
     }
 
     setSaving(false);
   }
+
+  // ---------------------------------------------------------------------------
+  // Render
+  // ---------------------------------------------------------------------------
+
+  const siapInput = Boolean(form.mitra_id && form.sopir_id);
+  const beratNettoNum = parseFloat(form.berat_netto) || 0;
+  const potonganNum   = parseFloat(form.potongan_pabrik) || 0;
+  const beratDibayarNum = Math.max(0, beratNettoNum - potonganNum);
+  const reviewReady = siapInput && beratNettoNum > 0;
 
   return (
     <AppShell title="Pengiriman Mitra" subtitle="Catat pengiriman mitra masuk">
@@ -345,11 +462,13 @@ export default function InputTimbanganPage() {
 
       <div className="page-header">
         <div>
-          <p className="page-description">Harga Pabrik / TWB Hari Ini: <strong>{formatRupiah(latestHarga)} / Kg</strong></p>
+          <p className="page-description">
+            Harga Pabrik / TWB Hari Ini: <strong>{formatRupiah(latestHarga)} / Kg</strong>
+          </p>
         </div>
       </div>
 
-      <div className="card" style={{ maxWidth: 560, margin: '0 auto', padding: 'var(--space-xl)' }}>
+      <div className="card" style={{ maxWidth: 580, margin: '0 auto', padding: 'var(--space-xl)' }}>
         {successMsg && (
           <div style={{ background: 'var(--color-success-bg)', color: 'var(--color-success)', padding: 'var(--space-md)', borderRadius: 'var(--radius-md)', marginBottom: 'var(--space-lg)', fontWeight: 500 }}>
             ✅ {successMsg}
@@ -357,17 +476,19 @@ export default function InputTimbanganPage() {
         )}
 
         <form onSubmit={handleSubmit}>
+          {/* Tanggal */}
           <div className="form-group">
             <label className="form-label form-label-required">Tanggal</label>
-            <input 
-              type="date" 
-              className="form-input" 
-              required 
-              value={form.tanggal} 
+            <input
+              type="date"
+              className="form-input"
+              required
+              value={form.tanggal}
               onChange={e => handleTanggalChange(e.target.value)}
             />
           </div>
 
+          {/* Mitra Transaksi */}
           <div className="form-group">
             <label className="form-label form-label-required">Mitra Transaksi</label>
             <SearchableCombobox
@@ -383,6 +504,7 @@ export default function InputTimbanganPage() {
             <div className="form-hint">Fee Owner dan harga bersih mengikuti mitra dan tanggal transaksi ini.</div>
           </div>
 
+          {/* Panel info mitra */}
           {form.mitra_id && (
             <div style={{ background: 'var(--bg-surface)', padding: 16, borderRadius: 8, marginBottom: 16, border: '1px solid var(--border-default)' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, marginBottom: 8 }}>
@@ -424,6 +546,7 @@ export default function InputTimbanganPage() {
             </div>
           )}
 
+          {/* Sopir / Armada */}
           <div className="form-group">
             <label className="form-label form-label-required">Sopir / Armada</label>
             <SearchableCombobox
@@ -441,6 +564,7 @@ export default function InputTimbanganPage() {
             <div className="form-hint">Sopir/armada dari mitra ini ditampilkan lebih dulu; sopir lain tetap bisa dicari jika ada penggantian lapangan.</div>
           </div>
 
+          {/* Sopir Aktual */}
           {form.sopir_id && (
             <div className="form-group">
               <label className="form-label form-label-required">Sopir Aktual Hari Ini</label>
@@ -508,26 +632,138 @@ export default function InputTimbanganPage() {
             </div>
           )}
 
+          {/* Berat Netto dari Pabrik */}
           <div className="form-group">
-            <label className="form-label form-label-required">Tonase Masuk Pabrik (Kg)</label>
-            <input 
-              type="number" 
-              className="form-input" 
+            <label className="form-label form-label-required">Berat Netto dari Pabrik (kg)</label>
+            <input
+              type="number"
+              className="form-input"
               style={{ fontSize: 24, fontWeight: 'bold', padding: 16, height: 'auto' }}
-              required 
+              required
               min={1}
-              placeholder={form.sopir_id ? '0' : 'Pilih mitra dan sopir dulu'}
-              value={form.tonase} 
-              onChange={e => setForm({...form, tonase: e.target.value})} 
-              disabled={!form.sopir_id}
+              placeholder={siapInput ? '0' : 'Pilih mitra dan sopir dulu'}
+              value={form.berat_netto}
+              onChange={e => setForm({ ...form, berat_netto: e.target.value })}
+              disabled={!siapInput}
             />
+            <div className="form-hint">Angka berat yang tertulis di nota / timbangan pabrik.</div>
           </div>
 
-          <button 
-            type="submit" 
-            className="btn btn-primary" 
+          {/* Potongan Pabrik */}
+          <div className="form-group">
+            <label className="form-label">Potongan Pabrik (kg)</label>
+            <input
+              type="number"
+              className="form-input"
+              min={0}
+              placeholder="0"
+              value={form.potongan_pabrik}
+              onChange={e => setForm({ ...form, potongan_pabrik: e.target.value })}
+              disabled={!siapInput}
+            />
+            <div className="form-hint">Isi 0 jika tidak ada potongan dari pabrik.</div>
+          </div>
+
+          {/* Sewa Armada CB */}
+          <div className="form-group" style={{ marginTop: 8 }}>
+            <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', marginBottom: 0 }}>
+              <input
+                type="checkbox"
+                checked={form.pakai_sewa_armada_cb}
+                onChange={e => setForm({ ...form, pakai_sewa_armada_cb: e.target.checked })}
+                disabled={!siapInput}
+                style={{ width: 18, height: 18 }}
+              />
+              <span style={{ fontSize: 15, fontWeight: 500 }}>Pakai Armada CB (Dipotong Sewa Rp150/kg)</span>
+            </label>
+            <div className="form-hint" style={{ marginTop: 4 }}>
+              Centang jika mitra luar menggunakan fasilitas armada/angkutan milik pabrik (Armada CB).
+            </div>
+          </div>
+
+          {/* Panel review kalkulasi */}
+          {reviewReady && (
+            <div style={{
+              background: 'var(--bg-surface)',
+              border: '1px solid var(--border-default)',
+              borderRadius: 8,
+              padding: 16,
+              marginBottom: 16,
+            }}>
+              <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--text-tertiary)', marginBottom: 12, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                Ringkasan Transaksi
+              </div>
+
+              {/* Berat */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, marginBottom: 6 }}>
+                <span style={{ color: 'var(--text-tertiary)', fontSize: 14 }}>Berat Netto dari Pabrik:</span>
+                <span style={{ fontWeight: 600 }}>{beratNettoNum.toLocaleString('id-ID')} kg</span>
+              </div>
+              {potonganNum > 0 && (
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, marginBottom: 6 }}>
+                  <span style={{ color: 'var(--color-warning)', fontSize: 14 }}>Potongan Pabrik:</span>
+                  <span style={{ fontWeight: 600, color: 'var(--color-warning)' }}>−{potonganNum.toLocaleString('id-ID')} kg</span>
+                </div>
+              )}
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, marginBottom: 12, paddingBottom: 12, borderBottom: '1px solid var(--border-default)' }}>
+                <span style={{ color: 'var(--text-primary)', fontSize: 14, fontWeight: 600 }}>Berat Dibayar:</span>
+                <span style={{ fontWeight: 800, fontSize: 16 }}>{beratDibayarNum.toLocaleString('id-ID')} kg</span>
+              </div>
+
+              {/* Harga */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, marginBottom: 6 }}>
+                <span style={{ color: 'var(--text-tertiary)', fontSize: 14 }}>Harga Pabrik / TWB:</span>
+                <span style={{ fontWeight: 600 }}>{formatRupiah(kalkulasi.hargaPabrik)} / kg</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, marginBottom: 6 }}>
+                <span style={{ color: 'var(--text-tertiary)', fontSize: 14 }}>Fee Owner:</span>
+                <span style={{ fontWeight: 600 }}>{formatRupiah(kalkulasi.feeOwner)} / kg</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, marginBottom: 12, paddingBottom: 12, borderBottom: '1px solid var(--border-default)' }}>
+                <span style={{ color: 'var(--text-tertiary)', fontSize: 14 }}>Harga Bersih Mitra / kg:</span>
+                <span style={{ fontWeight: 600, color: 'var(--color-success)' }}>{formatRupiah(kalkulasi.hargaBersih)}</span>
+              </div>
+
+              {/* Nilai */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, marginBottom: 6 }}>
+                <span style={{ color: 'var(--text-tertiary)', fontSize: 14 }}>Total Kotor Pabrik:</span>
+                <span style={{ fontWeight: 600 }}>{formatRupiah(kalkulasi.totalKotor)}</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, marginBottom: 6 }}>
+                <span style={{ color: 'var(--text-tertiary)', fontSize: 14 }}>Fee Owner Dasar:</span>
+                <span style={{ fontWeight: 600 }}>{formatRupiah(kalkulasi.totalFeeOwner)}</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, marginBottom: kalkulasi.pakaiSewaArmada ? 6 : 0 }}>
+                <span style={{ color: 'var(--text-tertiary)', fontSize: 14 }}>Nilai Bersih Mitra:</span>
+                <span style={{ fontWeight: 700, color: 'var(--color-success)' }}>{formatRupiah(kalkulasi.totalNilaiBersih)}</span>
+              </div>
+
+              {/* Sewa armada CB */}
+              {kalkulasi.pakaiSewaArmada && (
+                <>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, marginBottom: 6 }}>
+                    <span style={{ color: 'var(--color-warning)', fontSize: 14 }}>
+                      Sewa Armada CB (Rp{kalkulasi.biayaSewaArmadaPerKg}/kg × {beratNettoNum.toLocaleString('id-ID')} kg netto):
+                    </span>
+                    <span style={{ fontWeight: 600, color: 'var(--color-warning)' }}>−{formatRupiah(kalkulasi.biayaSewaArmadaTotal)}</span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, paddingTop: 8, borderTop: '1px solid var(--border-default)', marginTop: 4 }}>
+                    <span style={{ color: 'var(--text-primary)', fontSize: 14, fontWeight: 600 }}>Estimasi Diterima Mitra:</span>
+                    <span style={{ fontWeight: 800, color: 'var(--color-success)', fontSize: 16 }}>{formatRupiah(kalkulasi.totalBersihMitra)}</span>
+                  </div>
+                  <div className="form-hint" style={{ marginTop: 8 }}>
+                    ⚠️ Sewa armada dipotong saat kwitansi dibayar dan menjadi pendapatan owner.
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+
+          <button
+            type="submit"
+            className="btn btn-primary"
             style={{ width: '100%', padding: 16, fontSize: 18 }}
-            disabled={saving || loading || !form.mitra_id || !form.sopir_id}
+            disabled={saving || loading || !siapInput}
           >
             {saving ? 'MENYIMPAN...' : 'SIMPAN TRANSAKSI'}
           </button>

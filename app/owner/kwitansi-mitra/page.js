@@ -9,6 +9,9 @@ import { formatMitraLabel, getMitraSearchText } from '@/lib/display-labels';
 import { canRecordMitraPayment, normalizeRole } from '@/lib/roles';
 import { supabase } from '@/lib/supabase';
 import {
+  resolveBeratDibayar,
+  resolveBeratNettoPabrik,
+  resolveBiayaSewaArmada,
   resolveHargaBersihPerKg,
   resolveTotalNilaiBersihMitra,
 } from '@/lib/transaksi-mitra-calculations';
@@ -58,7 +61,13 @@ function mapPaymentItemToRow(item) {
     mitra_label: item.mitra_label_snapshot || formatMitraLabel(transaksi.master_mitra),
     tanggal: item.tanggal,
     created_at: item.waktu_transaksi,
+    // berat (P0) — baca dari snapshot dulu, fallback ke transaksi live
     tonase: item.tonase_snapshot,
+    berat_netto_pabrik_kg: item.berat_netto_snapshot ?? item.tonase_snapshot,
+    potongan_pabrik_kg: item.potongan_snapshot ?? 0,
+    berat_dibayar_kg: item.berat_dibayar_snapshot ?? item.tonase_snapshot,
+    pakai_sewa_armada_bl: item.pakai_sewa_armada_snapshot ?? false,
+    biaya_sewa_armada_total: item.biaya_sewa_armada_snapshot ?? 0,
     harga_bersih_per_kg: item.harga_bersih_per_kg_snapshot,
     total_nilai_bersih: item.total_nilai_bersih_snapshot,
     plat_nomor: item.plat_nomor,
@@ -182,6 +191,8 @@ export default function KwitansiMitraPage() {
           created_at,
           harga_pabrik_per_kg, fee_owner_per_kg, harga_bersih_per_kg,
           total_fee_owner, total_nilai_bersih, plat_nomor,
+          berat_netto_pabrik_kg, potongan_pabrik_kg, berat_dibayar_kg,
+          pakai_sewa_armada_bl, biaya_sewa_armada_total,
           sopir_default_nama, sopir_aktual_nama, sopir_diganti_dari_default, catatan_sopir,
           master_mitra ( id, kode, alamat, nama, fee_per_kg )
         `)
@@ -221,9 +232,13 @@ export default function KwitansiMitraPage() {
             transaksi_mitra_id, master_mitra_id, mitra_label_snapshot, tanggal, waktu_transaksi,
             sopir_aktual_nama, plat_nomor, tonase_snapshot, harga_bersih_per_kg_snapshot,
             total_nilai_bersih_snapshot, status_transaksi_snapshot,
+            berat_netto_snapshot, potongan_snapshot, berat_dibayar_snapshot,
+            pakai_sewa_armada_snapshot, biaya_sewa_armada_snapshot,
             transaksi:transaksi_mitra (
               id, mitra_id, status, tonase, harga_harian, total_nilai_bersih, total_kotor,
               harga_pabrik_per_kg, fee_owner_per_kg, harga_bersih_per_kg, total_fee_owner,
+              berat_netto_pabrik_kg, potongan_pabrik_kg, berat_dibayar_kg,
+              pakai_sewa_armada_bl, biaya_sewa_armada_total,
               updated_at,
               master_mitra ( id, kode, alamat, nama, fee_per_kg )
             )
@@ -347,10 +362,12 @@ export default function KwitansiMitraPage() {
       const mitraId = getRowMitraId(row);
       const group = ensureGroup(mitraId, getRowMitraLabel(row, selectedMitras));
       const totalNilaiBersih = resolveTotalNilaiBersihMitra(row);
+      const sewaArmada = resolveBiayaSewaArmada(row);
 
       group.rows.push(row);
-      group.totalTonase += toNumber(row.tonase);
+      group.totalTonase += resolveBeratDibayar(row);
       group.totalNilaiBersih += totalNilaiBersih;
+      group.totalSewaArmada = (group.totalSewaArmada || 0) + sewaArmada;
     });
 
     panjarRows.forEach((row) => {
@@ -375,10 +392,14 @@ export default function KwitansiMitraPage() {
   const currentTotalTonase = kwitansiGroups.reduce((sum, group) => sum + group.totalTonase, 0);
   const currentTotalNilaiBersih = kwitansiGroups.reduce((sum, group) => sum + group.totalNilaiBersih, 0);
   const currentTotalPanjar = kwitansiGroups.reduce((sum, group) => sum + group.totalPanjar, 0);
+  const currentTotalSewaArmada = kwitansiGroups.reduce((sum, group) => sum + (group.totalSewaArmada || 0), 0);
   const displayTotalTonase = isShowingPaidSnapshot ? toNumber(payment?.total_tonase) : currentTotalTonase;
   const displayTotalNilaiBersih = isShowingPaidSnapshot ? toNumber(payment?.total_nilai_bersih) : currentTotalNilaiBersih;
   const displayTotalPanjar = isShowingPaidSnapshot ? toNumber(payment?.total_panjar) : currentTotalPanjar;
-  const sisaBersih = isShowingPaidSnapshot ? toNumber(payment?.nominal_dibayar) : displayTotalNilaiBersih - displayTotalPanjar;
+  const displayTotalSewaArmada = isShowingPaidSnapshot ? toNumber(payment?.total_sewa_armada) : currentTotalSewaArmada;
+  const sisaBersih = isShowingPaidSnapshot
+    ? toNumber(payment?.nominal_dibayar)
+    : displayTotalNilaiBersih - displayTotalPanjar - displayTotalSewaArmada;
   const isPaymentCashMissing = Boolean(isShowingPaidSnapshot && toNumber(payment?.nominal_dibayar) > 0 && !payment?.kas_ledger_id);
   const canRecordPayment = canRecordMitraPayment(userRole);
   const displayPeriode = formatDateRangeDisplay(dateFrom, dateTo);
@@ -661,7 +682,12 @@ export default function KwitansiMitraPage() {
                         </tr>
                       </thead>
                       <tbody>
-                        {group.rows.map((row) => (
+                        {group.rows.map((row) => {
+                          const beratNetto   = resolveBeratNettoPabrik(row);
+                          const potongan     = toNumber(row.potongan_pabrik_kg);
+                          const beratDibayar = resolveBeratDibayar(row);
+                          const sewaArmada   = resolveBiayaSewaArmada(row);
+                          return (
                           <tr key={row.id}>
                             <td>
                               <div style={{ fontWeight: 700 }}>{formatDateDisplay(row.tanggal)}</div>
@@ -677,16 +703,24 @@ export default function KwitansiMitraPage() {
                                 </div>
                               )}
                             </td>
-                            <td style={{ textAlign: 'right' }}>{formatNumber(row.tonase)}</td>
+                            <td style={{ textAlign: 'right' }}>
+                              <div>{formatNumber(beratNetto)}</div>
+                              {potongan > 0 && <div style={{ fontSize: 11, color: 'var(--color-warning)' }}>-{formatNumber(potongan)} ptg</div>}
+                              <div style={{ fontWeight: 700 }}>{formatNumber(beratDibayar)}</div>
+                            </td>
                             <td style={{ textAlign: 'right' }} className="table-mono">{formatRupiah(resolveHargaBersihPerKg(row))}</td>
-                            <td style={{ textAlign: 'right' }} className="table-mono">{formatRupiah(resolveTotalNilaiBersihMitra(row))}</td>
+                            <td style={{ textAlign: 'right' }} className="table-mono">
+                              {formatRupiah(resolveTotalNilaiBersihMitra(row))}
+                              {sewaArmada > 0 && <div style={{ fontSize: 11, color: 'var(--color-warning)' }}>-sewa {formatRupiah(sewaArmada)}</div>}
+                            </td>
                           </tr>
-                        ))}
+                          );
+                        })}
                       </tbody>
                       <tfoot>
                         <tr>
                           <td colSpan={2} style={{ textAlign: 'right' }}>Subtotal nilai bersih:</td>
-                          <td style={{ textAlign: 'right' }}>{formatNumber(group.totalTonase)} Kg</td>
+                          <td style={{ textAlign: 'right' }}>{formatNumber(group.totalTonase)} kg dibayar</td>
                           <td></td>
                           <td style={{ textAlign: 'right' }} className="table-mono">{formatRupiah(group.totalNilaiBersih)}</td>
                         </tr>
@@ -699,13 +733,19 @@ export default function KwitansiMitraPage() {
                       <span>Nilai bersih mitra</span>
                       <strong>{formatRupiah(group.totalNilaiBersih)}</strong>
                     </div>
+                    {(group.totalSewaArmada || 0) > 0 && (
+                      <div>
+                        <span>Sewa Armada CB</span>
+                        <strong className="danger-text">- {formatRupiah(group.totalSewaArmada)}</strong>
+                      </div>
+                    )}
                     <div>
                       <span>Panjar mitra ini</span>
                       <strong className="danger-text">- {formatRupiah(group.totalPanjar)}</strong>
                     </div>
                     <div>
                       <span>Dibayar untuk mitra ini</span>
-                      <strong className="success-text">{formatRupiah(group.totalNilaiBersih - group.totalPanjar)}</strong>
+                      <strong className="success-text">{formatRupiah(group.totalNilaiBersih - (group.totalSewaArmada || 0) - group.totalPanjar)}</strong>
                     </div>
                   </div>
 
@@ -729,6 +769,12 @@ export default function KwitansiMitraPage() {
                     <span>Total Nilai Bersih TBS</span>
                     <strong className="table-mono">{formatRupiah(displayTotalNilaiBersih)}</strong>
                   </div>
+                  {displayTotalSewaArmada > 0 && (
+                    <div>
+                      <span>Potongan Sewa Armada CB</span>
+                      <strong className="table-mono danger-text">- {formatRupiah(displayTotalSewaArmada)}</strong>
+                    </div>
+                  )}
                   <div>
                     <span>Potongan Panjar Mitra</span>
                     <strong className="table-mono danger-text">- {formatRupiah(displayTotalPanjar)}</strong>

@@ -12,6 +12,7 @@ import { getNextSort, sortRows } from '@/lib/sort-utils';
 import { exportStyledWorkbook } from '@/lib/spreadsheet-export';
 import { supabase } from '@/lib/supabase';
 import {
+  resolveBeratDibayar,
   resolveHargaPabrikPerKg,
   resolveTotalKotorPabrik,
   resolveTotalNilaiBersihMitra,
@@ -28,7 +29,8 @@ const laporanSortAccessors = {
   pembayaran: row => row.payment_status,
   sopir: row => row.sopir_aktual_nama || row.sopir_default_nama,
   plat: row => row.plat_nomor,
-  tonase: row => Number(row.tonase),
+  berat_netto: row => Number(row.berat_netto_pabrik_kg ?? row.tonase ?? 0),
+  berat_dibayar: row => resolveBeratDibayar(row),
   hasil_kotor_pabrik: row => resolveTotalKotorPabrik(row),
   nilai_bersih: row => resolveTotalNilaiBersihMitra(row),
 };
@@ -74,6 +76,8 @@ export default function LaporanMitraPage() {
         created_at,
         harga_pabrik_per_kg, fee_owner_per_kg, harga_bersih_per_kg,
         total_fee_owner, total_nilai_bersih, plat_nomor,
+        berat_netto_pabrik_kg, potongan_pabrik_kg, berat_dibayar_kg,
+        pakai_sewa_armada_bl, biaya_sewa_armada_total,
         sopir_default_nama, sopir_aktual_nama, sopir_diganti_dari_default, catatan_sopir,
         master_mitra ( id, kode, alamat, nama, fee_per_kg )
       `)
@@ -106,6 +110,7 @@ export default function LaporanMitraPage() {
         .select(`
           transaksi_mitra_id,
           tonase_snapshot,
+          berat_dibayar_snapshot,
           total_nilai_bersih_snapshot,
           pembayaran:pembayaran_mitra_kwitansi ( id, status, tanggal_bayar, dibayar_at, metode_bayar, nominal_dibayar, kas_ledger_id )
         `)
@@ -127,7 +132,7 @@ export default function LaporanMitraPage() {
           && !payment?.kas_ledger_id;
         const hasChangedAfterPayment = payment
           && (
-            Math.round(Number(row.tonase || 0) * 100) !== Math.round(Number(paymentItem.tonase_snapshot || 0) * 100)
+            Math.round(resolveBeratDibayar(row) * 100) !== Math.round(Number(paymentItem.berat_dibayar_snapshot ?? paymentItem.tonase_snapshot ?? 0) * 100)
             || Math.round(resolveTotalNilaiBersihMitra(row)) !== Math.round(Number(paymentItem.total_nilai_bersih_snapshot || 0))
           );
         return {
@@ -229,13 +234,15 @@ export default function LaporanMitraPage() {
         key,
         label: formatMitraLabel(row.master_mitra) || 'Tanpa mitra',
         rows: [],
-        tonase: 0,
+        beratNetto: 0,
+        beratDibayar: 0,
         totalKotorPabrik: 0,
         totalNilaiBersih: 0,
       };
 
       current.rows.push(row);
-      current.tonase += Number(row.tonase || 0);
+      current.beratNetto += Number(row.berat_netto_pabrik_kg ?? row.tonase ?? 0);
+      current.beratDibayar += resolveBeratDibayar(row);
       current.totalKotorPabrik += resolveTotalKotorPabrik(row);
       current.totalNilaiBersih += resolveTotalNilaiBersihMitra(row);
       groups.set(key, current);
@@ -246,9 +253,11 @@ export default function LaporanMitraPage() {
     ));
   }, [sortedTransaksi]);
 
-  const totalTonase = filteredTransaksi.reduce((sum, t) => sum + Number(t.tonase), 0);
+  const totalBeratNetto = filteredTransaksi.reduce((sum, t) => sum + Number(t.berat_netto_pabrik_kg ?? t.tonase ?? 0), 0);
+  const totalBeratDibayar = filteredTransaksi.reduce((sum, t) => sum + resolveBeratDibayar(t), 0);
   const totalKotorPabrik = filteredTransaksi.reduce((sum, t) => sum + resolveTotalKotorPabrik(t), 0);
   const totalNilaiBersih = filteredTransaksi.reduce((sum, t) => sum + resolveTotalNilaiBersihMitra(t), 0);
+  const totalSewaArmada = filteredTransaksi.reduce((sum, t) => sum + Number(t.biaya_sewa_armada_total ?? 0), 0);
   const displayPeriode = formatDateRangeDisplay(dateFrom, dateTo);
   const shouldGroupByMitra = viewMode === 'kelompok';
   const paymentFilterLabel = {
@@ -333,7 +342,10 @@ export default function LaporanMitraPage() {
           )}
         </td>
         <td>{getPaymentBadge(t)}</td>
-        <td style={{ textAlign: 'right', fontWeight: 'bold', color: 'var(--text-primary)' }}>{Number(t.tonase).toLocaleString('id-ID')}</td>
+        <td style={{ textAlign: 'right', fontWeight: 'bold', color: 'var(--text-primary)' }}>
+          <div style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>{Number(t.berat_netto_pabrik_kg ?? t.tonase ?? 0).toLocaleString('id-ID')} netto</div>
+          <div>{Number(t.berat_dibayar_kg ?? t.berat_netto_pabrik_kg ?? t.tonase ?? 0).toLocaleString('id-ID')} dibayar</div>
+        </td>
         <td style={{ textAlign: 'right' }} className="table-mono">{formatRupiah(resolveTotalKotorPabrik(t))}</td>
         <td style={{ textAlign: 'right' }} className="table-mono">{formatRupiah(resolveTotalNilaiBersihMitra(t))}</td>
       </tr>
@@ -346,7 +358,7 @@ export default function LaporanMitraPage() {
         <SortableHeader label="Tanggal" sortKey="waktu" sort={sort} onSort={handleSort} />
         <SortableHeader label="Mitra" sortKey="sopir" sort={sort} onSort={handleSort} />
         <SortableHeader label="Status Bayar" sortKey="pembayaran" sort={sort} onSort={handleSort} />
-        <SortableHeader label="Tonase" sortKey="tonase" sort={sort} onSort={handleSort} align="right" />
+        <SortableHeader label="Netto / Dibayar" sortKey="berat_dibayar" sort={sort} onSort={handleSort} align="right" />
         <SortableHeader label="Hasil Pabrik" sortKey="hasil_kotor_pabrik" sort={sort} onSort={handleSort} align="right" />
         <SortableHeader label="Nilai Bersih" sortKey="nilai_bersih" sort={sort} onSort={handleSort} align="right" />
       </tr>
@@ -379,7 +391,8 @@ export default function LaporanMitraPage() {
             { header: 'Sopir Default', key: 'sopir_default_nama', width: 24 },
             { header: 'Status Sopir', value: row => row.__footer ? '' : row.sopir_diganti_dari_default ? 'Pengganti' : 'Sesuai default/manual', width: 20 },
             { header: 'Plat Nomor', key: 'plat_nomor', width: 18 },
-            { header: 'Tonase (Kg)', key: 'tonase', type: 'decimal', width: 16 },
+            { header: 'Berat Netto (Kg)', value: row => row.__footer ? row.beratNetto : Number(row.berat_netto_pabrik_kg ?? row.tonase ?? 0), type: 'decimal', width: 18 },
+            { header: 'Berat Dibayar (Kg)', value: row => row.__footer ? row.beratDibayar : Number(row.berat_dibayar_kg ?? row.berat_netto_pabrik_kg ?? row.tonase ?? 0), type: 'decimal', width: 18 },
             { header: 'Harga Pabrik/Kg', value: row => row.__footer ? '' : resolveHargaPabrikPerKg(row), type: 'currency', width: 18 },
             { header: 'Hasil Kotor Pabrik (Rp)', value: row => row.__footer ? row.total_kotor : resolveTotalKotorPabrik(row), type: 'currency', width: 22 },
             { header: 'Nilai Bersih Mitra (Rp)', value: row => row.__footer ? row.total_nilai_bersih : resolveTotalNilaiBersihMitra(row), type: 'currency', width: 22 },
@@ -389,7 +402,8 @@ export default function LaporanMitraPage() {
           footerRows: [{
             __footer: true,
             mitra_label: 'TOTAL',
-            tonase: totalTonase,
+            beratNetto: totalBeratNetto,
+            beratDibayar: totalBeratDibayar,
             total_kotor: totalKotorPabrik,
             total_nilai_bersih: totalNilaiBersih,
           }],
@@ -402,7 +416,8 @@ export default function LaporanMitraPage() {
             { header: 'No', value: (row, index) => row.__footer ? '' : index + 1, type: 'number', width: 6 },
             { header: 'Mitra / Afiliasi', key: 'label', width: 38 },
             { header: 'Jumlah Transaksi', value: row => row.jumlahTransaksi ?? row.rows?.length ?? '', type: 'number', width: 18 },
-            { header: 'Total Tonase (Kg)', key: 'tonase', type: 'decimal', width: 18 },
+            { header: 'Berat Netto (Kg)', value: row => row.__footer ? row.beratNetto : (row.beratNetto ?? 0), type: 'decimal', width: 18 },
+            { header: 'Berat Dibayar (Kg)', value: row => row.__footer ? row.beratDibayar : (row.beratDibayar ?? 0), type: 'decimal', width: 18 },
             { header: 'Total Hasil Kotor Pabrik (Rp)', value: row => row.totalKotorPabrik ?? row.total_kotor, type: 'currency', width: 28 },
             { header: 'Total Nilai Bersih Mitra (Rp)', value: row => row.totalNilaiBersih ?? row.total_nilai_bersih, type: 'currency', width: 28 },
           ],
@@ -411,7 +426,8 @@ export default function LaporanMitraPage() {
             __footer: true,
             label: 'TOTAL',
             jumlahTransaksi: filteredTransaksi.length,
-            tonase: totalTonase,
+            beratNetto: totalBeratNetto,
+            beratDibayar: totalBeratDibayar,
             totalKotorPabrik,
             totalNilaiBersih,
           }],
@@ -524,7 +540,7 @@ export default function LaporanMitraPage() {
         <span>{selectedMitras.length > 0 ? `${selectedMitras.length} mitra dipilih` : 'Semua mitra'}</span>
         <span>{filteredTransaksi.length.toLocaleString('id-ID')} transaksi tampil</span>
         {paymentFilter !== 'semua' && <span>Status: {paymentFilterLabel}</span>}
-        <span>{totalTonase.toLocaleString('id-ID')} Kg</span>
+        <span>Netto {totalBeratNetto.toLocaleString('id-ID')} Kg · Dibayar {totalBeratDibayar.toLocaleString('id-ID')} Kg</span>
         <span>{formatRupiah(totalKotorPabrik)} kotor pabrik</span>
       </div>
 
@@ -558,7 +574,7 @@ export default function LaporanMitraPage() {
                       <p>{group.rows.length.toLocaleString('id-ID')} transaksi</p>
                     </div>
                     <div className="grouped-mitra-totals">
-                      <span>{group.tonase.toLocaleString('id-ID')} Kg</span>
+                      <span>{group.beratDibayar.toLocaleString('id-ID')} Kg dibayar</span>
                       <span>{formatRupiah(group.totalKotorPabrik)}</span>
                       <span>{formatRupiah(group.totalNilaiBersih)}</span>
                     </div>
@@ -575,7 +591,7 @@ export default function LaporanMitraPage() {
             {groupedTransaksi.length > 0 && (
               <div className="grouped-overall-total">
                 <span>Total</span>
-                <strong>{totalTonase.toLocaleString('id-ID')} Kg</strong>
+                <strong>{totalBeratDibayar.toLocaleString('id-ID')} Kg dibayar</strong>
                 <strong>{formatRupiah(totalKotorPabrik)}</strong>
                 <strong>{formatRupiah(totalNilaiBersih)}</strong>
               </div>
@@ -592,7 +608,7 @@ export default function LaporanMitraPage() {
                 <tfoot>
                   <tr>
                     <td colSpan={3} style={{ textAlign: 'right', fontWeight: 'bold' }}>TOTAL:</td>
-                    <td style={{ textAlign: 'right', fontWeight: 'bold', color: 'var(--color-success)' }}>{totalTonase.toLocaleString('id-ID')} Kg</td>
+                    <td style={{ textAlign: 'right', fontWeight: 'bold', color: 'var(--color-success)' }}>{totalBeratDibayar.toLocaleString('id-ID')} Kg dibayar</td>
                     <td style={{ textAlign: 'right', fontWeight: 'bold' }}>{formatRupiah(totalKotorPabrik)}</td>
                     <td style={{ textAlign: 'right', fontWeight: 'bold' }}>{formatRupiah(totalNilaiBersih)}</td>
                   </tr>
