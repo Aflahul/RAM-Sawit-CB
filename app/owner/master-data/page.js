@@ -18,7 +18,7 @@ import { paginateRows } from '@/lib/pagination-utils';
 import { getNextSort, sortRows } from '@/lib/sort-utils';
 import { exportStyledWorkbook } from '@/lib/spreadsheet-export';
 import { supabase } from '@/lib/supabase';
-import { formatRupiah, getTodayISO } from '@/lib/utils';
+import { formatDateTimeDisplay, formatRupiah, getTodayISO } from '@/lib/utils';
 
 const TABLE_PAGE_SIZE = 20;
 
@@ -235,7 +235,7 @@ export default function MasterDataMVPPage() {
   const paginatedSopirs = useMemo(() => paginateRows(sortedSopirs, page, TABLE_PAGE_SIZE), [page, sortedSopirs]);
 
   async function handleExportExcel() {
-    const generatedAt = new Date().toLocaleString('id-ID');
+    const generatedAt = formatDateTimeDisplay(new Date());
 
     if (activeTab === 'mitra') {
       await exportStyledWorkbook({

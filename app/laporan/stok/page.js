@@ -5,7 +5,7 @@ import AppShell from '@/components/layout/AppShell';
 import { supabase } from '@/lib/supabase';
 import { canManageBusinessSettings, normalizeRole } from '@/lib/roles';
 import { exportToExcel } from '@/lib/export';
-import { formatNumber, getTodayISO } from '@/lib/utils';
+import { formatDateDisplay, formatNumber, getTodayISO } from '@/lib/utils';
 
 function getMonthStartISO(dateValue) {
   const date = new Date(dateValue);
@@ -173,7 +173,7 @@ export default function LaporanStokPage() {
         petani: row.transaksi_beli?.petani?.nama || '-',
       })),
       [
-        { key: 'tanggal', label: 'Tanggal', format: (value) => new Date(value).toLocaleDateString('id-ID') },
+        { key: 'tanggal', label: 'Tanggal', format: formatDateDisplay },
         { key: 'tipe_label', label: 'Tipe' },
         { key: 'sumber_label', label: 'Sumber' },
         { key: 'signed_berat', label: 'Berat Signed (kg)' },
@@ -242,7 +242,7 @@ export default function LaporanStokPage() {
           <div className={`stat-value ${summary.koreksi < 0 ? 'text-danger' : 'text-warning'}`}>{formatNumber(summary.koreksi)} kg</div>
         </div>
         <div className="stat-card">
-          <div className="stat-label">Sisa stok sampai {new Date(tanggalAkhir).toLocaleDateString('id-ID')}</div>
+          <div className="stat-label">Sisa stok sampai {formatDateDisplay(tanggalAkhir)}</div>
           <div className={`stat-value ${saldoAkhir < 0 ? 'text-danger' : 'text-primary'}`}>{formatNumber(saldoAkhir)} kg</div>
         </div>
       </div>
@@ -278,7 +278,7 @@ export default function LaporanStokPage() {
                   const signed = getSignedBerat(row);
                   return (
                     <tr key={row.id}>
-                      <td>{new Date(row.tanggal).toLocaleDateString('id-ID')}</td>
+                      <td>{formatDateDisplay(row.tanggal)}</td>
                       <td>
                         <span className={`badge ${signed < 0 ? 'badge-danger' : row.tipe === 'koreksi' ? 'badge-warning' : 'badge-success'}`}>
                           {getTipeLabel(row)}

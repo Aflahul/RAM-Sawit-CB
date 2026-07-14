@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import AppShell from '@/components/layout/AppShell';
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
 import { supabase } from '@/lib/supabase';
-import { formatRupiah, getTodayISO } from '@/lib/utils';
+import { formatDateDisplay, formatRupiah, getTodayISO } from '@/lib/utils';
 import { exportToExcel } from '@/lib/export';
 
 const KATEGORI = [
@@ -31,7 +31,11 @@ export default function BiayaPage() {
 
   const loadData = useCallback(async () => {
     setLoading(true);
-    let query = supabase.from('biaya_operasional').select('*').order('created_at', { ascending: false });
+    let query = supabase
+      .from('biaya_operasional')
+      .select('*')
+      .neq('status', 'dibatalkan')
+      .order('created_at', { ascending: false });
 
     if (filterTanggal) {
       query = query.eq('tanggal', filterTanggal);
@@ -57,6 +61,7 @@ export default function BiayaPage() {
       kategori: form.kategori,
       jumlah: parseFloat(form.jumlah),
       keterangan: form.keterangan || null,
+      status: 'aktif',
       created_by: session?.user?.id || null,
     });
 
@@ -68,9 +73,29 @@ export default function BiayaPage() {
     loadData();
   }
 
-  async function handleDelete(id) {
-    if (!confirm('Hapus biaya ini?')) return;
-    await supabase.from('biaya_operasional').delete().eq('id', id);
+  async function handleCancel(id) {
+    const alasan = prompt('Alasan pembatalan biaya:');
+    if (!alasan || !alasan.trim()) return;
+
+    const { data: { user } } = await supabase.auth.getUser();
+    const { error } = await supabase
+      .from('biaya_operasional')
+      .update({
+        status: 'dibatalkan',
+        alasan_batal: alasan.trim(),
+        dibatalkan_at: new Date().toISOString(),
+        dibatalkan_by: user?.id || null,
+      })
+      .eq('id', id);
+
+    if (error) {
+      setToast({ message: 'Gagal membatalkan biaya: ' + error.message, type: 'error' });
+      setTimeout(() => setToast(null), 4000);
+      return;
+    }
+
+    setToast({ message: 'Biaya berhasil dibatalkan.', type: 'success' });
+    setTimeout(() => setToast(null), 3000);
     loadData();
   }
 
@@ -93,7 +118,7 @@ export default function BiayaPage() {
         <div className="flex gap-sm">
           <button className="btn btn-outline btn-sm" onClick={() => {
             exportToExcel(filtered, [
-              { key: 'tanggal', label: 'Tanggal', format: v => new Date(v).toLocaleDateString('id-ID') },
+              { key: 'tanggal', label: 'Tanggal', format: formatDateDisplay },
               { key: 'kategori', label: 'Kategori', format: v => kategoriLabel(v) },
               { key: 'jumlah', label: 'Jumlah (Rp)' },
               { key: 'keterangan', label: 'Keterangan' },
@@ -142,7 +167,7 @@ export default function BiayaPage() {
                   <td><span className="badge badge-neutral">{kategoriLabel(b.kategori)}</span></td>
                   <td>{b.keterangan || '-'}</td>
                   <td className="table-mono text-danger" style={{ textAlign: 'right', fontWeight: 600 }}>{formatRupiah(b.jumlah)}</td>
-                  <td><button className="btn btn-ghost btn-sm" onClick={() => handleDelete(b.id)}>🗑️</button></td>
+                  <td><button className="btn btn-ghost btn-sm" onClick={() => handleCancel(b.id)}>Batalkan</button></td>
                 </tr>
               ))}
             </tbody>

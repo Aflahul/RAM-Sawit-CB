@@ -11,6 +11,7 @@ import {
   getSopirArmadaSearchText,
 } from '@/lib/display-labels';
 import { supabase } from '@/lib/supabase';
+import { resolveEffectiveMitraFeeSnapshot } from '@/lib/transaksi-mitra-calculations';
 import { formatRupiah, getTodayISO } from '@/lib/utils';
 
 const SOPIR_AKTUAL_DEFAULT = 'default';
@@ -68,7 +69,7 @@ export default function InputTimbanganPage() {
         .limit(1),
       supabase
         .from('fee_owner_mitra_history')
-        .select('id, master_mitra_id, fee_per_kg, berlaku_mulai, berlaku_sampai, aktif')
+        .select('id, master_mitra_id, fee_per_kg, berlaku_mulai, berlaku_sampai, aktif, alasan_perubahan')
         .eq('aktif', true)
         .order('berlaku_mulai', { ascending: false }),
     ]);
@@ -117,19 +118,12 @@ export default function InputTimbanganPage() {
   );
 
   function getEffectiveFeeSnapshot(mitraId, tanggal) {
-    const fallbackMitra = mitras.find(m => m.id === mitraId);
-    const tanggalValue = tanggal || getTodayISO();
-    const history = feeHistories.find(item => {
-      if (item.master_mitra_id !== mitraId) return false;
-      if (item.berlaku_mulai && tanggalValue < item.berlaku_mulai) return false;
-      if (item.berlaku_sampai && tanggalValue > item.berlaku_sampai) return false;
-      return true;
+    return resolveEffectiveMitraFeeSnapshot({
+      mitraId,
+      tanggal: tanggal || getTodayISO(),
+      mitras,
+      feeHistories,
     });
-
-    return {
-      fee: Number(history?.fee_per_kg ?? fallbackMitra?.fee_per_kg ?? 0),
-      historyId: history?.id || '',
-    };
   }
 
   function applyMitraSnapshot(nextForm, mitraId = nextForm.mitra_id, tanggal = nextForm.tanggal) {
@@ -270,7 +264,7 @@ export default function InputTimbanganPage() {
     }
 
     const hargaPabrik = latestHarga;
-    const hargaBeliMitra = hargaPabrik - form.mitra_fee;
+    const hargaBeliMitra = Math.max(hargaPabrik - form.mitra_fee, 0);
     const totalKotorPabrik = tonase * hargaPabrik;
     const totalNilaiBersih = tonase * hargaBeliMitra;
     const totalFeeOwner = tonase * form.mitra_fee;
@@ -387,7 +381,7 @@ export default function InputTimbanganPage() {
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, marginBottom: form.sopir_id ? 12 : 0 }}>
                 <span style={{ color: 'var(--text-tertiary)', fontSize: 14 }}>Harga Bersih ke Mitra:</span>
-                <span style={{ fontWeight: 600, color: 'var(--color-success)' }}>{formatRupiah(latestHarga - form.mitra_fee)} / Kg</span>
+                <span style={{ fontWeight: 600, color: 'var(--color-success)' }}>{formatRupiah(Math.max(latestHarga - form.mitra_fee, 0))} / Kg</span>
               </div>
 
               {form.sopir_id && (

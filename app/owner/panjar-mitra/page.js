@@ -9,7 +9,7 @@ import { formatMitraLabel, getMitraSearchText } from '@/lib/display-labels';
 import { paginateRows } from '@/lib/pagination-utils';
 import { getNextSort, sortRows } from '@/lib/sort-utils';
 import { supabase } from '@/lib/supabase';
-import { formatRupiah, getTodayISO } from '@/lib/utils';
+import { formatDateDisplay, formatRupiah, getTodayISO } from '@/lib/utils';
 
 const TABLE_PAGE_SIZE = 20;
 
@@ -52,6 +52,7 @@ export default function PanjarMitraPage() {
         *,
         master_mitra ( kode, alamat, nama )
       `)
+      .neq('status', 'dibatalkan')
       .order('tanggal', { ascending: false });
       
     setPanjars(pData || []);
@@ -110,9 +111,26 @@ export default function PanjarMitraPage() {
     loadData();
   }
 
-  async function handleDelete(id) {
-    if (!confirm('Hapus data panjar ini?')) return;
-    await supabase.from('panjar_mitra').delete().eq('id', id);
+  async function handleCancel(id) {
+    const alasan = prompt('Alasan pembatalan panjar:');
+    if (!alasan || !alasan.trim()) return;
+
+    const { data: { user } } = await supabase.auth.getUser();
+    const { error } = await supabase
+      .from('panjar_mitra')
+      .update({
+        status: 'dibatalkan',
+        alasan_batal: alasan.trim(),
+        dibatalkan_at: new Date().toISOString(),
+        dibatalkan_by: user?.id || null,
+      })
+      .eq('id', id);
+
+    if (error) {
+      alert('Gagal membatalkan panjar: ' + error.message);
+      return;
+    }
+
     loadData();
   }
 
@@ -181,7 +199,7 @@ export default function PanjarMitraPage() {
             ) : (
               paginatedPanjars.rows.map(p => (
                 <tr key={p.id}>
-                  <td>{p.tanggal}</td>
+                  <td>{formatDateDisplay(p.tanggal)}</td>
                   <td style={{ fontWeight: 600 }}>
                     {p.master_mitra ? formatMitraLabel(p.master_mitra) : '-'}
                   </td>
@@ -200,7 +218,7 @@ export default function PanjarMitraPage() {
                     {p.status === 'belum_lunas' && (
                       <button className="btn btn-ghost btn-sm" onClick={() => handleLunasi(p.id)} title="Tandai Lunas">✅</button>
                     )}
-                    <button className="btn btn-ghost btn-sm" onClick={() => handleDelete(p.id)} title="Hapus">🗑️</button>
+                    <button className="btn btn-ghost btn-sm" onClick={() => handleCancel(p.id)} title="Batalkan">Batalkan</button>
                   </td>
                 </tr>
               ))

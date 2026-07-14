@@ -1551,6 +1551,53 @@ Catatan:
 - Status pembayaran DO dihitung dari total alokasi pembayaran pabrik detail.
 - Jika total alokasi sama dengan `total_pembayaran_pabrik` pada pengiriman, status DO menjadi dibayar penuh.
 
+### Tabel `rekening_kas`
+
+Dipakai sebagai daftar sumber/tujuan uang aktual perusahaan.
+
+Field:
+
+- id
+- nama
+- tipe: kas_tunai, bank, ewallet, owner_modal, lainnya
+- nomor_rekening
+- atas_nama
+- aktif
+- created_by
+- created_at
+
+Catatan:
+
+- Minimal ada satu rekening kas default agar semua transaksi uang punya sumber/tujuan.
+- Jika perusahaan memakai kas tunai dan bank, saldo keduanya harus dipisahkan.
+
+### Tabel `kas_ledger`
+
+Dipakai sebagai buku kas tunggal untuk semua uang aktual yang masuk dan keluar.
+
+Field:
+
+- id
+- rekening_kas_id
+- tanggal
+- arah: masuk, keluar
+- kategori: pembayaran_pabrik, pembayaran_petani, pembayaran_mitra, kasbon_panjar, pengembalian_kasbon_panjar, biaya_operasional, setoran_owner, tarik_owner, pendapatan_lain, koreksi, reversal
+- jumlah
+- sumber_tabel
+- sumber_id
+- nomor_referensi
+- bukti_url
+- keterangan
+- status: aktif, dibatalkan, reversal
+- created_by
+- created_at
+
+Catatan:
+
+- Laba Bersih Kas wajib dihitung dari `kas_ledger`.
+- Pembayaran pabrik, pembayaran petani, pembayaran mitra, biaya, dan kasbon/panjar yang benar-benar menggerakkan uang wajib membuat baris `kas_ledger`.
+- Koreksi kas tidak mengubah baris lama; koreksi membuat baris reversal atau baris koreksi baru.
+
 ### Tabel `settlement_mitra`
 
 Field:
@@ -1626,22 +1673,26 @@ Catatan:
 - Pembatalan biaya operasional dilakukan dengan status/reversal, bukan delete fisik.
 
 
-### Tabel `hutang_ledger`
+### Tabel `hutang_ledger` / `pihak_ledger`
 
-Dipakai untuk petani dan mitra agar tidak double count.
+Dipakai untuk saldo kasbon, panjar, pinjaman, dan pembayaran balik semua pihak agar tidak double count.
 
 Field:
 
 - id
-- pihak_type: petani, mitra
+- pihak_type: petani, mitra, sopir, karyawan, lainnya
 - petani_id
 - mitra_id
+- sopir_id
+- karyawan_id
+- pihak_nama_manual
 - tanggal
 - tipe: debit, kredit
-- sumber: kasbon, panjar, bayar_tunai, potong_tbs, potong_settlement, koreksi
+- sumber: kasbon, panjar, bayar_tunai, potong_tbs, potong_settlement, pembayaran_balik, koreksi, reversal
 - jumlah
 - transaksi_beli_id
 - settlement_id
+- kas_ledger_id
 - keterangan
 - created_by
 - created_at
@@ -1650,7 +1701,11 @@ Catatan:
 
 - Jika `pihak_type = petani`, maka `petani_id` wajib terisi dan `mitra_id` harus kosong.
 - Jika `pihak_type = mitra`, maka `mitra_id` wajib terisi dan `petani_id` harus kosong.
+- Jika `pihak_type = sopir` atau `karyawan`, relasi master terkait diisi jika master sudah tersedia.
+- Jika `pihak_type = lainnya`, `pihak_nama_manual` wajib terisi.
 - Saldo hutang/kasbon dihitung dari ledger, bukan disimpan manual sebagai angka terpisah.
+- Kasbon/panjar yang menyebabkan uang keluar harus terhubung ke `kas_ledger`.
+- Pengembalian kasbon/panjar yang menyebabkan uang masuk harus terhubung ke `kas_ledger`.
 
 ### Tabel `bukti_pembayaran`
 
@@ -1737,9 +1792,11 @@ Transaksi yang wajib masuk audit log:
 | Pengiriman lokal | Ya | Ya | Ya | Lihat |
 | Pengiriman mitra | Ya | Ya | Ya | Lihat |
 | Pembayaran pabrik | Ya | Ya | Lihat | Ya |
+| Kas masuk/keluar | Ya | Ya | Lihat | Ya |
 | Settlement mitra | Ya | Ya | Lihat | Ya |
 | Hutang petani | Ya | Ya | Lihat | Ya |
 | Hutang mitra | Ya | Ya | Lihat | Ya |
+| Hutang/panjar sopir/karyawan/lainnya | Ya | Ya | Lihat | Ya |
 | Biaya operasional | Ya | Ya | Input | Ya |
 | Pengaturan bisnis | Ya | Ya | Lihat | Lihat |
 | Audit log | Ya | Ya | Tidak | Tidak |
@@ -1756,7 +1813,116 @@ Prinsip hak akses detail:
 
 ## 12. Prioritas Implementasi
 
+### Prinsip Urutan Pengembangan
+
+Karena MVP sudah live dan dipakai untuk data operasional asli, Tahap 2 wajib dikerjakan dengan prinsip **security-first, kas-first, dan non-destructive migration**.
+
+Urutan pengembangan tidak boleh hanya mengikuti kemudahan coding. Urutan harus mengikuti risiko bisnis:
+
+1. Lindungi data dan akses role sebelum membuka fitur uang yang lebih sensitif.
+2. Rapikan ledger uang aktual sebelum laporan laba kas dianggap final.
+3. Satukan hutang/panjar sebelum settlement mitra memakai potongan otomatis.
+4. Hitung settlement dengan fungsi teruji sebelum UI pembayaran dibuat penuh.
+5. Rilis per modul kecil agar jika ada bug, dampaknya tidak menyebar ke seluruh sistem.
+
+### Tahapan Produk dan Batas Kelayakan
+
+Pengembangan dibagi menjadi 4 fase produk. Fase ini bukan sekadar urutan coding, tetapi batas kelayakan penggunaan bisnis.
+
+#### Fase 1 - MVP Operasional Terbatas
+
+Status: sudah live untuk alur pengiriman mitra ke pabrik.
+
+Fase ini boleh digunakan untuk:
+
+- Master mitra/sopir/armada MVP.
+- Input pengiriman mitra ke pabrik.
+- Panjar mitra dasar.
+- Kwitansi mitra.
+- Laporan mitra.
+- Koreksi atau pembatalan transaksi mitra tanpa menghapus histori.
+
+Batasan fase ini:
+
+- Belum menjadi sistem bisnis minimal.
+- Belum semua uang masuk dan uang keluar dicatat di ledger kas tunggal.
+- Panjar/kasbon belum universal untuk petani, mitra, sopir, karyawan, dan pihak lain.
+- Laporan laba, margin, dan kas tidak boleh dianggap final.
+- Development berikutnya harus berjalan di staging/development dan production hanya menerima perubahan kecil yang non-destruktif.
+
+#### Fase 2 - Sistem Bisnis Minimal
+
+Fase ini adalah batas pertama ketika web boleh disebut sistem bisnis minimal. MVP saat ini belum layak disebut sistem bisnis minimal, karena bisnis sawit tidak cukup hanya dengan input DO dan cetak kwitansi; uang, hutang/panjar, pembayaran, dan akses role harus terkunci dulu.
+
+Wajib selesai sebelum fase ini dianggap lulus:
+
+- P0-0 security gate: role, RLS, RPC grant, audit dasar, dan test manual role.
+- Tidak ada delete fisik untuk transaksi finansial; semua memakai cancel/reversal.
+- Pembayaran pabrik dasar berjalan dan membedakan nilai tagihan DO dari uang aktual diterima.
+- `rekening_kas` dan `kas_ledger` menjadi sumber semua uang masuk/keluar aktual.
+- Hutang/panjar universal untuk petani, mitra, sopir, karyawan, dan pihak lain.
+- Panjar/kasbon dicatat sebagai saldo pihak/piutang, bukan biaya langsung.
+- Pembayaran mitra dasar bisa dicatat sebagai kas keluar dan status bayar.
+- Laporan owner dasar tersedia: posisi kas, uang masuk pabrik, uang keluar, DO belum dibayar, mitra belum dibayar, dan saldo hutang/panjar per pihak.
+- Backup production, staging test, dan rollback checklist tersedia sebelum release.
+
+Batasan fase ini:
+
+- Sistem sudah layak untuk kontrol bisnis harian minimum.
+- Laba Bersih Kas boleh dipakai jika bersumber dari `kas_ledger`.
+- Laba Estimasi Transaksi masih harus diberi label jelas jika settlement penuh, selisih tonase, tarif armada, dan biaya bantuan belum lengkap.
+- Fitur advanced seperti upload bukti, WhatsApp otomatis, multi-lokasi, dan dashboard margin detail belum wajib.
+
+#### Fase 3 - Sistem Operasional Lengkap
+
+Fase ini membuat web layak menjadi sistem kerja utama untuk owner dan admin.
+
+Wajib selesai:
+
+- Alur petani lokal: pembelian TBS, harga berlaku, stok lokal, dan pengiriman lokal ke pabrik.
+- Pembayaran pabrik multi-DO dan rekonsiliasi dasar.
+- Settlement mitra lengkap: fee history, tonase dasar settlement, pembagian selisih, potongan kasbon, biaya bantuan, dan tarif armada.
+- Pembayaran mitra final beserta bukti/kwitansi.
+- Audit/reversal untuk stok, kas, hutang, pembayaran, settlement, dan pengaturan bisnis.
+- Laporan operasional harian: kas, pabrik per DO, stok, hutang/panjar, settlement mitra, dan export sesuai role.
+
+Batasan fase ini:
+
+- Sistem sudah bisa menjadi sumber kerja utama operasional.
+- Masih mungkin ada polish dan otomasi lanjutan, tetapi alur bisnis inti sudah utuh.
+
+#### Fase 4 - Aplikasi Utuh dan Matang
+
+Fase ini adalah tahap final polish, otomasi, dan kontrol lanjutan.
+
+Target fase ini:
+
+- Upload foto tiket timbang, DO, dan bukti pembayaran.
+- WhatsApp evidence flow yang lebih rapi.
+- Multi-lokasi timbang atau multi-site jika bisnis membutuhkan.
+- Rekonsiliasi lanjutan untuk anomali tonase, pembayaran, dan kas.
+- Dashboard owner dengan margin dan tren lebih dalam.
+- Monitoring error, SOP backup/restore, dan hardening final.
+- UI/UX final untuk pemakaian jangka panjang.
+
+Pada fase ini aplikasi bisa dianggap utuh dan matang, bukan hanya sistem operasional internal yang masih bertumbuh.
+
 ### P0 - Wajib Sebelum Dipakai Serius
+
+#### P0-0 - Fondasi Keamanan Produksi
+
+- Pisahkan environment development/staging dan production.
+- Backup production sebelum migration Tahap 2.
+- Audit tabel, RPC, Storage policy, dan route UI yang sudah live.
+- Perketat RLS Supabase bertahap per modul, bukan satu migration besar tanpa uji role.
+- Pastikan UI hiding bukan satu-satunya kontrol; backend/RLS tetap menolak role yang tidak berhak.
+- Batasi laporan laba-rugi, margin, dan pendapatan owner untuk owner/super admin.
+- Batasi pengaturan user/role hanya untuk super admin.
+- Batasi aksi finansial sensitif untuk owner/super admin/admin keuangan sesuai matriks role.
+- Revoke atau batasi eksekusi RPC sensitif dari role yang tidak berhak.
+- Semua `SECURITY DEFINER` function harus punya validasi `auth.uid()` dan role aplikasi di dalam function.
+- Tidak boleh ada delete fisik untuk transaksi yang memengaruhi stok, kas, hutang, settlement, atau pembayaran.
+- Siapkan test manual role: owner, super admin, admin operasional, admin keuangan.
 
 #### P0A - Fondasi dan Alur Lokal
 
@@ -1772,29 +1938,43 @@ Prinsip hak akses detail:
 - Perbaiki hutang/kasbon memakai ledger tunggal.
 - Perbaiki nomor struk dan nomor bukti agar aman dari bentrok.
 - Tambah pembatalan/reversal ledger untuk transaksi uang, stok, hutang, dan pembayaran.
-- Perketat RLS Supabase dan akses aplikasi.
 
-#### P0B - Alur Mitra dan Settlement
+#### P0B - Kas, Pembayaran Pabrik, dan Hutang/Panjar Universal
+
+- Tambah `rekening_kas` dan `kas_ledger`.
+- Catat semua uang masuk aktual ke `kas_ledger`.
+- Catat semua uang keluar aktual ke `kas_ledger`.
+- Selesaikan UI pembayaran pabrik agar satu pembayaran bisa dialokasikan ke satu/banyak DO.
+- Bedakan nilai tagihan DO dari uang aktual diterima.
+- Laba Bersih Kas dihitung dari `kas_ledger`, bukan dari nilai estimasi transaksi.
+- Perluas hutang/panjar menjadi ledger pihak universal: petani, mitra, sopir, karyawan, dan pihak lain.
+- Migrasikan/sinkronkan `panjar_mitra` aktif ke ledger universal tanpa merusak histori MVP.
+- Kasbon/panjar bukan biaya laba-rugi; kasbon/panjar adalah saldo pihak dan arus kas.
+- Setiap kasbon/panjar yang mengeluarkan uang harus membuat mutasi ledger pihak dan kas ledger.
+- Setiap pengembalian kasbon/panjar harus membuat mutasi ledger pihak dan kas ledger.
+
+#### P0C - Alur Mitra dan Settlement
 
 - Tambah modul pengaturan bisnis untuk fee, pembagian selisih tonase, tarif armada, limit kasbon, dan prioritas laporan.
 - Tambah riwayat fee mitra berdasarkan tanggal/jam berlaku.
 - Tambah alur pengiriman mitra per DO.
 - Tambah settlement mitra per DO.
-- Tambah tabel pembayaran pabrik dan detail alokasi pembayaran per DO.
 - Fee mitra nominal per kg.
 - Pembayaran mitra berdasarkan `tonase_dasar_settlement`.
 - Tambah pembagian selisih tonase berdasarkan persentase yang bisa diatur.
 - Tambah alert anomali jika `tonase_dasar_settlement` lebih besar dari timbang mitra melewati toleransi.
-- Tambah hutang/kasbon mitra.
-- Tambah batas hutang/kasbon per mitra dan approval jika melewati batas.
+- Tambah batas hutang/kasbon per pihak dan approval jika melewati batas.
 - Tambah biaya operasional dan biaya bantuan mitra yang bisa dipotong settlement.
+- Settlement dan pembayaran mitra harus memakai data kas/pembayaran yang sudah kuat, bukan estimasi bebas.
 
-#### P0C - Kontrol, Audit, dan Laporan Owner
+#### P0D - Kontrol, Audit, dan Laporan Owner
 
 - Tampilkan Laba Bersih Kas sebagai angka utama owner dan Laba Estimasi Transaksi sebagai pembanding.
 - Tambah audit log minimal untuk transaksi uang, tonase, stok, settlement, dan pengaturan bisnis.
-- Perbaiki encoding teks/icon.
 - Tambah laporan dasar harian, pabrik per DO, stok lokal, settlement mitra, dan laba-rugi owner.
+- Tambah rekonsiliasi kas masuk/keluar per rekening.
+- Tambah laporan saldo hutang/panjar per pihak.
+- Perbaiki encoding teks/icon.
 
 ### P1 - Penting Untuk Operasional Harian
 
@@ -1818,11 +1998,18 @@ Prinsip hak akses detail:
 
 ## 13. Catatan Implementasi dan Risiko
 
+- Penguatan RLS tidak boleh dilakukan sebagai perubahan massal tanpa test role, karena sistem sudah live dan bisa membuat operator gagal input data.
+- Setiap migration Tahap 2 harus non-destruktif: tambah tabel/kolom/index/policy baru, hindari rename/drop sampai ada rencana migrasi dan rollback.
+- Perubahan pada tabel MVP live seperti `master_mitra`, `sopir`, `transaksi_mitra`, `panjar_mitra`, dan kwitansi harus menjaga kompatibilitas data lama.
+- Jika ada dua tabel/konsep yang tumpang tindih, misalnya `master_mitra` MVP dan `mitra` final, sistem harus menentukan mapping/sumber kebenaran sebelum settlement final.
+- Laporan kas tidak boleh dianggap final sebelum `kas_ledger` menjadi sumber utama seluruh uang masuk/keluar.
+- Pembayaran pabrik perlu dipisah antara nilai tagihan DO dan uang aktual diterima agar laba kas tidak terlalu besar di atas kertas.
+- Kasbon/panjar untuk petani, mitra, sopir, karyawan, atau pihak lain tidak boleh langsung dianggap biaya; posisinya adalah saldo pihak/piutang dan arus kas.
 - Pembagian selisih berat harus selalu memakai persentase yang tersimpan agar settlement bisa diaudit.
 - Tarif armada perlu riwayat tanggal berlaku agar perubahan tarif tidak mengubah perhitungan pengiriman lama.
 - Fee mitra perlu riwayat tanggal berlaku agar perubahan fee tidak mengubah pengiriman/settlement lama.
 - Sopir aktual harus disimpan per pengiriman karena sopir armada bisa diganti sewaktu-waktu; relasi default di master tidak cukup untuk audit DO lama.
-- Ledger hutang/kasbon harus generik untuk petani dan mitra agar tidak terjadi double count.
+- Ledger hutang/kasbon harus generik untuk semua pihak agar tidak terjadi double count.
 - Transaksi yang sudah berdampak ke ledger tidak boleh dihapus; pembatalan harus memakai reversal agar audit tetap utuh.
 - Kondisi `tonase_dasar_settlement` lebih besar dari timbang mitra harus ditandai sebagai anomali rekonsiliasi agar tidak luput dari perhatian owner/admin.
 - Laporan owner harus memakai label jelas: Laba Bersih Kas untuk uang nyata, Laba Estimasi Transaksi untuk transaksi yang belum selesai dibayar.
@@ -1847,12 +2034,15 @@ Versi final dianggap berhasil jika:
 - Sistem memberi peringatan anomali jika `tonase_dasar_settlement` lebih besar dari timbang mitra melewati toleransi.
 - Sistem memotong biaya armada perusahaan dari hak mitra jika armada perusahaan dipakai.
 - Sistem memakai tarif default per armada dan mencatat override tarif jika ada.
-- Sistem bisa mencatat hutang/kasbon petani dan mitra tanpa double count.
-- Sistem bisa membatasi kasbon mitra sesuai limit dan meminta approval jika melewati batas.
+- Sistem bisa mencatat hutang/kasbon petani, mitra, sopir, karyawan, dan pihak lain tanpa double count.
+- Sistem bisa membatasi kasbon/panjar sesuai limit pihak dan meminta approval jika melewati batas.
+- Sistem mencatat seluruh uang aktual masuk/keluar di `kas_ledger`.
+- Sistem bisa membedakan nilai tagihan DO, pembayaran pabrik aktual, dan alokasi pembayaran ke DO.
 - Sistem membatalkan/koreksi transaksi menggunakan reversal dan audit log, bukan delete fisik.
 - Sistem bisa membuat bukti pembayaran mitra dalam PDF atau gambar untuk WhatsApp.
 - Owner dan super admin bisa melihat Laba Bersih Kas dan Laba Estimasi Transaksi.
 - Admin biasa tidak bisa melihat laporan keuntungan.
+- Admin biasa tidak bisa membaca data keuntungan lewat query langsung, bukan hanya lewat menu yang disembunyikan.
 - Laporan bisa memisahkan sumber lokal dan mitra.
 - Biaya perusahaan tidak tercampur dengan biaya mitra.
 

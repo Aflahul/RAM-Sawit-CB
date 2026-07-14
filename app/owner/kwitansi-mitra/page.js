@@ -13,7 +13,7 @@ import {
   resolveTotalNilaiBersihMitra,
 } from '@/lib/transaksi-mitra-calculations';
 import { useBrandingSettings } from '@/lib/use-branding-settings';
-import { formatNumber, formatRupiah, formatWaktu, getTodayISO } from '@/lib/utils';
+import { formatDateDisplay, formatDateRangeDisplay, formatDateTimeDisplay, formatNumber, formatRupiah, formatWaktu, getTodayISO } from '@/lib/utils';
 
 function normalizeWhatsappNumber(phone) {
   const digits = String(phone || '').replace(/\D/g, '');
@@ -34,7 +34,7 @@ function buildWhatsappCaption({ appName, mitra, dateFrom, dateTo, totalTonase, t
   return [
     `Kwitansi Pembayaran ${appName}`,
     `Mitra: ${formatMitraLabel(mitra) || '-'}`,
-    `Periode: ${dateFrom} s/d ${dateTo}`,
+    `Periode: ${formatDateRangeDisplay(dateFrom, dateTo)}`,
     `Total Tonase: ${formatNumber(totalTonase)} Kg`,
     `Total Nilai Bersih TBS: ${formatRupiah(totalNilaiBersih)}`,
     `Potongan Panjar Mitra: ${formatRupiah(totalPanjar)}`,
@@ -78,7 +78,7 @@ export default function KwitansiMitraPage() {
   const loadMitras = useCallback(async () => {
     const { data } = await supabase
       .from('master_mitra')
-      .select('id, kode, alamat, nama, penanggung_jawab, no_hp')
+      .select('id, kode, alamat, nama, penanggung_jawab, no_hp, fee_per_kg')
       .eq('aktif', true)
       .order('kode');
     setMitras(data || []);
@@ -96,7 +96,8 @@ export default function KwitansiMitraPage() {
         created_at,
         harga_pabrik_per_kg, fee_owner_per_kg, harga_bersih_per_kg,
         total_fee_owner, total_nilai_bersih, plat_nomor,
-        sopir_default_nama, sopir_aktual_nama, sopir_diganti_dari_default, catatan_sopir
+        sopir_default_nama, sopir_aktual_nama, sopir_diganti_dari_default, catatan_sopir,
+        master_mitra ( id, kode, alamat, nama, fee_per_kg )
       `)
       .eq('mitra_id', selectedMitra)
       .gte('tanggal', dateFrom)
@@ -142,7 +143,12 @@ export default function KwitansiMitraPage() {
         items:pembayaran_mitra_kwitansi_item (
           transaksi_mitra_id, tanggal, waktu_transaksi, sopir_aktual_nama, plat_nomor,
           tonase_snapshot, harga_bersih_per_kg_snapshot, total_nilai_bersih_snapshot, status_transaksi_snapshot,
-          transaksi:transaksi_mitra ( id, status, tonase, total_nilai_bersih, total_kotor, updated_at )
+          transaksi:transaksi_mitra (
+            id, status, tonase, harga_harian, total_nilai_bersih, total_kotor,
+            harga_pabrik_per_kg, fee_owner_per_kg, harga_bersih_per_kg, total_fee_owner,
+            updated_at,
+            master_mitra ( fee_per_kg )
+          )
         )
       `)
       .eq('master_mitra_id', selectedMitra)
@@ -197,6 +203,7 @@ export default function KwitansiMitraPage() {
   const sisaBersih = payment ? Number(payment.nominal_dibayar) : totalNilaiBersih - totalPanjar;
   const selectedMitraData = mitras.find(m => m.id === selectedMitra);
   const canRecordPayment = canRecordMitraPayment(userRole);
+  const displayPeriode = formatDateRangeDisplay(dateFrom, dateTo);
   const kwitansiRows = useMemo(() => {
     if (!payment) return transaksi;
 
@@ -378,7 +385,7 @@ export default function KwitansiMitraPage() {
             <strong>Status Pembayaran: {paymentReview.label}</strong>
             {payment ? (
               <div style={{ marginTop: 4 }}>
-                Dibayar {payment.tanggal_bayar} {formatWaktu(payment.dibayar_at)} via {payment.metode_bayar}
+                Dibayar {formatDateDisplay(payment.tanggal_bayar)} {formatWaktu(payment.dibayar_at)} via {payment.metode_bayar}
                 {' '}sebesar <span className="table-mono">{formatRupiah(payment.nominal_dibayar)}</span>.
                 {paymentReview.reason ? ` ${paymentReview.reason}` : ''}
               </div>
@@ -393,28 +400,31 @@ export default function KwitansiMitraPage() {
 
       {!loading && !errorMsg && selectedMitra && (
         <div className="print-area card kwitansi-preview" style={{ padding: 'var(--space-xl)' }}>
-          <div className="kwitansi-doc-header" style={{ borderBottom: '2px dashed var(--border-default)', paddingBottom: 20, marginBottom: 20, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 20 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 16, minWidth: 0 }}>
-              <BrandMark branding={branding} mode="print" size={112} className="kwitansi-logo" />
-              <div>
-                <h1 className="kwitansi-title" style={{ margin: 0, fontSize: 22, color: 'var(--text-primary)' }}>KWITANSI PEMBAYARAN TBS</h1>
+          <div className="kwitansi-doc-header" style={{ borderBottom: '2px dashed var(--border-default)', paddingBottom: 20, marginBottom: 20, display: 'flex', alignItems: 'center', gap: 16 }}>
+            <BrandMark branding={branding} mode="print" size={120} className="kwitansi-logo" />
+            <div className="kwitansi-header-info" style={{ display: 'flex', alignItems: 'flex-start', gap: 24, flex: '1 1 auto', minWidth: 0 }}>
+              <div className="kwitansi-title-block">
+                <h1 className="kwitansi-title" style={{ margin: 0, fontSize: 22, color: 'var(--text-primary)' }}>
+                  <span className="kwitansi-title-line">KWITANSI</span>
+                  <span className="kwitansi-title-line">PEMBAYARAN TBS</span>
+                </h1>
                 <p className="kwitansi-brand-name" style={{ margin: '6px 0 0', color: 'var(--text-secondary)' }}>{branding.appName}</p>
               </div>
-            </div>
-            <div className="kwitansi-recipient" style={{ textAlign: 'right' }}>
-              <div style={{ fontSize: 14, color: 'var(--text-secondary)' }}>Kepada Yth. Mitra:</div>
-              <h2 style={{ margin: '4px 0 0', fontSize: 20, color: 'var(--text-primary)' }}>{selectedMitraData?.nama}</h2>
-              <div style={{ fontSize: 13, color: 'var(--text-tertiary)', marginTop: 4 }}>
-                {formatMitraLabel(selectedMitraData)}
-              </div>
-              <div style={{ fontSize: 14, color: 'var(--text-secondary)', marginTop: 4 }}>
-                Periode: {dateFrom} s/d {dateTo}
-              </div>
-              {payment && (
-                <div style={{ marginTop: 10, display: 'inline-flex', padding: '6px 10px', border: '1px solid #111', borderRadius: 6, fontWeight: 800, color: '#111' }}>
-                  {paymentReview.status === 'perlu_review' ? 'PERLU REVIEW' : 'SUDAH DIBAYAR'}
+              <div className="kwitansi-recipient" style={{ textAlign: 'left', marginLeft: 'auto' }}>
+                <div style={{ fontSize: 14, color: 'var(--text-secondary)' }}>Mitra:</div>
+                <h2 style={{ margin: '4px 0 0', fontSize: 20, color: 'var(--text-primary)' }}>{selectedMitraData?.nama}</h2>
+                <div style={{ fontSize: 13, color: 'var(--text-tertiary)', marginTop: 4 }}>
+                  {formatMitraLabel(selectedMitraData)}
                 </div>
-              )}
+                <div style={{ fontSize: 14, color: 'var(--text-secondary)', marginTop: 4 }}>
+                  Periode: {displayPeriode}
+                </div>
+                {payment && (
+                  <div style={{ marginTop: 10, display: 'inline-flex', padding: '6px 10px', border: '1px solid #111', borderRadius: 6, fontWeight: 800, color: '#111' }}>
+                    {paymentReview.status === 'perlu_review' ? 'PERLU REVIEW' : 'SUDAH DIBAYAR'}
+                  </div>
+                )}
+              </div>
             </div>
           </div>
 
@@ -424,7 +434,7 @@ export default function KwitansiMitraPage() {
             <thead>
               <tr style={{ background: 'var(--bg-surface)', borderBottom: '2px solid var(--border-default)' }}>
                 <th style={{ padding: 12, textAlign: 'left' }}>Tanggal</th>
-                <th style={{ padding: 12, textAlign: 'left' }}>Mitra</th>
+                <th style={{ padding: 12, textAlign: 'left' }}>Armada</th>
                 <th style={{ padding: 12, textAlign: 'right' }}>Tonase</th>
                 <th style={{ padding: 12, textAlign: 'right' }}>Harga/Kg</th>
                 <th style={{ padding: 12, textAlign: 'right' }}>Bersih</th>
@@ -437,8 +447,7 @@ export default function KwitansiMitraPage() {
                 kwitansiRows.map((t) => (
                   <tr key={t.id} style={{ borderBottom: '1px solid var(--border-default)' }}>
                     <td style={{ padding: 12 }}>
-                      <div style={{ fontWeight: 700 }}>{t.tanggal}</div>
-                      <div className="table-mono" style={{ marginTop: 4, fontSize: 12, color: 'var(--text-tertiary)' }}>{formatWaktu(t.created_at)}</div>
+                      <div style={{ fontWeight: 700 }}>{formatDateDisplay(t.tanggal)}</div>
                     </td>
                     <td style={{ padding: 12 }}>
                       <div style={{ fontWeight: 600 }}>{t.sopir_aktual_nama || t.sopir_default_nama || '-'}</div>
@@ -478,7 +487,7 @@ export default function KwitansiMitraPage() {
                 <span>Potongan Panjar Mitra:</span>
                 <span style={{ fontWeight: 600 }} className="table-mono">- {formatRupiah(displayTotalPanjar)}</span>
               </div>
-              <div style={{ borderTop: '2px solid var(--border-default)', margin: '16px 0' }}></div>
+              <div className="kwitansi-total-divider" style={{ borderTop: '2px solid var(--border-default)', margin: '16px 0' }}></div>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <span style={{ fontSize: 18, fontWeight: 'bold' }}>SISA DIBAYAR KE MITRA:</span>
                 <span style={{ fontSize: 24, fontWeight: 'bold', color: 'var(--color-success)' }} className="table-mono">
@@ -491,13 +500,13 @@ export default function KwitansiMitraPage() {
           {payment && (
             <div style={{ marginTop: 24, padding: 16, border: '1px solid var(--border-default)', borderRadius: 8, color: 'var(--text-secondary)' }}>
               <strong style={{ color: 'var(--text-primary)' }}>Status Pembayaran:</strong>{' '}
-              {paymentReview.status === 'perlu_review' ? 'Perlu review' : 'Sudah dibayar'} pada {payment.tanggal_bayar} {formatWaktu(payment.dibayar_at)} via {payment.metode_bayar}.
+              {paymentReview.status === 'perlu_review' ? 'Perlu review' : 'Sudah dibayar'} pada {formatDateDisplay(payment.tanggal_bayar)} {formatWaktu(payment.dibayar_at)} via {payment.metode_bayar}.
               {payment.catatan ? ` Catatan: ${payment.catatan}` : ''}
             </div>
           )}
           
           <div style={{ marginTop: 40, textAlign: 'center', color: 'var(--text-tertiary)', fontSize: 12 }}>
-            Dicetak secara otomatis oleh Sistem {branding.appName} pada {new Date().toLocaleString('id-ID')}
+            Dicetak secara otomatis oleh Sistem {branding.appName} pada {formatDateTimeDisplay(new Date())}
           </div>
         </div>
       )}
@@ -505,6 +514,15 @@ export default function KwitansiMitraPage() {
       <style jsx global>{`
         .kwitansi-table-wrap {
           overflow-x: auto;
+        }
+        .kwitansi-title {
+          display: flex;
+          flex-direction: column;
+          gap: 2px;
+        }
+        .kwitansi-title-line {
+          display: block;
+          white-space: nowrap;
         }
 
         @media screen {
@@ -516,10 +534,21 @@ export default function KwitansiMitraPage() {
             padding-bottom: 18px !important;
             margin-bottom: 18px !important;
           }
+          .kwitansi-header-info {
+            flex-wrap: nowrap;
+          }
+          .kwitansi-title-block {
+            flex: 0 0 auto;
+            transform: translateY(12px);
+          }
+          .kwitansi-recipient {
+            max-width: 300px;
+            margin-left: auto;
+          }
           .kwitansi-logo {
-            width: 96px !important;
-            height: 96px !important;
-            flex: 0 0 96px !important;
+            width: 104px !important;
+            height: 104px !important;
+            flex: 0 0 104px !important;
           }
           .kwitansi-title {
             font-size: 20px !important;
@@ -566,7 +595,7 @@ export default function KwitansiMitraPage() {
           }
         }
 
-        @media (min-width: 768px) and (max-width: 1440px) {
+        @media screen and (min-width: 768px) and (max-width: 1440px) {
           .kwitansi-preview {
             padding: 20px !important;
           }
@@ -574,10 +603,19 @@ export default function KwitansiMitraPage() {
             padding-bottom: 16px !important;
             margin-bottom: 16px !important;
           }
+          .kwitansi-header-info {
+            gap: 18px !important;
+          }
+          .kwitansi-title-block {
+            transform: translateY(11px);
+          }
+          .kwitansi-recipient {
+            margin-left: auto !important;
+          }
           .kwitansi-logo {
-            width: 88px !important;
-            height: 88px !important;
-            flex-basis: 88px !important;
+            width: 96px !important;
+            height: 96px !important;
+            flex-basis: 96px !important;
           }
           .kwitansi-title {
             font-size: 18px !important;
@@ -624,7 +662,7 @@ export default function KwitansiMitraPage() {
           }
         }
 
-        @media (max-width: 767px) {
+        @media screen and (max-width: 767px) {
           .kwitansi-preview {
             padding: 16px !important;
           }
@@ -632,10 +670,21 @@ export default function KwitansiMitraPage() {
             flex-direction: column;
             align-items: flex-start !important;
           }
+          .kwitansi-header-info {
+            flex-direction: column;
+            gap: 10px !important;
+          }
+          .kwitansi-title-block {
+            transform: none;
+          }
+          .kwitansi-recipient {
+            max-width: none !important;
+            margin-left: 0 !important;
+          }
           .kwitansi-logo {
-            width: 80px !important;
-            height: 80px !important;
-            flex-basis: 80px !important;
+            width: 84px !important;
+            height: 84px !important;
+            flex-basis: 84px !important;
           }
           .kwitansi-recipient {
             text-align: left !important;
@@ -645,11 +694,158 @@ export default function KwitansiMitraPage() {
           }
         }
 
+        @page {
+          margin: 12mm;
+        }
+
         @media print {
+          html,
+          body {
+            width: auto !important;
+            background: #fff !important;
+          }
+          .app-shell,
+          .main-content,
+          .page-content {
+            display: block !important;
+            width: 100% !important;
+            max-width: none !important;
+            min-height: auto !important;
+            margin: 0 !important;
+            padding: 0 !important;
+          }
+          .main-content {
+            margin-left: 0 !important;
+          }
+          .sidebar,
+          .header,
+          .bottom-nav {
+            display: none !important;
+          }
           body * { visibility: hidden; }
           .print-area, .print-area * { visibility: visible; color: #000 !important; background: #fff !important; }
-          .print-area { position: absolute; left: 0; top: 0; width: 100%; box-shadow: none !important; padding: 0 !important; }
-          .kwitansi-logo { width: 112px !important; height: 112px !important; flex-basis: 112px !important; }
+          .print-area {
+            position: static !important;
+            left: auto !important;
+            top: auto !important;
+            width: 100% !important;
+            max-width: none !important;
+            box-shadow: none !important;
+            border: 0 !important;
+            border-radius: 0 !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            transform: none !important;
+          }
+          .kwitansi-preview {
+            font-size: 11px !important;
+          }
+          .kwitansi-logo {
+            width: 100px !important;
+            height: 100px !important;
+            flex: 0 0 100px !important;
+          }
+          .kwitansi-table-wrap { overflow: visible !important; }
+          .kwitansi-doc-header {
+            display: flex !important;
+            flex-direction: row !important;
+            align-items: center !important;
+            justify-content: flex-start !important;
+            border-bottom: 1.5px dashed #111 !important;
+            gap: 14px !important;
+            width: 100% !important;
+            padding-bottom: 12px !important;
+            margin-bottom: 12px !important;
+          }
+          .kwitansi-header-info {
+            display: flex !important;
+            flex-direction: row !important;
+            align-items: flex-start !important;
+            flex: 1 1 auto !important;
+            flex-wrap: nowrap !important;
+            gap: 18px !important;
+            min-width: 0 !important;
+          }
+          .kwitansi-title-block {
+            flex: 0 0 180px !important;
+            min-width: 0 !important;
+            transform: translateY(12px) !important;
+          }
+          .kwitansi-title {
+            font-size: 18px !important;
+            line-height: 1.05 !important;
+            white-space: normal !important;
+            gap: 1px !important;
+          }
+          .kwitansi-brand-name {
+            font-size: 11px !important;
+          }
+          .kwitansi-preview h3 {
+            font-size: 12px !important;
+            margin-bottom: 8px !important;
+          }
+          .kwitansi-recipient {
+            flex: 0 1 260px !important;
+            min-width: 190px !important;
+            max-width: 260px !important;
+            margin-left: auto !important;
+            padding-left: 0 !important;
+            text-align: left !important;
+          }
+          .kwitansi-recipient,
+          .kwitansi-recipient div {
+            font-size: 10.5px !important;
+            line-height: 1.35 !important;
+          }
+          .kwitansi-recipient h2 {
+            font-size: 14px !important;
+            line-height: 1.25 !important;
+          }
+          .kwitansi-detail-table {
+            border-top: 1.5px solid #111 !important;
+            border-bottom: 1.5px solid #111 !important;
+            font-size: 10.5px !important;
+            margin-bottom: 14px !important;
+            min-width: 0 !important;
+            width: 100% !important;
+          }
+          .kwitansi-detail-table th,
+          .kwitansi-detail-table td {
+            padding: 6px 8px !important;
+            font-size: 10.5px !important;
+            line-height: 1.3 !important;
+          }
+          .kwitansi-detail-table thead tr {
+            border-bottom: 1.5px solid #111 !important;
+          }
+          .kwitansi-detail-table tbody tr {
+            border-bottom: 1px solid #b8b8b8 !important;
+          }
+          .kwitansi-detail-table tbody tr:last-child {
+            border-bottom: 1.5px solid #111 !important;
+          }
+          .kwitansi-detail-table tfoot tr {
+            border-top: 2px solid #111 !important;
+            border-bottom: 1.5px solid #111 !important;
+          }
+          .kwitansi-total-box {
+            border: 1.5px solid #111 !important;
+            width: 360px !important;
+            padding: 12px !important;
+            border-radius: 4px !important;
+          }
+          .kwitansi-total-box span {
+            font-size: 10.5px !important;
+          }
+          .kwitansi-total-box span[style*="font-size: 18px"] {
+            font-size: 13px !important;
+          }
+          .kwitansi-total-box span[style*="font-size: 24px"] {
+            font-size: 16px !important;
+          }
+          .kwitansi-total-divider {
+            border-top: 1.5px solid #111 !important;
+          }
           .no-print { display: none !important; }
         }
       `}</style>

@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import AppShell from '@/components/layout/AppShell';
 import { supabase } from '@/lib/supabase';
-import { formatRupiah, getTodayISO } from '@/lib/utils';
+import { formatDateDisplay, formatRupiah, getTodayISO } from '@/lib/utils';
 import { exportToExcel } from '@/lib/export';
 
 function hitungSaldoLedger(rows = []) {
@@ -318,7 +318,7 @@ export default function HutangPage() {
                     <tbody>
                       {ledgerList.map((item) => (
                         <tr key={item.id}>
-                          <td>{new Date(item.tanggal).toLocaleDateString('id-ID')}</td>
+                          <td>{formatDateDisplay(item.tanggal)}</td>
                           <td>
                             <span className={`badge ${item.tipe === 'debit' ? 'badge-danger' : 'badge-success'}`}>
                               {getLedgerLabel(item)}

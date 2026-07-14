@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import AppShell from '@/components/layout/AppShell';
 import { supabase } from '@/lib/supabase';
-import { formatRupiah, formatNumber } from '@/lib/utils';
+import { formatDateDisplay, formatRupiah, formatNumber } from '@/lib/utils';
 import { exportToExcel } from '@/lib/export';
 
 function hitungSaldoLedger(rows = []) {
@@ -124,7 +124,7 @@ export default function LaporanPetaniPage() {
     exportToExcel(
       detail.tbs,
       [
-        { key: 'tanggal', label: 'Tanggal', format: (value) => new Date(value).toLocaleDateString('id-ID') },
+        { key: 'tanggal', label: 'Tanggal', format: formatDateDisplay },
         { key: 'no_struk', label: 'No Struk' },
         { key: 'berat_kotor_kg', label: 'Berat Kotor (kg)' },
         { key: 'potongan_value', label: 'Potongan (%)' },
@@ -258,7 +258,7 @@ export default function LaporanPetaniPage() {
                         <tbody>
                           {detail.tbs.map((transaksi) => (
                             <tr key={transaksi.id}>
-                              <td>{new Date(transaksi.tanggal).toLocaleDateString('id-ID')}</td>
+                              <td>{formatDateDisplay(transaksi.tanggal)}</td>
                               <td className="table-mono" style={{ fontSize: 'var(--text-xs)' }}>{transaksi.no_struk}</td>
                               <td className="table-mono" style={{ textAlign: 'right' }}>{formatNumber(transaksi.berat_bersih_kg)} kg</td>
                               <td className="table-mono" style={{ textAlign: 'right' }}>{formatRupiah(transaksi.total_harga)}</td>
@@ -292,7 +292,7 @@ export default function LaporanPetaniPage() {
                         <tbody>
                           {detail.ledger.map((item) => (
                             <tr key={item.id}>
-                              <td>{new Date(item.tanggal).toLocaleDateString('id-ID')}</td>
+                              <td>{formatDateDisplay(item.tanggal)}</td>
                               <td>
                                 <span className={`badge ${item.tipe === 'debit' ? 'badge-danger' : 'badge-success'}`}>
                                   {getLedgerLabel(item)}

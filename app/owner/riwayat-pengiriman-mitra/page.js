@@ -15,7 +15,8 @@ import {
 import { paginateRows } from '@/lib/pagination-utils';
 import { getNextSort, sortRows } from '@/lib/sort-utils';
 import { supabase } from '@/lib/supabase';
-import { formatRupiah, formatWaktu, getTimestampMs, getTodayISO } from '@/lib/utils';
+import { resolveEffectiveMitraFeeSnapshot } from '@/lib/transaksi-mitra-calculations';
+import { formatDateDisplay, formatRupiah, formatWaktu, getTimestampMs, getTodayISO } from '@/lib/utils';
 import { Ban, Pencil, RefreshCw } from 'lucide-react';
 
 const SOPIR_AKTUAL_DEFAULT = 'default';
@@ -53,6 +54,7 @@ function toNumber(value) {
 function getRowSearchText(row) {
   return [
     row.tanggal,
+    formatDateDisplay(row.tanggal),
     formatMitraLabel(row.master_mitra),
     row.sopir_default_nama,
     row.sopir_aktual_nama,
@@ -139,7 +141,7 @@ export default function RiwayatPengirimanMitraPage() {
         .order('nama'),
       supabase
         .from('fee_owner_mitra_history')
-        .select('id, master_mitra_id, fee_per_kg, berlaku_mulai, berlaku_sampai, aktif')
+        .select('id, master_mitra_id, fee_per_kg, berlaku_mulai, berlaku_sampai, aktif, alasan_perubahan')
         .eq('aktif', true)
         .order('berlaku_mulai', { ascending: false }),
     ]);
@@ -192,19 +194,12 @@ export default function RiwayatPengirimanMitraPage() {
   }
 
   function getEffectiveFeeSnapshot(mitraId, tanggal) {
-    const fallbackMitra = mitras.find(item => item.id === mitraId);
-    const tanggalValue = tanggal || getTodayISO();
-    const history = feeHistories.find(item => {
-      if (item.master_mitra_id !== mitraId) return false;
-      if (item.berlaku_mulai && tanggalValue < item.berlaku_mulai) return false;
-      if (item.berlaku_sampai && tanggalValue > item.berlaku_sampai) return false;
-      return true;
+    return resolveEffectiveMitraFeeSnapshot({
+      mitraId,
+      tanggal: tanggal || getTodayISO(),
+      mitras,
+      feeHistories,
     });
-
-    return {
-      fee: toNumber(history?.fee_per_kg ?? fallbackMitra?.fee_per_kg),
-      historyId: history?.id || '',
-    };
   }
 
   function applyFeeSnapshot(nextForm, mitraId = nextForm.mitra_id, tanggal = nextForm.tanggal) {
@@ -559,7 +554,7 @@ export default function RiwayatPengirimanMitraPage() {
               paginatedTransaksi.rows.map(row => (
                 <tr key={row.id} style={row.status === 'dibatalkan' ? { opacity: 0.62 } : undefined}>
                   <td>
-                    <div style={{ fontWeight: 700 }}>{row.tanggal}</div>
+                    <div style={{ fontWeight: 700 }}>{formatDateDisplay(row.tanggal)}</div>
                     <div className="table-mono" style={{ marginTop: 4, color: 'var(--text-tertiary)', fontSize: 12 }}>{formatWaktu(row.created_at)}</div>
                   </td>
                   <td>
@@ -800,7 +795,7 @@ export default function RiwayatPengirimanMitraPage() {
             <form onSubmit={handleCancelTransaction}>
               <div className="modal-body">
                 <p className="text-secondary" style={{ marginBottom: 16 }}>
-                  Transaksi {cancelTarget.tanggal} - {formatMitraLabel(cancelTarget.master_mitra)} akan ditandai dibatalkan. Data tidak dihapus.
+                  Transaksi {formatDateDisplay(cancelTarget.tanggal)} - {formatMitraLabel(cancelTarget.master_mitra)} akan ditandai dibatalkan. Data tidak dihapus.
                 </p>
                 <div className="form-group">
                   <label className="form-label form-label-required">Alasan Batal</label>

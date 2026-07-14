@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import AppShell from '@/components/layout/AppShell';
 import { supabase } from '@/lib/supabase';
-import { formatRupiah, formatNumber, getTodayISO } from '@/lib/utils';
+import { formatDateDisplay, formatRupiah, formatNumber, getTodayISO } from '@/lib/utils';
 
 function getSignedBerat(row) {
   const berat = Number(row.berat_kg || 0);
@@ -311,7 +311,7 @@ export default function PengirimanPage() {
                 const allocations = allocationsByPengiriman[pengiriman.id] || [];
                 return (
                   <tr key={pengiriman.id}>
-                    <td>{new Date(pengiriman.tanggal).toLocaleDateString('id-ID')}</td>
+                    <td>{formatDateDisplay(pengiriman.tanggal)}</td>
                     <td>{pengiriman.sopir?.nama || '-'}</td>
                     <td className="table-mono">{pengiriman.kendaraan?.plat_nomor || '-'}</td>
                     <td>{pengiriman.pabrik?.nama || '-'}</td>

@@ -3,17 +3,10 @@
 import { useCallback, useEffect, useState } from 'react';
 import AppShell from '@/components/layout/AppShell';
 import { supabase } from '@/lib/supabase';
-import { formatRupiah } from '@/lib/utils';
+import { formatDateTimeDisplay, formatRupiah } from '@/lib/utils';
 
 function formatDateTime(value) {
-  if (!value) return '-';
-  return new Date(value).toLocaleString('id-ID', {
-    day: '2-digit',
-    month: 'long',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
+  return formatDateTimeDisplay(value, { seconds: false });
 }
 
 export default function HargaTBSPage() {

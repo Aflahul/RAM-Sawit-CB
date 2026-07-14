@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import AppShell from '@/components/layout/AppShell';
 import { supabase } from '@/lib/supabase';
-import { formatRupiah, formatNumber, getTodayISO } from '@/lib/utils';
+import { formatDateDisplay, formatRupiah, formatNumber, getTodayISO } from '@/lib/utils';
 import { exportLaporanHarian } from '@/lib/export';
 import { Factory, Users, Scale, Box, CreditCard, Calculator } from 'lucide-react';
 
@@ -32,8 +32,7 @@ function getLastSevenDays() {
 }
 
 function dayLabel(dateString) {
-  const [year, month, day] = dateString.split('-').map(Number);
-  return new Date(year, month - 1, day).toLocaleDateString('id-ID', { weekday: 'short' });
+  return formatDateDisplay(dateString).slice(0, 5);
 }
 
 export default function DashboardPage() {

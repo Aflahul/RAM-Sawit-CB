@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { AlertTriangle, BadgeDollarSign, Printer, ReceiptText, Scale } from 'lucide-react';
+import { AlertTriangle, BadgeDollarSign, Printer, ReceiptText, RefreshCw, Scale } from 'lucide-react';
 import AppShell from '@/components/layout/AppShell';
 import SearchableCombobox from '@/components/ui/SearchableCombobox';
 import SortableHeader from '@/components/ui/SortableHeader';
@@ -17,55 +17,18 @@ import { paginateRows } from '@/lib/pagination-utils';
 import { canViewProfit, normalizeRole } from '@/lib/roles';
 import { getNextSort, sortRows } from '@/lib/sort-utils';
 import { supabase } from '@/lib/supabase';
-import { formatNumber, formatRupiah, formatWaktu, getTimestampMs, getTodayISO } from '@/lib/utils';
+import {
+  hasFeeSnapshot,
+  resolveFeePerKg,
+  resolveHargaPabrikPerKg,
+  resolveTotalFeeOwner,
+  resolveTotalKotorPabrik,
+  resolveTotalNilaiBersihMitra,
+  toNumber,
+} from '@/lib/transaksi-mitra-calculations';
+import { formatDateDisplay, formatDateRangeDisplay, formatNumber, formatRupiah, formatWaktu, getTimestampMs, getTodayISO } from '@/lib/utils';
 
 const TABLE_PAGE_SIZE = 20;
-
-function toNumber(value) {
-  const number = Number(value);
-  return Number.isFinite(number) ? number : 0;
-}
-
-function hasFeeSnapshot(row) {
-  return row.fee_owner_per_kg != null || row.total_fee_owner != null;
-}
-
-function resolveFeePerKg(row) {
-  const tonase = toNumber(row.tonase);
-
-  if (row.fee_owner_per_kg != null) return toNumber(row.fee_owner_per_kg);
-  if (row.total_fee_owner != null && tonase > 0) return toNumber(row.total_fee_owner) / tonase;
-  if (row.harga_pabrik_per_kg != null && row.harga_bersih_per_kg != null) {
-    return Math.max(0, toNumber(row.harga_pabrik_per_kg) - toNumber(row.harga_bersih_per_kg));
-  }
-
-  return 0;
-}
-
-function resolveTotalFeeOwner(row) {
-  if (row.total_fee_owner != null) return toNumber(row.total_fee_owner);
-  return Math.round(toNumber(row.tonase) * resolveFeePerKg(row));
-}
-
-function resolveHargaPabrik(row) {
-  if (row.harga_pabrik_per_kg != null) return toNumber(row.harga_pabrik_per_kg);
-
-  const feePerKg = resolveFeePerKg(row);
-  const hargaBersih = row.harga_bersih_per_kg ?? row.harga_harian;
-
-  if (hargaBersih != null && feePerKg > 0) return toNumber(hargaBersih) + feePerKg;
-  return null;
-}
-
-function resolveNilaiPabrik(row) {
-  const hargaPabrik = resolveHargaPabrik(row);
-  if (hargaPabrik == null) return null;
-  return Math.round(toNumber(row.tonase) * hargaPabrik);
-}
-
-function resolveNilaiBersihMitra(row) {
-  return toNumber(row.total_nilai_bersih ?? row.total_kotor);
-}
 
 export default function PendapatanOwnerPage() {
   const [dateFrom, setDateFrom] = useState(getTodayISO);
@@ -81,6 +44,7 @@ export default function PendapatanOwnerPage() {
   const [detailSort, setDetailSort] = useState({ key: 'waktu', direction: 'desc' });
   const [summaryPage, setSummaryPage] = useState(1);
   const [detailPage, setDetailPage] = useState(1);
+  const [syncingFee, setSyncingFee] = useState(false);
 
   const checkRole = useCallback(async () => {
     const { data: { session } } = await supabase.auth.getSession();
@@ -98,7 +62,7 @@ export default function PendapatanOwnerPage() {
   const loadMitras = useCallback(async () => {
     const { data } = await supabase
       .from('master_mitra')
-      .select('id, kode, alamat, nama, penanggung_jawab, no_hp, tipe_mitra')
+      .select('id, kode, alamat, nama, penanggung_jawab, no_hp, tipe_mitra, fee_per_kg')
       .eq('aktif', true)
       .order('kode');
 
@@ -117,7 +81,7 @@ export default function PendapatanOwnerPage() {
         harga_pabrik_per_kg, fee_owner_per_kg, harga_bersih_per_kg,
         total_fee_owner, total_nilai_bersih, plat_nomor,
         sopir_aktual_nama, sopir_default_nama,
-        master_mitra ( kode, alamat, nama, tipe_mitra )
+        master_mitra ( kode, alamat, nama, tipe_mitra, fee_per_kg )
       `)
       .gte('tanggal', dateFrom)
       .lte('tanggal', dateTo)
@@ -168,8 +132,8 @@ export default function PendapatanOwnerPage() {
   const summary = useMemo(() => {
     const totalTonase = filteredTransaksi.reduce((sum, row) => sum + toNumber(row.tonase), 0);
     const totalPendapatanOwner = filteredTransaksi.reduce((sum, row) => sum + resolveTotalFeeOwner(row), 0);
-    const totalNilaiBersihMitra = filteredTransaksi.reduce((sum, row) => sum + resolveNilaiBersihMitra(row), 0);
-    const totalNilaiPabrik = filteredTransaksi.reduce((sum, row) => sum + (resolveNilaiPabrik(row) ?? 0), 0);
+    const totalNilaiBersihMitra = filteredTransaksi.reduce((sum, row) => sum + resolveTotalNilaiBersihMitra(row), 0);
+    const totalNilaiPabrik = filteredTransaksi.reduce((sum, row) => sum + resolveTotalKotorPabrik(row), 0);
     const missingSnapshots = filteredTransaksi.filter((row) => !hasFeeSnapshot(row)).length;
 
     return {
@@ -228,8 +192,8 @@ export default function PendapatanOwnerPage() {
 
       current.jumlahTransaksi += 1;
       current.tonase += toNumber(row.tonase);
-      current.nilaiPabrik += resolveNilaiPabrik(row) ?? 0;
-      current.nilaiBersihMitra += resolveNilaiBersihMitra(row);
+      current.nilaiPabrik += resolveTotalKotorPabrik(row);
+      current.nilaiBersihMitra += resolveTotalNilaiBersihMitra(row);
       current.pendapatanOwner += resolveTotalFeeOwner(row);
       current.missingSnapshots += hasFeeSnapshot(row) ? 0 : 1;
 
@@ -262,8 +226,8 @@ export default function PendapatanOwnerPage() {
       mitra: row => formatMitraLabel(row.master_mitra),
       sopir: row => `${row.sopir_aktual_nama || row.sopir_default_nama || ''} ${row.plat_nomor || ''}`,
       tonase: row => toNumber(row.tonase),
-      harga_pabrik: row => resolveHargaPabrik(row) ?? 0,
-      hasil_kotor_pabrik: row => resolveNilaiPabrik(row) ?? 0,
+      harga_pabrik: row => resolveHargaPabrikPerKg(row),
+      hasil_kotor_pabrik: row => resolveTotalKotorPabrik(row),
       fee: row => resolveFeePerKg(row),
       pendapatan: row => resolveTotalFeeOwner(row),
     });
@@ -274,9 +238,38 @@ export default function PendapatanOwnerPage() {
   }, [detailPage, sortedDetailTransaksi]);
 
   const selectedMitraData = mitras.find((mitra) => mitra.id === selectedMitra);
+  const displayPeriode = formatDateRangeDisplay(dateFrom, dateTo);
 
   const handlePrint = () => {
     window.print();
+  };
+
+  const handleSyncFeePeriod = async () => {
+    if (!dateFrom || !dateTo || syncingFee) return;
+
+    const confirmed = window.confirm(
+      `Sinkronkan Fee Owner untuk periode ${displayPeriode}? Hanya transaksi pada filter yang sedang dibuka yang akan diperbarui.`
+    );
+    if (!confirmed) return;
+
+    setSyncingFee(true);
+    const { data, error } = await supabase.rpc('sync_fee_owner_mitra_period', {
+      p_date_from: dateFrom,
+      p_date_to: dateTo,
+      p_master_mitra_id: selectedMitra || null,
+      p_tipe_mitra: selectedTipeMitra === 'semua' ? null : selectedTipeMitra,
+    });
+
+    setSyncingFee(false);
+
+    if (error) {
+      alert('Gagal sinkronisasi Fee Owner: ' + error.message);
+      return;
+    }
+
+    const updatedCount = Number(data?.updated_count || 0);
+    alert(`Sinkronisasi selesai. ${updatedCount} transaksi diperbarui.`);
+    await loadLaporan();
   };
 
   const handleSummarySort = (key) => {
@@ -317,12 +310,17 @@ export default function PendapatanOwnerPage() {
       <div className="page-header no-print">
         <div>
           <p className="page-description">
-            Fee Owner bruto dari transaksi mitra periode {dateFrom} s/d {dateTo}
+            Fee Owner bruto dari transaksi mitra periode {displayPeriode}
           </p>
         </div>
-        <button className="btn btn-primary" onClick={handlePrint} disabled={filteredTransaksi.length === 0}>
-          <Printer size={18} /> Cetak Laporan
-        </button>
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+          <button className="btn btn-secondary" onClick={handleSyncFeePeriod} disabled={loading || syncingFee || filteredTransaksi.length === 0}>
+            <RefreshCw size={18} /> {syncingFee ? 'Menyinkronkan...' : 'Sinkronkan Fee Periode Ini'}
+          </button>
+          <button className="btn btn-primary" onClick={handlePrint} disabled={filteredTransaksi.length === 0}>
+            <Printer size={18} /> Cetak Laporan
+          </button>
+        </div>
       </div>
 
       <div className="no-print card owner-income-filter">
@@ -376,9 +374,9 @@ export default function PendapatanOwnerPage() {
         <div className="alert alert-warning no-print">
           <AlertTriangle size={18} />
           <div>
-            <strong>{summary.missingSnapshots} transaksi belum punya snapshot Fee Owner.</strong>
+            <strong>{summary.missingSnapshots} transaksi belum punya snapshot Fee Owner yang valid.</strong>
             <div style={{ marginTop: 4 }}>
-              Baris tersebut tidak dipaksa memakai fee master saat ini. Koreksi dari Riwayat Pengiriman jika transaksi lama perlu masuk pendapatan owner.
+              Angka laporan memakai fallback Fee Owner dari master mitra jika tersedia. Klik <strong>Sinkronkan Fee Periode Ini</strong> untuk memperbaiki snapshot hanya pada periode/filter yang sedang dibuka.
             </div>
           </div>
         </div>
@@ -397,7 +395,7 @@ export default function PendapatanOwnerPage() {
         <div className="only-print" style={{ textAlign: 'center', marginBottom: 24, borderBottom: '2px solid #000', paddingBottom: 16 }}>
           <h2 style={{ margin: 0, fontSize: 22 }}>LAPORAN PENDAPATAN OWNER BRUTO</h2>
           <p style={{ margin: '4px 0 0' }}>
-            Periode: {dateFrom} s/d {dateTo}
+            Periode: {displayPeriode}
             {selectedTipeMitra !== 'semua' ? ` | Tipe: ${getMitraTypeLabel(selectedTipeMitra)}` : ''}
             {selectedMitraData ? ` | Mitra: ${formatMitraLabel(selectedMitraData)}` : ''}
           </p>
@@ -556,15 +554,15 @@ export default function PendapatanOwnerPage() {
                         </td>
                       </tr>
                     ) : paginatedDetailTransaksi.rows.map((row) => {
-                      const hargaPabrik = resolveHargaPabrik(row);
-                      const nilaiPabrik = resolveNilaiPabrik(row);
+                      const hargaPabrik = resolveHargaPabrikPerKg(row);
+                      const nilaiPabrik = resolveTotalKotorPabrik(row);
                       const feePerKg = resolveFeePerKg(row);
                       const totalFeeOwner = resolveTotalFeeOwner(row);
 
                       return (
                         <tr key={row.id}>
                           <td>
-                            <div style={{ fontWeight: 700 }}>{row.tanggal}</div>
+                            <div style={{ fontWeight: 700 }}>{formatDateDisplay(row.tanggal)}</div>
                             <div className="table-mono" style={{ marginTop: 4, color: 'var(--text-tertiary)', fontSize: 12 }}>
                               {formatWaktu(row.created_at)}
                             </div>

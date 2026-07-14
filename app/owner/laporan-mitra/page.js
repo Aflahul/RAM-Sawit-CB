@@ -15,7 +15,7 @@ import {
   resolveTotalKotorPabrik,
   resolveTotalNilaiBersihMitra,
 } from '@/lib/transaksi-mitra-calculations';
-import { formatRupiah, formatWaktu, getTimestampMs, getTodayISO } from '@/lib/utils';
+import { formatDateDisplay, formatDateRangeDisplay, formatDateTimeDisplay, formatRupiah, formatWaktu, getTimestampMs, getTodayISO } from '@/lib/utils';
 import { FileSpreadsheet, Printer, X } from 'lucide-react';
 
 const TABLE_PAGE_SIZE = 20;
@@ -49,7 +49,7 @@ export default function LaporanMitraPage() {
   const loadMitras = useCallback(async () => {
     const { data, error } = await supabase
       .from('master_mitra')
-      .select('id, kode, alamat, nama, penanggung_jawab, no_hp, tipe_mitra')
+      .select('id, kode, alamat, nama, penanggung_jawab, no_hp, tipe_mitra, fee_per_kg')
       .eq('aktif', true)
       .order('kode');
 
@@ -74,7 +74,7 @@ export default function LaporanMitraPage() {
         harga_pabrik_per_kg, fee_owner_per_kg, harga_bersih_per_kg,
         total_fee_owner, total_nilai_bersih, plat_nomor,
         sopir_default_nama, sopir_aktual_nama, sopir_diganti_dari_default, catatan_sopir,
-        master_mitra ( id, kode, alamat, nama )
+        master_mitra ( id, kode, alamat, nama, fee_per_kg )
       `)
       .gte('tanggal', dateFrom)
       .lte('tanggal', dateTo)
@@ -245,6 +245,7 @@ export default function LaporanMitraPage() {
   const totalTonase = filteredTransaksi.reduce((sum, t) => sum + Number(t.tonase), 0);
   const totalKotorPabrik = filteredTransaksi.reduce((sum, t) => sum + resolveTotalKotorPabrik(t), 0);
   const totalNilaiBersih = filteredTransaksi.reduce((sum, t) => sum + resolveTotalNilaiBersihMitra(t), 0);
+  const displayPeriode = formatDateRangeDisplay(dateFrom, dateTo);
   const shouldGroupByMitra = viewMode === 'kelompok';
   const paymentFilterLabel = {
     semua: 'Semua status bayar',
@@ -277,7 +278,7 @@ export default function LaporanMitraPage() {
     return rows.map(t => (
       <tr key={t.id}>
         <td>
-          <div style={{ fontWeight: 700 }}>{t.tanggal}</div>
+          <div style={{ fontWeight: 700 }}>{formatDateDisplay(t.tanggal)}</div>
           <div className="table-mono" style={{ marginTop: 4, fontSize: 12, color: 'var(--text-tertiary)' }}>{formatWaktu(t.created_at)}</div>
         </td>
         <td>
@@ -319,7 +320,7 @@ export default function LaporanMitraPage() {
   );
 
   async function handleExportExcel() {
-    const generatedAt = new Date().toLocaleString('id-ID');
+    const generatedAt = formatDateTimeDisplay(new Date());
     const filterLabel = selectedMitras.length > 0
       ? selectedMitras.map(formatMitraLabel).join(', ')
       : 'Semua mitra';
@@ -330,10 +331,10 @@ export default function LaporanMitraPage() {
         {
           name: 'Detail Pengiriman',
           title: 'LAPORAN PENGIRIMAN MITRA SAWIT CB',
-          subtitle: `Periode ${dateFrom} s/d ${dateTo} | Filter: ${filterLabel} | Status Bayar: ${paymentFilterLabel} | Dibuat: ${generatedAt}`,
+          subtitle: `Periode ${displayPeriode} | Filter: ${filterLabel} | Status Bayar: ${paymentFilterLabel} | Dibuat: ${generatedAt}`,
           columns: [
             { header: 'No', value: (row, index) => row.__footer ? '' : index + 1, type: 'number', width: 6 },
-            { header: 'Tanggal', key: 'tanggal', width: 14 },
+            { header: 'Tanggal', value: row => row.__footer ? '' : formatDateDisplay(row.tanggal), width: 14 },
             { header: 'Waktu', value: row => row.__footer ? '' : formatWaktu(row.created_at), width: 12 },
             { header: 'Kode Mitra', value: row => row.__footer ? '' : row.master_mitra?.kode || '', width: 16 },
             { header: 'Alamat Mitra', value: row => row.__footer ? '' : row.master_mitra?.alamat || '', width: 24 },
@@ -362,7 +363,7 @@ export default function LaporanMitraPage() {
         {
           name: 'Ringkasan Mitra',
           title: 'RINGKASAN PENGIRIMAN PER MITRA',
-          subtitle: `Periode ${dateFrom} s/d ${dateTo} | Filter: ${filterLabel} | Status Bayar: ${paymentFilterLabel} | Dibuat: ${generatedAt}`,
+          subtitle: `Periode ${displayPeriode} | Filter: ${filterLabel} | Status Bayar: ${paymentFilterLabel} | Dibuat: ${generatedAt}`,
           columns: [
             { header: 'No', value: (row, index) => row.__footer ? '' : index + 1, type: 'number', width: 6 },
             { header: 'Mitra / Afiliasi', key: 'label', width: 38 },
@@ -489,7 +490,7 @@ export default function LaporanMitraPage() {
       <div className="print-area card" style={{ padding: 0, overflow: 'hidden' }}>
         <div className="only-print" style={{ textAlign: 'center', marginBottom: 24, borderBottom: '2px solid var(--border-default)', paddingBottom: 16 }}>
           <h2 style={{ margin: 0, fontSize: 22 }}>LAPORAN HARIAN PENGIRIMAN MITRA</h2>
-          <p style={{ margin: '4px 0 0', color: 'var(--text-secondary)' }}>Periode: {dateFrom} s/d {dateTo}</p>
+          <p style={{ margin: '4px 0 0', color: 'var(--text-secondary)' }}>Periode: {displayPeriode}</p>
           <p style={{ margin: '4px 0 0', color: 'var(--text-secondary)' }}>
             Filter Mitra: {selectedMitras.length > 0 ? selectedMitras.map(formatMitraLabel).join(', ') : 'Semua mitra'}
           </p>
