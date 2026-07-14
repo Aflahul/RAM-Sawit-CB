@@ -305,13 +305,13 @@ export default function RiwayatPengirimanMitraPage() {
     setEditForm(recalculateTotals({ ...editForm, harga_dasar: value }));
   }
 
-  function handleUseStoredNetAsFactoryPrice() {
+  function handleSyncFeeFromMaster() {
     if (!editTarget) return;
 
+    const nextForm = applyFeeSnapshot({ ...editForm }, editForm.mitra_id, editForm.tanggal);
     setEditForm(recalculateTotals({
-      ...editForm,
-      harga_dasar: toNumber(editTarget.harga_harian),
-      alasan_edit: editForm.alasan_edit || 'Koreksi harga bersih: Fee Owner belum terpotong pada input awal.',
+      ...nextForm,
+      alasan_edit: editForm.alasan_edit || 'Sinkronisasi Fee Owner dari master mitra.',
     }));
   }
 
@@ -659,17 +659,17 @@ export default function RiwayatPengirimanMitraPage() {
 
                 <div className="alert alert-info">
                   <div>
-                    <strong>Koreksi data lama sebelum fee dipakai</strong>
+                    <strong>Sinkronkan Fee Owner dari master</strong>
                     <div style={{ marginTop: 4 }}>
-                      Jika transaksi lama tersimpan memakai harga pabrik penuh, klik tombol ini agar harga tersimpan lama diperlakukan sebagai Harga Pabrik/TWB lalu dikurangi Fee Owner aktif.
+                      Jika transaksi ini masih memakai Fee Owner 0 atau snapshot lama, klik tombol ini agar Fee Owner mengikuti master mitra untuk tanggal transaksi ini. Harga Bersih/Kg akan dihitung ulang dari Harga Pabrik/TWB dikurangi Fee Owner.
                     </div>
                     <button
                       type="button"
                       className="btn btn-outline btn-sm"
                       style={{ marginTop: 12 }}
-                      onClick={handleUseStoredNetAsFactoryPrice}
+                      onClick={handleSyncFeeFromMaster}
                     >
-                      Gunakan Harga Lama sebagai Harga Pabrik
+                      Sinkronkan Fee dari Master
                     </button>
                   </div>
                 </div>
