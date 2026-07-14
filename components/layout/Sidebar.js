@@ -1,5 +1,6 @@
 'use client';
 
+import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import BrandMark from '@/components/branding/BrandMark';
@@ -7,60 +8,61 @@ import { useBrandingSettings } from '@/lib/use-branding-settings';
 import { canManageBusinessSettings, canManageFinance, canViewProfit, getRoleLabel, normalizeRole } from '@/lib/roles';
 import {
   LayoutDashboard, Truck, ReceiptText, Database, Store,
-  Wallet, Calculator, FileText, Users, Box, TrendingUp, MapPin, Tag, ClipboardList, BadgeDollarSign, Settings
+  Wallet, Calculator, FileText, Users, Box, TrendingUp, MapPin, Tag, ClipboardList, BadgeDollarSign, Settings, ChevronDown
 } from 'lucide-react';
+
+const SIDEBAR_SCROLL_KEY = 'sawit-cb.sidebar.scrollTop';
+const SIDEBAR_SECTION_KEY = 'sawit-cb.sidebar.expandedSections';
 
 const menuSections = [
   {
-    title: 'MVP Utama',
+    title: 'Dashboard',
     items: [
       { href: '/dashboard', icon: <LayoutDashboard size={20} />, label: 'Dashboard' },
-      { href: '/admin/input-timbangan', icon: <Truck size={20} />, label: 'Input Pengiriman' },
-      { href: '/owner/riwayat-pengiriman-mitra', icon: <ClipboardList size={20} />, label: 'Riwayat Pengiriman' },
-      { href: '/owner/kwitansi-mitra', icon: <ReceiptText size={20} />, label: 'Kwitansi Mitra' },
-      { href: '/owner/panjar-mitra', icon: <Wallet size={20} />, label: 'Panjar Mitra' },
-      { href: '/owner/laporan-mitra', icon: <FileText size={20} />, label: 'Laporan Mitra' },
-      { href: '/owner/pendapatan-owner', icon: <BadgeDollarSign size={20} />, label: 'Pendapatan Bruto', profitOnly: true },
     ],
   },
   {
-    title: 'Master Data MVP',
+    title: 'Operasi',
     items: [
-      { href: '/owner/master-data', icon: <Database size={20} />, label: 'Master Mitra & Sopir' },
-      { href: '/owner/pengaturan-web', icon: <Settings size={20} />, label: 'Pengaturan Web', settingsOnly: true },
-    ],
-  },
-  {
-    title: 'Operasional Lokal',
-    items: [
-      { href: '/transaksi/beli', icon: <Store size={20} />, label: 'Input TBS Lokal' },
-      { href: '/transaksi/kirim', icon: <Truck size={20} />, label: 'Pengiriman Lokal' },
+      { href: '/admin/input-timbangan', icon: <Truck size={20} />, label: 'Pengiriman Mitra' },
+      { href: '/owner/riwayat-pengiriman-mitra', icon: <ClipboardList size={20} />, label: 'Riwayat & Koreksi Mitra' },
+      { href: '/transaksi/beli', icon: <Store size={20} />, label: 'Pembelian Petani Lokal' },
     ],
   },
   {
     title: 'Keuangan',
     items: [
+      { href: '/owner/kwitansi-mitra', icon: <ReceiptText size={20} />, label: 'Kwitansi & Pembayaran Mitra' },
       { href: '/keuangan/kas', icon: <BadgeDollarSign size={20} />, label: 'Buku Kas', financeOnly: true },
-      { href: '/keuangan/hutang', icon: <Wallet size={20} />, label: 'Hutang / Panjar', financeOnly: true },
+      { href: '/keuangan/hutang', icon: <Wallet size={20} />, label: 'Hutang & Panjar Semua Pihak', financeOnly: true },
       { href: '/keuangan/biaya', icon: <Calculator size={20} />, label: 'Biaya Operasional' },
+    ],
+  },
+  {
+    title: 'Master Data',
+    items: [
+      { href: '/owner/master-data', icon: <Database size={20} />, label: 'Mitra' },
+      { href: '/master/armada', icon: <Truck size={20} />, label: 'Armada' },
+      { href: '/master/petani', icon: <Users size={20} />, label: 'Petani Lokal' },
+      { href: '/master/pabrik', icon: <MapPin size={20} />, label: 'Pabrik Tujuan' },
+      { href: '/master/harga', icon: <Tag size={20} />, label: 'Harga TBS Lokal' },
     ],
   },
   {
     title: 'Laporan',
     items: [
-      { href: '/laporan/harian', icon: <FileText size={20} />, label: 'Laporan Harian' },
+      { href: '/laporan/harian', icon: <FileText size={20} />, label: 'Laporan Harian / Tutup Hari' },
+      { href: '/owner/laporan-mitra', icon: <FileText size={20} />, label: 'Laporan Mitra' },
       { href: '/laporan/petani', icon: <Users size={20} />, label: 'Laporan Petani' },
       { href: '/laporan/stok', icon: <Box size={20} />, label: 'Stok Lokal' },
+      { href: '/owner/pendapatan-owner', icon: <BadgeDollarSign size={20} />, label: 'Pendapatan Owner Bruto', profitOnly: true },
       { href: '/laporan/laba-rugi', icon: <TrendingUp size={20} />, label: 'Laba / Rugi', profitOnly: true },
     ],
   },
   {
-    title: 'Master Data Lokal',
+    title: 'Admin Sistem',
     items: [
-      { href: '/master/petani', icon: <Users size={20} />, label: 'Petani Lokal' },
-      { href: '/master/armada', icon: <Truck size={20} />, label: 'Armada & Sopir' },
-      { href: '/master/pabrik', icon: <MapPin size={20} />, label: 'Pabrik Tujuan' },
-      { href: '/master/harga', icon: <Tag size={20} />, label: 'Harga TBS' },
+      { href: '/owner/pengaturan-web', icon: <Settings size={20} />, label: 'Pengaturan Web', settingsOnly: true },
     ],
   },
 ];
@@ -72,10 +74,107 @@ function canSeeMenuItem(item, role) {
   return true;
 }
 
+function isActivePath(pathname, href) {
+  return pathname === href || pathname?.startsWith(`${href}/`);
+}
+
+function getStoredSections() {
+  if (typeof window === 'undefined') return {};
+
+  try {
+    return JSON.parse(window.sessionStorage.getItem(SIDEBAR_SECTION_KEY) || '{}');
+  } catch {
+    return {};
+  }
+}
+
 export default function Sidebar({ isOpen, onClose, user }) {
   const pathname = usePathname();
   const userRole = normalizeRole(user?.role);
   const { branding } = useBrandingSettings();
+  const navRef = useRef(null);
+  const [expandedSections, setExpandedSections] = useState({});
+
+  const visibleSections = useMemo(() => (
+    menuSections
+      .map((section) => ({
+        ...section,
+        items: section.items.filter((item) => canSeeMenuItem(item, userRole)),
+      }))
+      .filter((section) => section.items.length > 0)
+  ), [userRole]);
+
+  const activeSectionTitle = useMemo(() => (
+    visibleSections.find((section) => (
+      section.items.some((item) => isActivePath(pathname, item.href))
+    ))?.title
+  ), [pathname, visibleSections]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined;
+
+    const frameId = window.requestAnimationFrame(() => {
+      setExpandedSections((current) => {
+        const stored = Object.keys(current).length === 0 ? getStoredSections() : {};
+        const source = Object.keys(stored).length > 0 ? stored : current;
+        const next = {};
+        const hasSource = Object.keys(source).length > 0;
+        const isCompact = window.matchMedia('(max-width: 768px)').matches;
+
+        visibleSections.forEach((section) => {
+          if (typeof source[section.title] === 'boolean') {
+            next[section.title] = source[section.title];
+          } else if (hasSource) {
+            next[section.title] = false;
+          } else {
+            next[section.title] = isCompact
+              ? section.title === 'Dashboard' || section.title === activeSectionTitle
+              : true;
+          }
+        });
+
+        if (activeSectionTitle) next[activeSectionTitle] = true;
+
+        window.sessionStorage.setItem(SIDEBAR_SECTION_KEY, JSON.stringify(next));
+
+        return next;
+      });
+    });
+
+    return () => window.cancelAnimationFrame(frameId);
+  }, [activeSectionTitle, visibleSections]);
+
+  useEffect(() => {
+    const nav = navRef.current;
+    if (!nav || typeof window === 'undefined') return;
+
+    const savedScroll = Number(window.sessionStorage.getItem(SIDEBAR_SCROLL_KEY) || 0);
+    window.requestAnimationFrame(() => {
+      nav.scrollTop = Number.isFinite(savedScroll) ? savedScroll : 0;
+    });
+  }, [pathname, visibleSections.length]);
+
+  function persistSidebarScroll() {
+    if (!navRef.current || typeof window === 'undefined') return;
+    window.sessionStorage.setItem(SIDEBAR_SCROLL_KEY, String(navRef.current.scrollTop));
+  }
+
+  function toggleSection(title) {
+    setExpandedSections((current) => {
+      const next = { ...current, [title]: !current[title] };
+
+      if (typeof window !== 'undefined') {
+        window.sessionStorage.setItem(SIDEBAR_SECTION_KEY, JSON.stringify(next));
+      }
+
+      return next;
+    });
+  }
+
+  function handleNavigate() {
+    persistSidebarScroll();
+    onClose();
+  }
 
   return (
     <>
@@ -96,33 +195,48 @@ export default function Sidebar({ isOpen, onClose, user }) {
           </div>
         </div>
 
-        <nav className="sidebar-nav">
-          {menuSections.map((section) => (
-            <div className="sidebar-section" key={section.title}>
-              <div className="sidebar-section-title">{section.title}</div>
-              {section.items
-                .filter((item) => canSeeMenuItem(item, userRole))
-                .map((item) => (
+        <nav className="sidebar-nav" ref={navRef} onScroll={persistSidebarScroll}>
+          {visibleSections.map((section) => {
+            const isExpanded = expandedSections[section.title] !== false;
+            const sectionId = `sidebar-section-${section.title.toLowerCase().replace(/\s+/g, '-')}`;
+
+            return (
+              <div className="sidebar-section" key={section.title}>
+                <button
+                  type="button"
+                  className={`sidebar-section-toggle ${isExpanded ? 'open' : ''}`}
+                  aria-expanded={isExpanded}
+                  aria-controls={sectionId}
+                  onClick={() => toggleSection(section.title)}
+                >
+                  <span className="sidebar-section-title">{section.title}</span>
+                  <ChevronDown className="sidebar-section-chevron" size={16} />
+                </button>
+
+                <div id={sectionId} className="sidebar-section-items" hidden={!isExpanded}>
+                  {section.items.map((item) => (
                   <Link
                     key={item.href}
                     href={item.href}
-                    className={`sidebar-link ${pathname === item.href || pathname.startsWith(item.href + '/') ? 'active' : ''}`}
-                    onClick={onClose}
+                    className={`sidebar-link ${isActivePath(pathname, item.href) ? 'active' : ''}`}
+                    onClick={handleNavigate}
                   >
                     <span className="sidebar-link-icon">{item.icon}</span>
-                    <span>{item.label}</span>
+                    <span className="sidebar-link-label">{item.label}</span>
                     {item.badge && (
                       <span 
                         className="sidebar-link-badge" 
-                        style={item.badge === 'comingsoon' ? { fontSize: '0.65rem', fontStyle: 'italic', background: 'transparent', color: '#94a3b8', border: '1px solid #475569', padding: '2px 6px' } : {}}
+                        style={item.badge === 'comingsoon' || item.badge === 'shortcut' ? { fontSize: '0.65rem', fontStyle: 'italic', background: 'transparent', color: '#94a3b8', border: '1px solid #475569', padding: '2px 6px' } : {}}
                       >
                         {item.badge}
                       </span>
                     )}
                   </Link>
-                ))}
-            </div>
-          ))}
+                  ))}
+                </div>
+              </div>
+            );
+          })}
         </nav>
 
         <div className="sidebar-user">

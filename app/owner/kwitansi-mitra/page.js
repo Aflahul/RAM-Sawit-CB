@@ -270,8 +270,8 @@ export default function KwitansiMitraPage() {
   const canSendWhatsapp = Boolean(selectedMitra && kwitansiRows.length > 0 && whatsappNumberValid);
   const whatsappWarning = selectedMitra && kwitansiRows.length > 0 && !whatsappNumberValid
     ? selectedMitraData?.no_hp
-      ? 'Nomor WA penanggung jawab mitra belum valid. Perbarui nomor di Master Mitra.'
-      : 'Nomor WA penanggung jawab mitra belum diisi. Lengkapi nomor di Master Mitra.'
+      ? 'Nomor WA penanggung jawab mitra belum valid. Perbarui nomor di menu Mitra.'
+      : 'Nomor WA penanggung jawab mitra belum diisi. Lengkapi nomor di menu Mitra.'
     : '';
 
   const handleOpenWhatsappPreview = () => {
