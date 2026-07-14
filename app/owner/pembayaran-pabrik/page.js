@@ -8,7 +8,7 @@ import { canManageFinance, normalizeRole } from '@/lib/roles';
 import { supabase } from '@/lib/supabase';
 import { resolveHargaPabrikPerKg, toNumber } from '@/lib/transaksi-mitra-calculations';
 import { formatDateDisplay, formatNumber, formatRupiah, formatWaktu, getTodayISO } from '@/lib/utils';
-import { AlertTriangle, BadgeDollarSign, CheckCircle2, RotateCcw, Scale } from 'lucide-react';
+import { AlertTriangle, BadgeDollarSign, CalendarDays, CheckCircle2, RotateCcw, Scale, Search } from 'lucide-react';
 
 function getMitraLabel(mitra) {
   if (!mitra) return 'Tanpa mitra';
@@ -23,6 +23,12 @@ function getTransactionSearchText(row) {
     row.sopir_default_nama,
     row.plat_nomor,
   ].filter(Boolean).join(' ').toLowerCase();
+}
+
+function getOffsetDateISO(offsetDays) {
+  const date = new Date(`${getTodayISO()}T00:00:00`);
+  date.setDate(date.getDate() + offsetDays);
+  return date.toISOString().split('T')[0];
 }
 
 const emptyForm = {
@@ -219,6 +225,11 @@ export default function PembayaranPabrikPage() {
     setSelectedIds([]);
   }
 
+  function applyPeriod(dateFrom, dateTo = dateFrom) {
+    setFilters((current) => ({ ...current, dateFrom, dateTo }));
+    setSelectedIds([]);
+  }
+
   async function handleSubmit(event) {
     event.preventDefault();
     if (saving) return;
@@ -334,16 +345,69 @@ export default function PembayaranPabrikPage() {
 
       <div className="page-header">
         <div>
-          <p className="page-description">Isi sesuai nota pabrik. Pilih data timbang di bawah hanya jika ingin mencocokkan dengan catatan kita.</p>
+          <p className="page-description">Isi sesuai nota pabrik. Pilih periode data timbang sesuai tanggal TBS masuk pabrik.</p>
         </div>
         <Link className="btn btn-outline btn-sm" href="/laporan/laba-rugi">Lihat Laba/Rugi</Link>
+      </div>
+
+      <div className="period-panel">
+        <div className="period-panel-heading">
+          <div>
+            <h2><CalendarDays size={18} /> Periode Data Timbang</h2>
+            <p>Ini tanggal catatan timbang kita, boleh berbeda dari tanggal uang masuk.</p>
+          </div>
+          <div className="period-quick-actions">
+            <button type="button" className="btn btn-ghost btn-sm" onClick={() => applyPeriod(getTodayISO())}>Hari Ini</button>
+            <button type="button" className="btn btn-ghost btn-sm" onClick={() => applyPeriod(getOffsetDateISO(-1))}>Kemarin</button>
+            <button type="button" className="btn btn-ghost btn-sm" onClick={() => applyPeriod(getOffsetDateISO(-6), getTodayISO())}>7 Hari</button>
+          </div>
+        </div>
+        <div className="period-filter-grid">
+          <div className="form-group">
+            <label className="form-label">Dari Tanggal Timbang</label>
+            <input
+              type="date"
+              className="form-input"
+              value={filters.dateFrom}
+              onChange={(event) => {
+                setFilters({ ...filters, dateFrom: event.target.value });
+                setSelectedIds([]);
+              }}
+            />
+          </div>
+          <div className="form-group">
+            <label className="form-label">Sampai Tanggal Timbang</label>
+            <input
+              type="date"
+              className="form-input"
+              value={filters.dateTo}
+              onChange={(event) => {
+                setFilters({ ...filters, dateTo: event.target.value });
+                setSelectedIds([]);
+              }}
+            />
+          </div>
+          <div className="form-group">
+            <label className="form-label">Cari Data Timbang</label>
+            <div className="search-box">
+              <span className="search-box-icon"><Search size={16} /></span>
+              <input
+                className="form-input"
+                value={filters.search}
+                onChange={(event) => setFilters({ ...filters, search: event.target.value })}
+                placeholder="Cari mitra, sopir, plat..."
+                style={{ paddingLeft: 40 }}
+              />
+            </div>
+          </div>
+        </div>
       </div>
 
       <div className="stats-grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', marginBottom: 'var(--space-lg)' }}>
         <div className="card">
           <div className="card-header"><span className="card-title">Data Dipilih</span><CheckCircle2 size={18} /></div>
           <div className="card-value">{selectedRows.length}</div>
-              <div className="card-label">{formatNumber(reconciliationSummary.totalTonaseSistem)} kg catatan kita</div>
+          <div className="card-label">{formatNumber(reconciliationSummary.totalTonaseSistem)} kg catatan kita</div>
         </div>
         <div className="card">
           <div className="card-header"><span className="card-title">Tonase dari Pabrik</span><Scale size={18} /></div>
@@ -483,7 +547,7 @@ export default function PembayaranPabrikPage() {
         <div className="section-heading">
           <div>
             <h2>Cocokkan Dengan Catatan Kita</h2>
-            <p>Pilih data timbang kita yang termasuk dalam pembayaran pabrik ini. Harga memakai TWB Dashboard.</p>
+            <p>Yang tampil mengikuti periode data timbang di atas. Harga memakai TWB Dashboard.</p>
           </div>
           <div className="flex gap-sm" style={{ flexWrap: 'wrap', justifyContent: 'flex-end' }}>
             <button className="btn btn-outline btn-sm" onClick={selectAllVisible} disabled={visibleTransactions.length === 0}>Pilih Semua</button>
@@ -497,12 +561,6 @@ export default function PembayaranPabrikPage() {
           <span>{formatRupiah(visibleSummary.nilai)} nilai TWB</span>
           <span>{selectedRows.length.toLocaleString('id-ID')} data dipilih</span>
           <span>{formatRupiah(reconciliationSummary.totalNilaiSistem)} nilai dipilih</span>
-        </div>
-
-        <div className="toolbar">
-          <input type="date" className="form-input" value={filters.dateFrom} onChange={(event) => setFilters({ ...filters, dateFrom: event.target.value })} style={{ maxWidth: 170 }} />
-          <input type="date" className="form-input" value={filters.dateTo} onChange={(event) => setFilters({ ...filters, dateTo: event.target.value })} style={{ maxWidth: 170 }} />
-          <input className="form-input" value={filters.search} onChange={(event) => setFilters({ ...filters, search: event.target.value })} placeholder="Cari mitra, sopir, plat..." style={{ maxWidth: 320 }} />
         </div>
 
         <div className="table-container">
@@ -663,6 +721,51 @@ export default function PembayaranPabrikPage() {
           background: rgba(46, 204, 113, 0.08);
         }
 
+        .period-panel {
+          margin-bottom: var(--space-lg);
+          padding: var(--space-lg);
+          border: 1px solid var(--border-default);
+          border-radius: var(--radius-lg);
+          background: rgba(15, 23, 42, 0.36);
+        }
+
+        .period-panel-heading {
+          display: flex;
+          align-items: flex-start;
+          justify-content: space-between;
+          gap: var(--space-md);
+          margin-bottom: var(--space-md);
+        }
+
+        .period-panel-heading h2 {
+          margin: 0;
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          font-size: var(--text-md);
+          font-weight: 800;
+        }
+
+        .period-panel-heading p {
+          margin: 4px 0 0;
+          color: var(--text-tertiary);
+          font-size: var(--text-sm);
+        }
+
+        .period-quick-actions {
+          display: flex;
+          gap: 8px;
+          flex-wrap: wrap;
+          justify-content: flex-end;
+        }
+
+        .period-filter-grid {
+          display: grid;
+          grid-template-columns: minmax(160px, 0.7fr) minmax(160px, 0.7fr) minmax(260px, 1.4fr);
+          gap: var(--space-md);
+          align-items: end;
+        }
+
         .reconciliation-strip {
           margin: calc(var(--space-md) * -0.25) 0 var(--space-md);
           display: flex;
@@ -684,17 +787,26 @@ export default function PembayaranPabrikPage() {
           .dashboard-two-col {
             grid-template-columns: 1fr;
           }
+
+          .period-filter-grid {
+            grid-template-columns: 1fr;
+          }
         }
 
         @media (max-width: 640px) {
           .section-heading,
-          .payment-history-item {
+          .payment-history-item,
+          .period-panel-heading {
             flex-direction: column;
           }
 
           .payment-history-side {
             align-items: flex-start;
             text-align: left;
+          }
+
+          .period-quick-actions {
+            justify-content: flex-start;
           }
         }
       `}</style>
