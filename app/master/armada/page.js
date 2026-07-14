@@ -1,294 +1,301 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import AppShell from '@/components/layout/AppShell';
+import SearchableCombobox from '@/components/ui/SearchableCombobox';
+import SortableHeader from '@/components/ui/SortableHeader';
+import TablePagination from '@/components/ui/TablePagination';
+import { FileSpreadsheet, Pencil, Search, Trash2, X } from 'lucide-react';
+import {
+  formatMitraLabel,
+  getMitraSearchText,
+  getSopirArmadaSearchText,
+} from '@/lib/display-labels';
+import { paginateRows } from '@/lib/pagination-utils';
+import { getNextSort, sortRows } from '@/lib/sort-utils';
+import { exportStyledWorkbook } from '@/lib/spreadsheet-export';
 import { supabase } from '@/lib/supabase';
+import { formatDateTimeDisplay, getTodayISO } from '@/lib/utils';
+
+const TABLE_PAGE_SIZE = 20;
+
+const armadaSortAccessors = {
+  nama: row => row.nama,
+  plat: row => row.plat_nomor,
+  no_hp: row => row.no_hp,
+  mitra: row => formatMitraLabel(row.master_mitra),
+};
 
 export default function ArmadaPage() {
-  const [activeTab, setActiveTab] = useState('kendaraan');
-  const [kendaraanList, setKendaraanList] = useState([]);
-  const [sopirList, setSopirList] = useState([]);
+  const [armadas, setArmadas] = useState([]);
+  const [mitras, setMitras] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [saving, setSaving] = useState(false);
-
-  const [kendaraanForm, setKendaraanForm] = useState({
-    plat_nomor: '', jenis: '', kapasitas_ton: '', kepemilikan: 'sendiri',
+  const [search, setSearch] = useState('');
+  const [sort, setSort] = useState({ key: 'nama', direction: 'asc' });
+  const [page, setPage] = useState(1);
+  const [formArmada, setFormArmada] = useState({
+    nama: '',
+    no_hp: '',
+    mitra_id: '',
+    plat_nomor: '',
   });
-  const [sopirForm, setSopirForm] = useState({
-    nama: '', no_hp: '', kendaraan_id: '',
-  });
 
-  useEffect(() => { loadData(); }, []);
-
-  async function loadData() {
+  const loadData = useCallback(async () => {
     setLoading(true);
-    const [{ data: kData }, { data: sData }] = await Promise.all([
-      supabase.from('kendaraan').select('*').eq('aktif', true).order('plat_nomor'),
-      supabase.from('sopir').select('*, kendaraan:kendaraan_id(plat_nomor)').eq('aktif', true).order('nama'),
+    const [{ data: armadaData }, { data: mitraData }] = await Promise.all([
+      supabase
+        .from('sopir')
+        .select(`
+          *,
+          master_mitra ( kode, nama, alamat, tipe_mitra )
+        `)
+        .eq('aktif', true)
+        .order('nama'),
+      supabase
+        .from('master_mitra')
+        .select('id, kode, nama, alamat, tipe_mitra')
+        .eq('aktif', true)
+        .order('kode'),
     ]);
-    setKendaraanList(kData || []);
-    setSopirList(sData || []);
+
+    setArmadas(armadaData || []);
+    setMitras(mitraData || []);
     setLoading(false);
+  }, []);
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    loadData();
+  }, [loadData]);
+
+  function resetForm() {
+    setFormArmada({ nama: '', no_hp: '', mitra_id: '', plat_nomor: '' });
   }
 
-  function openNewKendaraan() {
+  function openNew() {
     setEditingId(null);
-    setKendaraanForm({ plat_nomor: '', jenis: '', kapasitas_ton: '', kepemilikan: 'sendiri' });
-    setShowModal('kendaraan');
+    resetForm();
+    setShowModal(true);
   }
 
-  function openNewSopir() {
-    setEditingId(null);
-    setSopirForm({ nama: '', no_hp: '', kendaraan_id: '' });
-    setShowModal('sopir');
-  }
-
-  function editKendaraan(k) {
-    setEditingId(k.id);
-    setKendaraanForm({
-      plat_nomor: k.plat_nomor, jenis: k.jenis || '',
-      kapasitas_ton: k.kapasitas_ton || '', kepemilikan: k.kepemilikan || 'sendiri',
+  function openEdit(item) {
+    setEditingId(item.id);
+    setFormArmada({
+      nama: item.nama || '',
+      no_hp: item.no_hp || '',
+      mitra_id: item.mitra_id || '',
+      plat_nomor: item.plat_nomor || '',
     });
-    setShowModal('kendaraan');
+    setShowModal(true);
   }
 
-  function editSopir(s) {
-    setEditingId(s.id);
-    setSopirForm({ nama: s.nama, no_hp: s.no_hp || '', kendaraan_id: s.kendaraan_id || '' });
-    setShowModal('sopir');
+  function handleSort(key) {
+    setPage(1);
+    setSort(current => getNextSort(current, key));
   }
 
-  async function saveKendaraan(e) {
+  async function handleSave(e) {
     e.preventDefault();
     setSaving(true);
+
     const payload = {
-      plat_nomor: kendaraanForm.plat_nomor,
-      jenis: kendaraanForm.jenis || null,
-      kapasitas_ton: parseFloat(kendaraanForm.kapasitas_ton) || null,
-      kepemilikan: kendaraanForm.kepemilikan,
+      nama: formArmada.nama,
+      no_hp: formArmada.no_hp || null,
+      mitra_id: formArmada.mitra_id || null,
+      plat_nomor: formArmada.plat_nomor || null,
     };
+
     if (editingId) {
-      await supabase.from('kendaraan').update(payload).eq('id', editingId);
+      const { error } = await supabase.from('sopir').update(payload).eq('id', editingId);
+      if (error) {
+        alert('Gagal menyimpan armada: ' + error.message);
+        setSaving(false);
+        return;
+      }
     } else {
-      await supabase.from('kendaraan').insert(payload);
+      const { error } = await supabase.from('sopir').insert(payload);
+      if (error) {
+        alert('Gagal menyimpan armada: ' + error.message);
+        setSaving(false);
+        return;
+      }
     }
+
     setSaving(false);
     setShowModal(false);
-    loadData();
+    await loadData();
   }
 
-  async function saveSopir(e) {
-    e.preventDefault();
-    setSaving(true);
-    const payload = {
-      nama: sopirForm.nama,
-      no_hp: sopirForm.no_hp || null,
-      kendaraan_id: sopirForm.kendaraan_id || null,
-    };
-    if (editingId) {
-      await supabase.from('sopir').update(payload).eq('id', editingId);
-    } else {
-      await supabase.from('sopir').insert(payload);
-    }
-    setSaving(false);
-    setShowModal(false);
-    loadData();
-  }
-
-  async function deleteKendaraan(id) {
-    if (!confirm('Nonaktifkan kendaraan ini?')) return;
-    await supabase.from('kendaraan').update({ aktif: false }).eq('id', id);
-    loadData();
-  }
-
-  async function deleteSopir(id) {
-    if (!confirm('Nonaktifkan sopir ini?')) return;
+  async function handleDelete(id) {
+    if (!confirm('Yakin ingin menonaktifkan armada ini?')) return;
     await supabase.from('sopir').update({ aktif: false }).eq('id', id);
-    loadData();
+    await loadData();
+  }
+
+  const filteredArmadas = useMemo(() => {
+    const keyword = search.trim().toLowerCase();
+    if (!keyword) return armadas;
+    return armadas.filter(armada => getSopirArmadaSearchText(armada).toLowerCase().includes(keyword));
+  }, [armadas, search]);
+
+  const sortedArmadas = useMemo(() => sortRows(filteredArmadas, sort, armadaSortAccessors), [filteredArmadas, sort]);
+  const paginatedArmadas = useMemo(() => paginateRows(sortedArmadas, page, TABLE_PAGE_SIZE), [page, sortedArmadas]);
+
+  async function handleExportExcel() {
+    const generatedAt = formatDateTimeDisplay(new Date());
+
+    await exportStyledWorkbook({
+      filename: `armada-${getTodayISO()}.xlsx`,
+      sheets: [{
+        name: 'Armada',
+        title: 'ARMADA SAWIT CB',
+        subtitle: `Total ${sortedArmadas.length.toLocaleString('id-ID')} armada | Filter: ${search || 'Semua'} | Dibuat: ${generatedAt}`,
+        columns: [
+          { header: 'No', value: (_, index) => index + 1, type: 'number', width: 6 },
+          { header: 'Nama Sopir / Unit', key: 'nama', width: 24 },
+          { header: 'Plat Default', key: 'plat_nomor', width: 18 },
+          { header: 'No. HP / WA', key: 'no_hp', width: 18 },
+          { header: 'Kode Mitra Default', value: row => row.master_mitra?.kode || '', width: 18 },
+          { header: 'Nama Mitra Default', value: row => row.master_mitra?.nama || '', width: 24 },
+          { header: 'Afiliasi Default', value: row => formatMitraLabel(row.master_mitra) || 'Tanpa default / armada bersama', width: 38 },
+        ],
+        rows: sortedArmadas,
+      }],
+    });
   }
 
   return (
-    <AppShell title="Armada & Sopir" subtitle="Kelola data kendaraan dan sopir">
-      <div className="page-header" style={{ justifyContent: 'flex-end' }}>
-        <div className="flex gap-sm">
-          <button className="btn btn-outline" onClick={openNewKendaraan}>+ Kendaraan</button>
-          <button className="btn btn-primary" onClick={openNewSopir}>+ Sopir</button>
+    <AppShell title="Armada" subtitle="Kelola sopir, plat default, dan afiliasi mitra">
+      <div className="page-header">
+        <div className="toolbar" style={{ flex: 1, marginBottom: 0 }}>
+          <div className="search-box" style={{ flex: 1, maxWidth: 420 }}>
+            <span className="search-box-icon"><Search size={16} /></span>
+            <input
+              type="text"
+              className="form-input"
+              placeholder="Cari nama sopir, plat, atau mitra default..."
+              value={search}
+              onChange={(e) => {
+                setSearch(e.target.value);
+                setPage(1);
+              }}
+              style={{ paddingLeft: 40 }}
+            />
+          </div>
+        </div>
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+          <button className="btn btn-outline" onClick={handleExportExcel} disabled={sortedArmadas.length === 0}>
+            <FileSpreadsheet size={16} />
+            Export Excel
+          </button>
+          <button className="btn btn-primary" onClick={openNew}>+ Tambah Armada</button>
         </div>
       </div>
 
-      {/* Tabs */}
-      <div className="tabs">
-        <button className={`tab ${activeTab === 'kendaraan' ? 'active' : ''}`} onClick={() => setActiveTab('kendaraan')}>
-          🚛 Kendaraan ({kendaraanList.length})
-        </button>
-        <button className={`tab ${activeTab === 'sopir' ? 'active' : ''}`} onClick={() => setActiveTab('sopir')}>
-          👤 Sopir ({sopirList.length})
-        </button>
+      <div className="table-container">
+        <table className="table">
+          <thead>
+            <tr>
+              <SortableHeader label="Nama Sopir / Unit" sortKey="nama" sort={sort} onSort={handleSort} />
+              <SortableHeader label="Plat Default" sortKey="plat" sort={sort} onSort={handleSort} />
+              <SortableHeader label="No. HP" sortKey="no_hp" sort={sort} onSort={handleSort} />
+              <SortableHeader label="Mitra Default" sortKey="mitra" sort={sort} onSort={handleSort} />
+              <th style={{ textAlign: 'center' }}>Aksi</th>
+            </tr>
+          </thead>
+          <tbody>
+            {loading ? (
+              <tr>
+                <td colSpan={5}>Memuat data...</td>
+              </tr>
+            ) : paginatedArmadas.rows.length === 0 ? (
+              <tr>
+                <td colSpan={5}>Data armada tidak ditemukan.</td>
+              </tr>
+            ) : (
+              paginatedArmadas.rows.map(armada => (
+                <tr key={armada.id}>
+                  <td style={{ fontWeight: 600 }}>{armada.nama}</td>
+                  <td className="table-mono">{armada.plat_nomor || '-'}</td>
+                  <td className="table-mono">{armada.no_hp || '-'}</td>
+                  <td><span className="badge badge-blue">{armada.master_mitra ? formatMitraLabel(armada.master_mitra) : '-'}</span></td>
+                  <td style={{ textAlign: 'center' }}>
+                    <button className="btn btn-ghost btn-sm" onClick={() => openEdit(armada)} aria-label={`Edit ${armada.nama}`}>
+                      <Pencil size={16} />
+                    </button>
+                    <button className="btn btn-ghost btn-sm" onClick={() => handleDelete(armada.id)} aria-label={`Nonaktifkan ${armada.nama}`}>
+                      <Trash2 size={16} />
+                    </button>
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+        <TablePagination
+          page={paginatedArmadas.page}
+          totalPages={paginatedArmadas.totalPages}
+          totalItems={sortedArmadas.length}
+          startIndex={paginatedArmadas.startIndex}
+          endIndex={paginatedArmadas.endIndex}
+          onPageChange={setPage}
+        />
       </div>
 
-      {loading ? (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-          {[1, 2, 3].map((i) => <div key={i} className="skeleton" style={{ height: 52 }}></div>)}
-        </div>
-      ) : activeTab === 'kendaraan' ? (
-        kendaraanList.length === 0 ? (
-          <div className="empty-state">
-            <div className="empty-state-icon">🚛</div>
-            <div className="empty-state-title">Belum ada kendaraan</div>
-            <div className="empty-state-text">Klik tombol Kendaraan untuk menambahkan</div>
-          </div>
-        ) : (
-          <div className="table-container">
-            <table className="table">
-              <thead>
-                <tr>
-                  <th>Plat Nomor</th>
-                  <th>Jenis</th>
-                  <th>Kapasitas</th>
-                  <th>Kepemilikan</th>
-                  <th style={{ textAlign: 'center' }}>Aksi</th>
-                </tr>
-              </thead>
-              <tbody>
-                {kendaraanList.map((k) => (
-                  <tr key={k.id}>
-                    <td className="table-mono" style={{ fontWeight: 600 }}>{k.plat_nomor}</td>
-                    <td>{k.jenis || '-'}</td>
-                    <td>{k.kapasitas_ton ? `${k.kapasitas_ton} ton` : '-'}</td>
-                    <td>
-                      <span className={`badge ${k.kepemilikan === 'sendiri' ? 'badge-success' : 'badge-warning'}`}>
-                        {k.kepemilikan === 'sendiri' ? 'Milik Sendiri' : 'Sewa'}
-                      </span>
-                    </td>
-                    <td style={{ textAlign: 'center' }}>
-                      <button className="btn btn-ghost btn-sm" onClick={() => editKendaraan(k)}>✏️</button>
-                      <button className="btn btn-ghost btn-sm" onClick={() => deleteKendaraan(k.id)}>🗑️</button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )
-      ) : (
-        sopirList.length === 0 ? (
-          <div className="empty-state">
-            <div className="empty-state-icon">👤</div>
-            <div className="empty-state-title">Belum ada sopir</div>
-            <div className="empty-state-text">Klik tombol Sopir untuk menambahkan</div>
-          </div>
-        ) : (
-          <div className="table-container">
-            <table className="table">
-              <thead>
-                <tr>
-                  <th>Nama Sopir</th>
-                  <th>No. HP</th>
-                  <th>Kendaraan</th>
-                  <th style={{ textAlign: 'center' }}>Aksi</th>
-                </tr>
-              </thead>
-              <tbody>
-                {sopirList.map((s) => (
-                  <tr key={s.id}>
-                    <td style={{ fontWeight: 600 }}>{s.nama}</td>
-                    <td className="table-mono">{s.no_hp || '-'}</td>
-                    <td className="table-mono">{s.kendaraan?.plat_nomor || '-'}</td>
-                    <td style={{ textAlign: 'center' }}>
-                      <button className="btn btn-ghost btn-sm" onClick={() => editSopir(s)}>✏️</button>
-                      <button className="btn btn-ghost btn-sm" onClick={() => deleteSopir(s.id)}>🗑️</button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )
-      )}
-
-      {/* Modal Kendaraan */}
-      {showModal === 'kendaraan' && (
+      {showModal && (
         <div className="modal-overlay" onClick={() => setShowModal(false)}>
           <div className="modal" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
-              <h3 className="modal-title">{editingId ? 'Edit' : 'Tambah'} Kendaraan</h3>
-              <button className="modal-close" onClick={() => setShowModal(false)}>✕</button>
+              <h3 className="modal-title">{editingId ? 'Edit' : 'Tambah'} Armada</h3>
+              <button className="modal-close" onClick={() => setShowModal(false)} aria-label="Tutup">
+                <X size={18} />
+              </button>
             </div>
-            <form onSubmit={saveKendaraan}>
+            <form onSubmit={handleSave}>
               <div className="modal-body">
                 <div className="form-group">
-                  <label className="form-label form-label-required">Plat Nomor</label>
-                  <input className="form-input form-input-mono" value={kendaraanForm.plat_nomor}
-                    onChange={(e) => setKendaraanForm({ ...kendaraanForm, plat_nomor: e.target.value.toUpperCase() })}
-                    placeholder="KT 1234 AB" required />
+                  <label className="form-label form-label-required">Nama Sopir / Unit</label>
+                  <input
+                    className="form-input"
+                    required
+                    value={formArmada.nama}
+                    onChange={e => setFormArmada({ ...formArmada, nama: e.target.value })}
+                  />
                 </div>
                 <div className="form-grid">
                   <div className="form-group">
-                    <label className="form-label">Jenis Kendaraan</label>
-                    <input className="form-input" value={kendaraanForm.jenis}
-                      onChange={(e) => setKendaraanForm({ ...kendaraanForm, jenis: e.target.value })}
-                      placeholder="Truk, Pickup, dll" />
+                    <label className="form-label form-label-required">Plat Default</label>
+                    <input
+                      className="form-input form-input-mono"
+                      required
+                      value={formArmada.plat_nomor}
+                      onChange={e => setFormArmada({ ...formArmada, plat_nomor: e.target.value.toUpperCase() })}
+                      placeholder="Contoh: BM 1234 XY"
+                    />
                   </div>
                   <div className="form-group">
-                    <label className="form-label">Kapasitas (ton)</label>
-                    <input type="number" className="form-input form-input-mono" value={kendaraanForm.kapasitas_ton}
-                      onChange={(e) => setKendaraanForm({ ...kendaraanForm, kapasitas_ton: e.target.value })}
-                      placeholder="0" min={0} step={0.1} />
+                    <label className="form-label">No. HP / WA</label>
+                    <input
+                      className="form-input"
+                      value={formArmada.no_hp}
+                      onChange={e => setFormArmada({ ...formArmada, no_hp: e.target.value })}
+                    />
                   </div>
                 </div>
                 <div className="form-group">
-                  <label className="form-label">Kepemilikan</label>
-                  <select className="form-input form-select" value={kendaraanForm.kepemilikan}
-                    onChange={(e) => setKendaraanForm({ ...kendaraanForm, kepemilikan: e.target.value })}>
-                    <option value="sendiri">Milik Sendiri</option>
-                    <option value="sewa">Sewa / Pihak Ketiga</option>
-                  </select>
-                </div>
-              </div>
-              <div className="modal-footer">
-                <button type="button" className="btn btn-outline" onClick={() => setShowModal(false)}>Batal</button>
-                <button type="submit" className="btn btn-primary" disabled={saving}>
-                  {saving ? 'Menyimpan...' : 'Simpan'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* Modal Sopir */}
-      {showModal === 'sopir' && (
-        <div className="modal-overlay" onClick={() => setShowModal(false)}>
-          <div className="modal" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header">
-              <h3 className="modal-title">{editingId ? 'Edit' : 'Tambah'} Sopir</h3>
-              <button className="modal-close" onClick={() => setShowModal(false)}>✕</button>
-            </div>
-            <form onSubmit={saveSopir}>
-              <div className="modal-body">
-                <div className="form-group">
-                  <label className="form-label form-label-required">Nama Sopir</label>
-                  <input className="form-input" value={sopirForm.nama}
-                    onChange={(e) => setSopirForm({ ...sopirForm, nama: e.target.value })}
-                    placeholder="Nama lengkap" required />
-                </div>
-                <div className="form-group">
-                  <label className="form-label">No. HP</label>
-                  <input className="form-input" value={sopirForm.no_hp}
-                    onChange={(e) => setSopirForm({ ...sopirForm, no_hp: e.target.value })}
-                    placeholder="08xxxxxxxxxx" />
-                </div>
-                <div className="form-group">
-                  <label className="form-label">Kendaraan</label>
-                  <select className="form-input form-select" value={sopirForm.kendaraan_id}
-                    onChange={(e) => setSopirForm({ ...sopirForm, kendaraan_id: e.target.value })}>
-                    <option value="">-- Tidak ada --</option>
-                    {kendaraanList.map((k) => (
-                      <option key={k.id} value={k.id}>{k.plat_nomor} ({k.jenis || '-'})</option>
-                    ))}
-                  </select>
+                  <label className="form-label">Mitra Default</label>
+                  <SearchableCombobox
+                    value={formArmada.mitra_id}
+                    options={mitras}
+                    onChange={mitraId => setFormArmada({ ...formArmada, mitra_id: mitraId })}
+                    getOptionLabel={formatMitraLabel}
+                    getSearchText={getMitraSearchText}
+                    placeholder="Tanpa default / cari mitra..."
+                    emptyLabel="Mitra tidak ditemukan"
+                  />
                 </div>
               </div>
               <div className="modal-footer">

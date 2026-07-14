@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import AppShell from '@/components/layout/AppShell';
+import { formatMitraLabel } from '@/lib/display-labels';
 import { supabase } from '@/lib/supabase';
 import { formatRupiah, formatNumber, getTodayISO } from '@/lib/utils';
 import { exportLaporanHarian } from '@/lib/export';
@@ -17,7 +18,7 @@ const kategoriLabel = {
 };
 
 function getPengirimanTonase(pengiriman) {
-  return pengiriman.tonase_timbang_sumber || pengiriman.tonase_kirim || pengiriman.tonase_pabrik || 0;
+  return pengiriman.tonase || 0;
 }
 
 export default function LaporanHarianPage() {
@@ -33,7 +34,7 @@ export default function LaporanHarianPage() {
     const [
       tbsRes,
       biayaRes,
-      pengirimanRes,
+      pengirimanMitraRes,
       hargaRes,
       stokRes,
     ] = await Promise.all([
@@ -50,9 +51,14 @@ export default function LaporanHarianPage() {
         .neq('status', 'dibatalkan')
         .order('created_at'),
       supabase
-        .from('pengiriman')
-        .select('*, pabrik:pabrik_id(nama), sopir:sopir_id(nama)')
+        .from('transaksi_mitra')
+        .select(`
+          id, tanggal, tonase, status, plat_nomor,
+          sopir_aktual_nama, sopir_default_nama,
+          master_mitra ( kode, nama, alamat )
+        `)
         .eq('tanggal', tanggal)
+        .neq('status', 'dibatalkan')
         .order('created_at'),
       supabase
         .from('harga_tbs_lokal')
@@ -67,13 +73,13 @@ export default function LaporanHarianPage() {
         .eq('tanggal', tanggal),
     ]);
 
-    if (tbsRes.error || biayaRes.error || pengirimanRes.error || hargaRes.error || stokRes.error) {
+    if (tbsRes.error || biayaRes.error || pengirimanMitraRes.error || hargaRes.error || stokRes.error) {
       setToast({ type: 'error', message: 'Sebagian data laporan gagal dimuat.' });
     }
 
     const tbs = tbsRes.data || [];
     const biaya = biayaRes.data || [];
-    const pengiriman = pengirimanRes.data || [];
+    const pengiriman = pengirimanMitraRes.data || [];
     const stokRows = stokRes.data || [];
 
     const totalTBSKg = tbs.reduce((sum, item) => sum + Number(item.berat_bersih_kg || 0), 0);
@@ -253,15 +259,15 @@ export default function LaporanHarianPage() {
           {data.pengiriman.length > 0 && (
             <div className="card">
               <div className="card-header">
-                <span className="card-title">Pengiriman Hari Ini</span>
+              <span className="card-title">Pengiriman Mitra Hari Ini</span>
               </div>
               <div className="table-container" style={{ border: 'none' }}>
                 <table className="table">
                   <thead>
                     <tr>
-                      <th>Pabrik</th>
+                      <th>Mitra</th>
                       <th>Sopir</th>
-                      <th>Sumber</th>
+                      <th>Plat</th>
                       <th style={{ textAlign: 'right' }}>Tonase</th>
                       <th>Status</th>
                     </tr>
@@ -269,9 +275,9 @@ export default function LaporanHarianPage() {
                   <tbody>
                     {data.pengiriman.map((pengiriman) => (
                       <tr key={pengiriman.id}>
-                        <td>{pengiriman.pabrik?.nama}</td>
-                        <td>{pengiriman.sopir?.nama || pengiriman.sopir_mitra_text || '-'}</td>
-                        <td>{pengiriman.sumber || 'lokal'}</td>
+                        <td>{formatMitraLabel(pengiriman.master_mitra) || '-'}</td>
+                        <td>{pengiriman.sopir_aktual_nama || pengiriman.sopir_default_nama || '-'}</td>
+                        <td className="table-mono">{pengiriman.plat_nomor || '-'}</td>
                         <td className="table-mono" style={{ textAlign: 'right' }}>{formatNumber(getPengirimanTonase(pengiriman))} kg</td>
                         <td>
                           <span className="badge badge-info">{pengiriman.status}</span>

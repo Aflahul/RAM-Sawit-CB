@@ -1,6 +1,6 @@
 import { createClient } from '@/utils/supabase/middleware';
 
-export async function middleware(request) {
+export async function proxy(request) {
   const { supabase, response } = createClient(request);
 
   await supabase.auth.getUser();

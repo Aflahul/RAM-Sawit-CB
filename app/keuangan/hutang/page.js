@@ -314,7 +314,7 @@ export default function HutangPage() {
     if (form.tipe === 'debit' && selectedParty?.batas > 0 && (saldo + jumlah) > selectedParty.batas) {
       const lanjut = window.confirm(
         `Hutang akan melebihi batas ${formatRupiah(selectedParty.batas)}.\n\n` +
-        `Saldo saat ini: ${formatRupiah(saldo)}\n` +
+        `Sisa saat ini: ${formatRupiah(saldo)}\n` +
         `Tambahan: ${formatRupiah(jumlah)}\n` +
         `Total: ${formatRupiah(saldo + jumlah)}\n\n` +
         'Lanjutkan?'
@@ -323,22 +323,31 @@ export default function HutangPage() {
     }
 
     setSaving(true);
-    const { error } = await supabase.rpc('create_hutang_pihak', {
-      p_pihak_type: form.pihak_type,
-      p_tipe: form.tipe,
-      p_sumber: form.sumber,
-      p_jumlah: jumlah,
-      p_tanggal: getTodayISO(),
-      p_petani_id: form.pihak_type === 'petani' ? form.petani_id || null : null,
-      p_master_mitra_id: form.pihak_type === 'mitra' ? form.master_mitra_id || null : null,
-      p_sopir_id: form.pihak_type === 'sopir' ? form.sopir_id || null : null,
-      p_pihak_nama_manual: ['karyawan', 'lainnya'].includes(form.pihak_type) ? form.pihak_nama_manual || null : null,
-      p_keterangan: form.keterangan || null,
-      p_rekening_kas_id: null,
-      p_catat_kas: true,
-      p_legacy_source_table: null,
-      p_legacy_source_id: null,
-    });
+    const isMitraPanjar = form.pihak_type === 'mitra' && form.tipe === 'debit' && form.sumber === 'panjar';
+    const { error } = isMitraPanjar
+      ? await supabase.rpc('create_panjar_mitra_kas', {
+        p_mitra_id: form.master_mitra_id || null,
+        p_tanggal: getTodayISO(),
+        p_jumlah: jumlah,
+        p_keterangan: form.keterangan || null,
+        p_rekening_kas_id: null,
+      })
+      : await supabase.rpc('create_hutang_pihak', {
+        p_pihak_type: form.pihak_type,
+        p_tipe: form.tipe,
+        p_sumber: form.sumber,
+        p_jumlah: jumlah,
+        p_tanggal: getTodayISO(),
+        p_petani_id: form.pihak_type === 'petani' ? form.petani_id || null : null,
+        p_master_mitra_id: form.pihak_type === 'mitra' ? form.master_mitra_id || null : null,
+        p_sopir_id: form.pihak_type === 'sopir' ? form.sopir_id || null : null,
+        p_pihak_nama_manual: ['karyawan', 'lainnya'].includes(form.pihak_type) ? form.pihak_nama_manual || null : null,
+        p_keterangan: form.keterangan || null,
+        p_rekening_kas_id: null,
+        p_catat_kas: true,
+        p_legacy_source_table: null,
+        p_legacy_source_id: null,
+      });
     setSaving(false);
 
     if (error) {
@@ -348,7 +357,7 @@ export default function HutangPage() {
     }
 
     setShowModal(false);
-    setToast({ message: 'Hutang/panjar berhasil dicatat.', type: 'success' });
+    setToast({ message: isMitraPanjar ? 'Panjar mitra berhasil dicatat dan siap dipotong di kwitansi.' : 'Hutang/panjar berhasil dicatat.', type: 'success' });
     setTimeout(() => setToast(null), 3000);
     await loadData();
   }
@@ -386,13 +395,13 @@ export default function HutangPage() {
       { key: 'tipe', label: 'Tipe Pihak' },
       { key: 'nama', label: 'Nama Pihak' },
       { key: 'kontak', label: 'Kontak' },
-      { key: 'saldo', label: 'Saldo Hutang' },
-      { key: 'batas', label: 'Batas Hutang' },
-    ], 'Daftar_Hutang_Panjar', 'Hutang');
+      { key: 'saldo', label: 'Sisa Hutang/Panjar' },
+      { key: 'batas', label: 'Batas Panjar' },
+    ], 'Daftar_Hutang_Panjar', 'Sisa Hutang Panjar');
   }
 
   return (
-    <AppShell title="Hutang / Panjar" subtitle="Kelola pinjaman uang lintas petani, mitra, sopir, karyawan, dan pihak lain">
+    <AppShell title="Hutang & Panjar Semua Pihak" subtitle="Kelola sisa hutang, kasbon, dan panjar lintas petani, mitra, sopir, karyawan, dan pihak lain">
       {toast && (
         <div className="toast-container">
           <div className={`toast toast-${toast.type}`}>
@@ -403,11 +412,11 @@ export default function HutangPage() {
 
       <div className="page-header">
         <div>
-          <p className="page-description">Semua pencairan dan pelunasan tunai otomatis masuk Buku Kas.</p>
+          <p className="page-description">Panjar adalah kasbon/uang muka yang akan dipotong saat pembayaran berikutnya. Untuk panjar mitra, pilih pihak Mitra dan jenis Panjar.</p>
         </div>
         <div className="flex gap-sm" style={{ flexWrap: 'wrap' }}>
           <button className="btn btn-outline btn-sm" onClick={exportHutang}>Export Excel</button>
-          <button className="btn btn-primary btn-sm" onClick={() => openModal('debit')}>Catat Hutang / Panjar</button>
+          <button className="btn btn-primary btn-sm" onClick={() => openModal('debit')}>Catat Hutang & Panjar</button>
         </div>
       </div>
 
@@ -452,7 +461,7 @@ export default function HutangPage() {
       <div style={{ display: 'grid', gridTemplateColumns: selectedParty ? 'minmax(260px, 0.9fr) minmax(0, 1.5fr)' : '1fr', gap: 'var(--space-xl)' }}>
         <div className="card">
           <div className="card-header">
-            <span className="card-title">Pihak dengan Saldo Aktif</span>
+            <span className="card-title">Pihak dengan Sisa Hutang/Panjar</span>
             <span className="badge badge-warning">{summaryRows.length}</span>
           </div>
           {loading ? (
@@ -505,7 +514,7 @@ export default function HutangPage() {
                   <div className="text-mono" style={{ fontSize: 'var(--text-2xl)', fontWeight: 700, color: saldo > 0 ? 'var(--color-warning)' : 'var(--color-success)' }}>
                     {formatRupiah(saldo)}
                   </div>
-                  <div className="text-tertiary text-sm">Saldo Hutang</div>
+                  <div className="text-tertiary text-sm">Sisa Hutang/Panjar</div>
                 </div>
                 {selectedParty.batas > 0 && (
                   <div style={{ textAlign: 'center', padding: 'var(--space-md)', background: 'var(--bg-surface)', borderRadius: 'var(--radius-md)' }}>
@@ -575,7 +584,7 @@ export default function HutangPage() {
         <div className="modal-overlay" onClick={() => setShowModal(false)}>
           <div className="modal" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
-              <h3 className="modal-title">{form.tipe === 'debit' ? 'Tambah Hutang / Panjar' : 'Catat Pembayaran'}</h3>
+              <h3 className="modal-title">{form.tipe === 'debit' ? 'Tambah Hutang & Panjar' : 'Catat Pembayaran'}</h3>
               <button className="modal-close" onClick={() => setShowModal(false)}>x</button>
             </div>
             <form onSubmit={handleSave}>
@@ -676,6 +685,9 @@ export default function HutangPage() {
                         <option key={item.value} value={item.value}>{item.label}</option>
                       ))}
                     </select>
+                    {form.pihak_type === 'mitra' && form.tipe === 'debit' && form.sumber === 'panjar' && (
+                      <div className="form-hint">Panjar mitra ini akan muncul sebagai potongan saat membuat Kwitansi Mitra.</div>
+                    )}
                   </div>
                 </div>
 

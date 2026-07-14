@@ -1,25 +1,26 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import AppShell from '@/components/layout/AppShell';
+import { canManageFinance, normalizeRole } from '@/lib/roles';
 import { supabase } from '@/lib/supabase';
-import { formatDateDisplay, formatRupiah, formatNumber, getTodayISO } from '@/lib/utils';
-import { exportLaporanHarian } from '@/lib/export';
-import { Factory, Users, Scale, Box, CreditCard, Calculator } from 'lucide-react';
-
-function LockedWrapper({ children }) {
-  return (
-    <div style={{ position: 'relative', height: '100%' }}>
-      <div style={{ position: 'absolute', inset: -4, zIndex: 10, background: 'rgba(2, 6, 23, 0.4)', backdropFilter: 'blur(2px)', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 12 }}>
-         <div style={{ background: 'var(--bg-card)', padding: '4px 12px', borderRadius: 20, fontSize: 'var(--text-xs)', color: 'var(--color-gold-400)', border: '1px solid var(--color-gold-500)', fontWeight: 600 }}>Tahap 2</div>
-      </div>
-      <div style={{ opacity: 0.3, pointerEvents: 'none', filter: 'grayscale(1)', height: '100%' }}>
-        {children}
-      </div>
-    </div>
-  );
-}
+import { formatDateDisplay, formatNumber, formatRupiah, getTodayISO } from '@/lib/utils';
+import {
+  AlertTriangle,
+  BadgeDollarSign,
+  Box,
+  CheckCircle2,
+  Clock3,
+  CreditCard,
+  FileText,
+  ReceiptText,
+  Scale,
+  Store,
+  Truck,
+  Users,
+  Wallet,
+} from 'lucide-react';
 
 function getLastSevenDays() {
   const days = [];
@@ -35,38 +36,128 @@ function dayLabel(dateString) {
   return formatDateDisplay(dateString).slice(0, 5);
 }
 
+function getSignedStok(row) {
+  const berat = Number(row.berat_kg || 0);
+  if (row.tipe === 'masuk') return Math.abs(berat);
+  if (row.tipe === 'keluar') return -Math.abs(berat);
+  return berat;
+}
+
+function getSignedKas(row) {
+  const jumlah = Number(row.jumlah || 0);
+  if (['masuk', 'transfer_masuk'].includes(row.tipe)) return jumlah;
+  if (['keluar', 'transfer_keluar'].includes(row.tipe)) return -jumlah;
+  if (row.tipe === 'reversal') return jumlah;
+  return row.sumber === 'reversal' ? jumlah : 0;
+}
+
+function getPartyKey(row) {
+  return [
+    row.pihak_type || 'lainnya',
+    row.petani_id || row.master_mitra_id || row.mitra_id || row.sopir_id || row.pihak_nama_manual || 'manual',
+  ].join(':');
+}
+
+function MetricCard({ title, value, label, icon, tone = 'neutral', href }) {
+  const toneClass = {
+    success: 'text-success',
+    danger: 'text-danger',
+    warning: 'text-warning',
+    info: '',
+    neutral: '',
+  }[tone] || '';
+
+  const body = (
+    <div className="card dashboard-card">
+      <div className="card-header">
+        <span className="card-title">{title}</span>
+        <div className={`card-icon ${tone === 'danger' ? 'card-icon-red' : tone === 'warning' ? 'card-icon-gold' : tone === 'info' ? 'card-icon-blue' : 'card-icon-green'}`}>
+          {icon}
+        </div>
+      </div>
+      <div className={`card-value ${toneClass}`}>{value}</div>
+      <div className="card-label">{label}</div>
+    </div>
+  );
+
+  if (!href) return body;
+
+  return (
+    <Link href={href} className="dashboard-card-link">
+      {body}
+    </Link>
+  );
+}
+
+function StatusPill({ ok, children }) {
+  return (
+    <span className={`badge ${ok ? 'badge-success' : 'badge-warning'}`}>
+      {ok ? <CheckCircle2 size={14} /> : <AlertTriangle size={14} />}
+      {children}
+    </span>
+  );
+}
+
+function PendingItem({ title, value, description, href, tone = 'warning' }) {
+  return (
+    <Link href={href} className={`pending-item pending-item-${tone}`}>
+      <div className="pending-item-main">
+        <div className="pending-item-title">{title}</div>
+        <div className="pending-item-description">{description}</div>
+      </div>
+      <div className="pending-item-value">{value}</div>
+    </Link>
+  );
+}
+
+function QuickAction({ href, icon, title, description, tone = 'primary' }) {
+  return (
+    <Link href={href} className={`quick-action quick-action-${tone}`}>
+      <span className="quick-action-icon">{icon}</span>
+      <span>
+        <span className="quick-action-title">{title}</span>
+        <span className="quick-action-description">{description}</span>
+      </span>
+    </Link>
+  );
+}
+
+const initialStats = {
+  tbsMasukKg: 0,
+  tbsMasukRp: 0,
+  jumlahTransaksi: 0,
+  stokLokalKg: 0,
+  hutangAktif: 0,
+  jumlahPihakHutang: 0,
+  totalBiaya: 0,
+  kasMasuk: 0,
+  kasKeluar: 0,
+  tbsMitraKg: 0,
+  jumlahMitraMengirim: 0,
+  totalMitra: 0,
+  kwitansiBelumDibayar: 0,
+  kwitansiBelumDibayarKg: 0,
+  kwitansiPerluReview: 0,
+};
+
 export default function DashboardPage() {
-  const [stats, setStats] = useState({
-    tbsMasukKg: 0,
-    tbsMasukRp: 0,
-    jumlahTransaksi: 0,
-    stokLokalKg: 0,
-    hutangAktif: 0,
-    jumlahPetaniHutang: 0,
-    totalBiaya: 0,
-    pengirimanPending: 0,
-    // MVP Mitra
-    tbsMitraKg: 0,
-    jumlahMitraMengirim: 0,
-    totalMitra: 0,
-    totalPengirimanPabrikKg: 0,
-    pengirimanLokalToday: 0,
-  });
+  const [stats, setStats] = useState(initialStats);
   const [hargaAktif, setHargaAktif] = useState(null);
   const [hargaEdit, setHargaEdit] = useState('');
   const [hargaEditing, setHargaEditing] = useState(false);
   const [hargaSaving, setHargaSaving] = useState(false);
-
-  // MVP Harga Pabrik
   const [hargaPabrik, setHargaPabrik] = useState(null);
   const [hargaPabrikEdit, setHargaPabrikEdit] = useState('');
   const [hargaPabrikEditing, setHargaPabrikEditing] = useState(false);
   const [hargaPabrikSaving, setHargaPabrikSaving] = useState(false);
-
   const [tbsSevenDays, setTbsSevenDays] = useState([]);
   const [recentTransactions, setRecentTransactions] = useState([]);
+  const [recentMitra, setRecentMitra] = useState([]);
+  const [userRole, setUserRole] = useState('admin_operasional');
   const [loading, setLoading] = useState(true);
   const [toast, setToast] = useState(null);
+
+  const canSeeFinance = canManageFinance(userRole);
 
   const loadDashboard = useCallback(async () => {
     setLoading(true);
@@ -74,19 +165,36 @@ export default function DashboardPage() {
     const days = getLastSevenDays();
     const firstDayWeek = days[0];
 
+    const { data: { session } } = await supabase.auth.getSession();
+    let resolvedRole = 'admin_operasional';
+    if (session) {
+      const { data: user } = await supabase
+        .from('users')
+        .select('role')
+        .eq('id', session.user.id)
+        .maybeSingle();
+      resolvedRole = normalizeRole(user?.role);
+    }
+
+    setUserRole(resolvedRole);
+    const canQueryFinance = canManageFinance(resolvedRole);
+
     const [
       tbsToday,
       tbsWeek,
       stokLedger,
       hutangLedger,
       biayaToday,
-      pengirimanPending,
-      recent,
+      recentLocal,
+      recentMitraRows,
       harga,
-      trxMitra,
+      trxMitraToday,
       masterMitra,
-      pengirimanToday,
       hargaPabrikData,
+      transaksiMitraOpen,
+      paidMitraItems,
+      kwitansiReview,
+      kasToday,
     ] = await Promise.all([
       supabase
         .from('transaksi_beli_tbs')
@@ -101,11 +209,10 @@ export default function DashboardPage() {
         .neq('status', 'dibatalkan'),
       supabase
         .from('stok_tbs_lokal_ledger')
-        .select('berat_kg'),
+        .select('tipe, berat_kg'),
       supabase
         .from('hutang_ledger')
-        .select('petani_id, tipe, jumlah')
-        .eq('pihak_type', 'petani')
+        .select('pihak_type, petani_id, master_mitra_id, mitra_id, sopir_id, pihak_nama_manual, tipe, jumlah')
         .neq('status', 'dibatalkan'),
       supabase
         .from('biaya_operasional')
@@ -113,15 +220,17 @@ export default function DashboardPage() {
         .eq('tanggal', today)
         .neq('status', 'dibatalkan'),
       supabase
-        .from('pengiriman')
-        .select('id', { count: 'exact', head: true })
-        .in('status', ['dikirim', 'diterima', 'diterima_pabrik', 'menunggu_pembayaran_pabrik']),
-      supabase
         .from('transaksi_beli_tbs')
         .select('id, no_struk, petani:petani_id(nama), berat_bersih_kg, total_harga, created_at')
         .neq('status', 'dibatalkan')
         .order('created_at', { ascending: false })
-        .limit(10),
+        .limit(8),
+      supabase
+        .from('transaksi_mitra')
+        .select('id, tanggal, tonase, total_nilai_bersih, created_at, master_mitra(id, kode, nama, alamat)')
+        .neq('status', 'dibatalkan')
+        .order('created_at', { ascending: false })
+        .limit(8),
       supabase
         .from('harga_tbs_lokal')
         .select('*')
@@ -139,58 +248,112 @@ export default function DashboardPage() {
         .select('id', { count: 'exact', head: true })
         .eq('aktif', true),
       supabase
-        .from('pengiriman')
-        .select('tonase_kirim')
-        .eq('tanggal', today)
-        .neq('status', 'dibatalkan'),
-      supabase
         .from('harga_tbs')
         .select('harga_per_kg')
         .order('tanggal', { ascending: false })
         .limit(1)
         .maybeSingle(),
+      supabase
+        .from('transaksi_mitra')
+        .select('id, mitra_id, tonase')
+        .neq('status', 'dibatalkan')
+        .limit(1500),
+      supabase
+        .from('pembayaran_mitra_kwitansi_item')
+        .select('transaksi_mitra_id')
+        .limit(3000),
+      supabase
+        .from('pembayaran_mitra_kwitansi')
+        .select('id', { count: 'exact', head: true })
+        .eq('status', 'perlu_review'),
+      canQueryFinance
+        ? supabase
+          .from('kas_ledger')
+          .select('tipe, sumber, jumlah')
+          .eq('tanggal', today)
+          .neq('status', 'dibatalkan')
+        : Promise.resolve({ data: [], error: null }),
     ]);
 
-    if (tbsToday.error || tbsWeek.error || stokLedger.error || hutangLedger.error || biayaToday.error || recent.error || harga.error || trxMitra.error) {
-      setToast({ type: 'error', message: 'Sebagian data dashboard gagal dimuat.' });
+    const firstError = [
+      tbsToday,
+      tbsWeek,
+      stokLedger,
+      hutangLedger,
+      biayaToday,
+      recentLocal,
+      recentMitraRows,
+      harga,
+      trxMitraToday,
+      masterMitra,
+      hargaPabrikData,
+      transaksiMitraOpen,
+      paidMitraItems,
+      kwitansiReview,
+      kasToday,
+    ].find((result) => result?.error);
+
+    if (firstError?.error) {
+      setToast({ type: 'error', message: `Sebagian data dashboard gagal dimuat: ${firstError.error.message}` });
+      setTimeout(() => setToast(null), 5000);
     }
 
     const todayRows = tbsToday.data || [];
     const tbsMasukKg = todayRows.reduce((sum, item) => sum + Number(item.berat_bersih_kg || 0), 0);
     const tbsMasukRp = todayRows.reduce((sum, item) => sum + Number(item.total_harga || 0), 0);
-    const stokLokalKg = (stokLedger.data || []).reduce((sum, item) => sum + Number(item.berat_kg || 0), 0);
+    const stokLokalKg = (stokLedger.data || []).reduce((sum, item) => sum + getSignedStok(item), 0);
     const totalBiaya = (biayaToday.data || []).reduce((sum, item) => sum + Number(item.jumlah || 0), 0);
 
-    const transaksiMitraToday = trxMitra?.data || [];
+    const transaksiMitraToday = trxMitraToday?.data || [];
     const tbsMitraKg = transaksiMitraToday.reduce((sum, item) => sum + Number(item.tonase || 0), 0);
-    const uniqueMitraIds = new Set(transaksiMitraToday.map(item => item.mitra_id).filter(Boolean));
+    const uniqueMitraIds = new Set(transaksiMitraToday.map((item) => item.mitra_id).filter(Boolean));
     const jumlahMitraMengirim = uniqueMitraIds.size;
     const totalMitra = masterMitra?.count || 0;
-    
-    const pengirimanLokalToday = (pengirimanToday?.data || []).reduce((sum, item) => sum + Number(item.tonase_kirim || 0), 0);
-    const totalPengirimanPabrikKg = tbsMitraKg + pengirimanLokalToday;
 
-    const hutangPerPetani = {};
+    const debtGroups = new Map();
     (hutangLedger.data || []).forEach((item) => {
-      const value = Number(item.jumlah || 0);
-      hutangPerPetani[item.petani_id] = (hutangPerPetani[item.petani_id] || 0) + (item.tipe === 'debit' ? value : -value);
+      const key = getPartyKey(item);
+      const current = debtGroups.get(key) || 0;
+      const signed = item.tipe === 'debit' ? Number(item.jumlah || 0) : -Number(item.jumlah || 0);
+      debtGroups.set(key, current + signed);
     });
-    const saldoHutang = Object.values(hutangPerPetani).filter((saldo) => saldo > 0);
+    const activeDebtBalances = Array.from(debtGroups.values()).filter((saldo) => saldo > 0);
+
+    const kasRows = kasToday.data || [];
+    const kasMasuk = kasRows
+      .map(getSignedKas)
+      .filter((amount) => amount > 0)
+      .reduce((sum, amount) => sum + amount, 0);
+    const kasKeluar = kasRows
+      .map(getSignedKas)
+      .filter((amount) => amount < 0)
+      .reduce((sum, amount) => sum + Math.abs(amount), 0);
+
+    const paidIds = new Set((paidMitraItems.data || []).map((item) => item.transaksi_mitra_id));
+    const unpaidMitra = new Map();
+    let kwitansiBelumDibayarKg = 0;
+    (transaksiMitraOpen.data || []).forEach((item) => {
+      if (paidIds.has(item.id)) return;
+      kwitansiBelumDibayarKg += Number(item.tonase || 0);
+      if (item.mitra_id) unpaidMitra.set(item.mitra_id, true);
+    });
 
     setStats({
       tbsMasukKg,
       tbsMasukRp,
       jumlahTransaksi: todayRows.length,
       stokLokalKg,
-      hutangAktif: saldoHutang.reduce((sum, saldo) => sum + saldo, 0),
-      jumlahPetaniHutang: saldoHutang.length,
+      hutangAktif: activeDebtBalances.reduce((sum, saldo) => sum + saldo, 0),
+      jumlahPihakHutang: activeDebtBalances.length,
       totalBiaya,
-      pengirimanPending: pengirimanPending.count || 0,
+      kasMasuk,
+      kasKeluar,
       tbsMitraKg,
       jumlahMitraMengirim,
       totalMitra,
-      totalPengirimanPabrikKg,
-      pengirimanLokalToday
+      kwitansiBelumDibayar: unpaidMitra.size,
+      kwitansiBelumDibayarKg,
+      kwitansiPerluReview: kwitansiReview.count || 0,
     });
 
     setTbsSevenDays(days.map((date) => {
@@ -203,13 +366,12 @@ export default function DashboardPage() {
       };
     }));
 
-    setRecentTransactions(recent.data || []);
+    setRecentTransactions(recentLocal.data || []);
+    setRecentMitra(recentMitraRows.data || []);
     setHargaAktif(harga.data || null);
     setHargaEdit(harga.data?.harga_per_kg ? String(harga.data.harga_per_kg) : '');
-    
     setHargaPabrik(hargaPabrikData.data || null);
     setHargaPabrikEdit(hargaPabrikData.data?.harga_per_kg ? String(hargaPabrikData.data.harga_per_kg) : '');
-
     setLoading(false);
   }, []);
 
@@ -248,7 +410,7 @@ export default function DashboardPage() {
 
     setHargaPabrikSaving(true);
     const today = getTodayISO();
-    
+
     const { error } = await supabase.from('harga_tbs').upsert(
       { tanggal: today, harga_per_kg: nilai },
       { onConflict: 'tanggal' }
@@ -265,9 +427,51 @@ export default function DashboardPage() {
   }
 
   const maxTbs = Math.max(...tbsSevenDays.map((item) => item.kg), 1);
+  const today = getTodayISO();
+  const pendingItems = useMemo(() => ([
+    {
+      title: 'Harga Pabrik / TWB',
+      value: hargaPabrik ? 'Siap' : 'Belum diset',
+      description: hargaPabrik
+        ? `${formatRupiah(hargaPabrik.harga_per_kg)}/kg dipakai untuk pengiriman mitra.`
+        : 'Set harga pabrik sebelum input pengiriman mitra hari ini.',
+      href: '/dashboard',
+      tone: hargaPabrik ? 'success' : 'warning',
+    },
+    {
+      title: 'Harga Beli Petani',
+      value: hargaAktif ? 'Siap' : 'Belum diset',
+      description: hargaAktif
+        ? `${formatRupiah(hargaAktif.harga_per_kg)}/kg dipakai untuk pembelian petani lokal.`
+        : 'Pembelian TBS lokal terkunci sampai harga aktif tersedia.',
+      href: '/master/harga',
+      tone: hargaAktif ? 'success' : 'warning',
+    },
+    {
+      title: 'Kwitansi Mitra Belum Dibayar',
+      value: stats.kwitansiBelumDibayar,
+      description: `${formatNumber(stats.kwitansiBelumDibayarKg)} kg transaksi mitra belum masuk batch pembayaran.`,
+      href: '/owner/kwitansi-mitra',
+      tone: stats.kwitansiBelumDibayar > 0 ? 'warning' : 'success',
+    },
+    {
+      title: 'Kwitansi Perlu Review',
+      value: stats.kwitansiPerluReview,
+      description: 'Batch pembayaran yang perlu dicek ulang karena koreksi/perubahan data.',
+      href: '/owner/kwitansi-mitra',
+      tone: stats.kwitansiPerluReview > 0 ? 'danger' : 'success',
+    },
+    {
+      title: 'Sisa Hutang/Panjar',
+      value: stats.jumlahPihakHutang,
+      description: `${formatRupiah(stats.hutangAktif)} masih harus dipotong atau dilunasi.`,
+      href: '/keuangan/hutang',
+      tone: stats.jumlahPihakHutang > 0 ? 'warning' : 'success',
+    },
+  ]), [hargaAktif, hargaPabrik, stats]);
 
   return (
-    <AppShell title="Dashboard" subtitle="Ringkasan operasional hari ini">
+    <AppShell title="Dashboard Hari Ini" subtitle="Kontrol operasional, kas, dan pending review">
       {toast && (
         <div className="toast-container">
           <div className={`toast toast-${toast.type}`}>
@@ -276,40 +480,40 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {!hargaAktif && !loading && (
-        <div className="alert alert-warning" style={{ marginBottom: 'var(--space-lg)' }}>
-          <span>
-            Harga TBS lokal aktif belum diset. Input pembelian petani akan terkunci sampai harga tersedia.
-          </span>
+      <div className="page-header">
+        <div>
+          <p className="page-description">{formatDateDisplay(today)} - ringkasan kerja harian RAM Sawit CB.</p>
         </div>
-      )}
+        <div className="dashboard-status-row">
+          <StatusPill ok={Boolean(hargaPabrik)}>Harga Pabrik</StatusPill>
+          <StatusPill ok={Boolean(hargaAktif)}>Harga Petani</StatusPill>
+          <StatusPill ok={stats.kwitansiPerluReview === 0}>Review</StatusPill>
+        </div>
+      </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 'var(--space-lg)', marginBottom: 'var(--space-xl)' }}>
-        {/* Harga Pabrik (MVP) */}
-        <div className="card">
-          <div className="card-header" style={{ marginBottom: hargaPabrikEditing ? 'var(--space-md)' : 0 }}>
-            <div>
-              <div className="card-title">Harga Pabrik (TWB)</div>
-              <div className="card-label">
-                Untuk transaksi penerimaan Mitra hari ini.
+      <section className="dashboard-section">
+        <div className="section-heading">
+          <div>
+            <h2>Harga Aktif</h2>
+            <p>Harga ini menjadi snapshot transaksi, jadi wajib dicek sebelum input.</p>
+          </div>
+        </div>
+
+        <div className="price-grid">
+          <div className="card dashboard-card">
+            <div className="price-card-header">
+              <div>
+                <div className="card-title">Harga Pabrik / TWB</div>
+                <div className="card-label">Untuk pengiriman mitra hari ini.</div>
               </div>
-            </div>
-            {!hargaPabrikEditing && (
-              <div className="flex items-center gap-sm">
-                <div className="text-mono" style={{ fontSize: 'var(--text-2xl)', fontWeight: 800, color: 'var(--color-primary-600)' }}>
-                  {hargaPabrik ? `${formatRupiah(hargaPabrik.harga_per_kg)}/kg` : '-'}
-                </div>
+              {!hargaPabrikEditing && (
                 <button className="btn btn-primary btn-sm" onClick={() => setHargaPabrikEditing(true)}>
                   {hargaPabrik ? 'Ubah' : 'Set Harga'}
                 </button>
-              </div>
-            )}
-          </div>
-
-          {hargaPabrikEditing && (
-            <form onSubmit={simpanHargaPabrik} className="flex items-end gap-md" style={{ flexWrap: 'wrap' }}>
-              <div style={{ flex: 1, minWidth: 200 }}>
-                <label className="form-label">Harga Pabrik (Rp/Kg)</label>
+              )}
+            </div>
+            {hargaPabrikEditing ? (
+              <form onSubmit={simpanHargaPabrik} className="inline-edit-form">
                 <input
                   type="number"
                   className="form-input form-input-mono"
@@ -320,43 +524,32 @@ export default function DashboardPage() {
                   required
                   autoFocus
                 />
-              </div>
-              <button type="submit" className="btn btn-primary" disabled={hargaPabrikSaving}>
-                {hargaPabrikSaving ? 'Menyimpan...' : 'Simpan'}
-              </button>
-              <button type="button" className="btn btn-ghost" onClick={() => setHargaPabrikEditing(false)}>
-                Batal
-              </button>
-            </form>
-          )}
-        </div>
-
-        {/* Harga TBS Lokal (Tahap 2) */}
-        <LockedWrapper>
-        <div className="card" style={{ height: '100%' }}>
-          <div className="card-header" style={{ marginBottom: hargaEditing ? 'var(--space-md)' : 0 }}>
-            <div>
-              <div className="card-title">Harga Beli Lokal (Tahap 2)</div>
-              <div className="card-label">
-                Untuk pembelian TBS dari petani lokal.
-              </div>
-            </div>
-            {!hargaEditing && (
-              <div className="flex items-center gap-sm">
-                <div className="text-mono" style={{ fontSize: 'var(--text-2xl)', fontWeight: 800, color: 'var(--text-secondary)' }}>
-                  {hargaAktif ? `${formatRupiah(hargaAktif.harga_per_kg)}/kg` : '-'}
-                </div>
-                <button className="btn btn-outline btn-sm" onClick={() => setHargaEditing(true)}>
-                  {hargaAktif ? 'Ubah' : 'Set Harga'}
+                <button type="submit" className="btn btn-primary" disabled={hargaPabrikSaving}>
+                  {hargaPabrikSaving ? 'Menyimpan...' : 'Simpan'}
                 </button>
-              </div>
+                <button type="button" className="btn btn-ghost" onClick={() => setHargaPabrikEditing(false)}>
+                  Batal
+                </button>
+              </form>
+            ) : (
+              <div className="price-value">{hargaPabrik ? `${formatRupiah(hargaPabrik.harga_per_kg)}/kg` : '-'}</div>
             )}
           </div>
 
-          {hargaEditing && (
-            <form onSubmit={simpanHarga} className="flex items-end gap-md" style={{ flexWrap: 'wrap' }}>
-              <div style={{ flex: 1, minWidth: 200 }}>
-                <label className="form-label">Harga Beli Petani (Rp)</label>
+          <div className="card dashboard-card">
+            <div className="price-card-header">
+              <div>
+                <div className="card-title">Harga Beli Petani</div>
+                <div className="card-label">Untuk pembelian TBS dari petani lokal.</div>
+              </div>
+              {!hargaEditing && (
+                <button className="btn btn-outline btn-sm" onClick={() => setHargaEditing(true)}>
+                  {hargaAktif ? 'Ubah' : 'Set Harga'}
+                </button>
+              )}
+            </div>
+            {hargaEditing ? (
+              <form onSubmit={simpanHarga} className="inline-edit-form">
                 <input
                   type="number"
                   className="form-input form-input-mono"
@@ -366,236 +559,539 @@ export default function DashboardPage() {
                   step={1}
                   required
                 />
-              </div>
-              <button type="submit" className="btn btn-primary" disabled={hargaSaving}>
-                {hargaSaving ? 'Menyimpan...' : 'Simpan'}
-              </button>
-              <button type="button" className="btn btn-ghost" onClick={() => setHargaEditing(false)}>
-                Batal
-              </button>
-            </form>
-          )}
-        </div>
-        </LockedWrapper>
-      </div>
-
-      <h3 style={{ fontSize: 'var(--text-lg)', fontWeight: 600, marginBottom: 'var(--space-md)', color: 'var(--text-primary)' }}>
-        Ringkasan Mitra & Pabrik (MVP)
-      </h3>
-      <div className="stats-grid" style={{ marginBottom: 'var(--space-xl)' }}>
-        <div className="card">
-          <div className="card-header">
-            <span className="card-title">Total Pengiriman ke Pabrik</span>
-            <div className="card-icon card-icon-green"><Factory size={20} /></div>
-          </div>
-          {loading ? (
-            <div className="skeleton" style={{ height: 48, width: '60%', marginBottom: 8 }} />
-          ) : (
-            <>
-              <div className="card-value">{formatNumber(stats.totalPengirimanPabrikKg)} <span style={{ fontSize: 'var(--text-base)', fontWeight: 400 }}>kg</span></div>
-              <div className="card-label">Hari ini (Mitra: {formatNumber(stats.tbsMitraKg)} kg + Lokal: {formatNumber(stats.pengirimanLokalToday)} kg)</div>
-            </>
-          )}
-        </div>
-
-        <div className="card">
-          <div className="card-header">
-            <span className="card-title">Mitra Terdaftar</span>
-            <div className="card-icon card-icon-blue"><Users size={20} /></div>
-          </div>
-          {loading ? (
-            <div className="skeleton" style={{ height: 48, width: '60%', marginBottom: 8 }} />
-          ) : (
-            <>
-              <div className="card-value">{stats.totalMitra} <span style={{ fontSize: 'var(--text-base)', fontWeight: 400 }}>Mitra</span></div>
-              <div className="card-label">{stats.jumlahMitraMengirim} mitra mengirim hari ini</div>
-            </>
-          )}
-          <div className="card-footer">
-            <Link href="/owner/master-data" className="btn btn-ghost btn-sm">Lihat Master Data</Link>
+                <button type="submit" className="btn btn-primary" disabled={hargaSaving}>
+                  {hargaSaving ? 'Menyimpan...' : 'Simpan'}
+                </button>
+                <button type="button" className="btn btn-ghost" onClick={() => setHargaEditing(false)}>
+                  Batal
+                </button>
+              </form>
+            ) : (
+              <div className="price-value muted">{hargaAktif ? `${formatRupiah(hargaAktif.harga_per_kg)}/kg` : '-'}</div>
+            )}
           </div>
         </div>
-      </div>
+      </section>
 
-      <h3 style={{ fontSize: 'var(--text-lg)', fontWeight: 600, marginBottom: 'var(--space-md)', color: 'var(--text-primary)' }}>
-        Ringkasan Operasional Lokal (Tahap 2)
-      </h3>
-      <LockedWrapper>
-      <div className="stats-grid">
-        <div className="card">
-          <div className="card-header">
-            <span className="card-title">TBS Lokal Masuk</span>
-            <div className="card-icon card-icon-green"><Scale size={20} /></div>
-          </div>
-          {loading ? (
-            <div className="skeleton" style={{ height: 48, width: '60%', marginBottom: 8 }} />
-          ) : (
-            <>
-              <div className="card-value">{formatNumber(stats.tbsMasukKg)} <span style={{ fontSize: 'var(--text-base)', fontWeight: 400 }}>kg</span></div>
-              <div className="card-label">{formatRupiah(stats.tbsMasukRp)} / {stats.jumlahTransaksi} transaksi</div>
-            </>
-          )}
-          <div className="card-footer">
-            <Link href="/transaksi/beli" className="btn btn-ghost btn-sm">Input TBS</Link>
+      <section className="dashboard-section">
+        <div className="section-heading">
+          <div>
+            <h2>Hari Ini</h2>
+            <p>Aktivitas utama yang perlu dipantau operator dan keuangan.</p>
           </div>
         </div>
 
-        <div className="card">
-          <div className="card-header">
-            <span className="card-title">Stok Lokal Sementara</span>
-            <div className="card-icon card-icon-blue"><Box size={20} /></div>
-          </div>
-          {loading ? (
-            <div className="skeleton" style={{ height: 48, width: '60%', marginBottom: 8 }} />
-          ) : (
-            <>
-              <div className="card-value">{formatNumber(stats.stokLokalKg)} <span style={{ fontSize: 'var(--text-base)', fontWeight: 400 }}>kg</span></div>
-              <div className="card-label">Saldo dari ledger stok lokal</div>
-            </>
-          )}
+        <div className="stats-grid dashboard-metrics">
+          <MetricCard
+            title="Pengiriman Mitra"
+            value={<>{formatNumber(stats.tbsMitraKg)} <span>kg</span></>}
+            label={`${stats.jumlahMitraMengirim} mitra mengirim, termasuk mitra internal`}
+            icon={<Truck size={20} />}
+            href="/admin/input-timbangan"
+          />
+          <MetricCard
+            title="Pembelian Petani"
+            value={<>{formatNumber(stats.tbsMasukKg)} <span>kg</span></>}
+            label={`${formatRupiah(stats.tbsMasukRp)} / ${stats.jumlahTransaksi} transaksi`}
+            icon={<Scale size={20} />}
+            href="/transaksi/beli"
+            tone="info"
+          />
+          <MetricCard
+            title="Stok Lokal"
+            value={<>{formatNumber(stats.stokLokalKg)} <span>kg</span></>}
+            label="Saldo dari ledger stok lokal"
+            icon={<Box size={20} />}
+            href="/laporan/stok"
+            tone={stats.stokLokalKg < 0 ? 'danger' : 'neutral'}
+          />
+          <MetricCard
+            title="Mitra Aktif Hari Ini"
+            value={stats.jumlahMitraMengirim}
+            label={`${stats.totalMitra} mitra terdaftar aktif`}
+            icon={<Users size={20} />}
+            href="/owner/laporan-mitra"
+            tone="info"
+          />
         </div>
 
-        <div className="card">
-          <div className="card-header">
-            <span className="card-title">Hutang Petani Aktif</span>
-            <div className="card-icon card-icon-gold"><CreditCard size={20} /></div>
+        <div className="stats-grid dashboard-metrics finance-metrics">
+          <MetricCard
+            title="Kas Masuk Hari Ini"
+            value={canSeeFinance ? formatRupiah(stats.kasMasuk) : 'Terbatas'}
+            label={canSeeFinance ? 'Dari buku kas aktual' : 'Hanya Admin Keuangan, Owner, dan Super Admin'}
+            icon={<BadgeDollarSign size={20} />}
+            href="/keuangan/kas"
+            tone="success"
+          />
+          <MetricCard
+            title="Kas Keluar Hari Ini"
+            value={canSeeFinance ? formatRupiah(stats.kasKeluar) : 'Terbatas'}
+            label={canSeeFinance ? 'Pembelian, biaya, panjar, dan pembayaran' : 'Data kas disembunyikan dari role ini'}
+            icon={<CreditCard size={20} />}
+            href="/keuangan/kas"
+            tone="danger"
+          />
+          <MetricCard
+            title="Biaya Operasional"
+            value={formatRupiah(stats.totalBiaya)}
+            label="Pengeluaran operasional tanggal ini"
+            icon={<Wallet size={20} />}
+            href="/keuangan/biaya"
+            tone="danger"
+          />
+          <MetricCard
+            title="Sisa Hutang/Panjar"
+            value={formatRupiah(stats.hutangAktif)}
+            label={`${stats.jumlahPihakHutang} pihak masih harus dipantau`}
+            icon={<Clock3 size={20} />}
+            href="/keuangan/hutang"
+            tone={stats.jumlahPihakHutang > 0 ? 'warning' : 'success'}
+          />
+        </div>
+      </section>
+
+      <section className="dashboard-section dashboard-two-col">
+        <div className="card dashboard-card">
+          <div className="section-heading compact">
+            <div>
+              <h2>Pending Review</h2>
+              <p>Daftar hal yang perlu dibereskan sebelum tutup hari.</p>
+            </div>
           </div>
-          {loading ? (
-            <div className="skeleton" style={{ height: 48, width: '70%', marginBottom: 8 }} />
-          ) : (
-            <>
-              <div className="card-value">{formatRupiah(stats.hutangAktif)}</div>
-              <div className="card-label">{stats.jumlahPetaniHutang} petani memiliki hutang</div>
-            </>
-          )}
-          <div className="card-footer">
-            <Link href="/keuangan/hutang" className="btn btn-ghost btn-sm">Lihat Hutang</Link>
+          <div className="pending-list">
+            {pendingItems.map((item) => (
+              <PendingItem key={item.title} {...item} />
+            ))}
           </div>
         </div>
 
-        <div className="card">
-          <div className="card-header">
-            <span className="card-title">Biaya Hari Ini</span>
-            <div className="card-icon card-icon-red"><Calculator size={20} /></div>
+        <div className="card dashboard-card">
+          <div className="section-heading compact">
+            <div>
+              <h2>Aksi Cepat</h2>
+              <p>Jalur kerja yang paling sering dipakai hari ini.</p>
+            </div>
           </div>
-          {loading ? (
-            <div className="skeleton" style={{ height: 48, width: '50%', marginBottom: 8 }} />
-          ) : (
-            <>
-              <div className="card-value">{formatRupiah(stats.totalBiaya)}</div>
-              <div className="card-label">Total pengeluaran operasional</div>
-            </>
-          )}
-          <div className="card-footer">
-            <Link href="/keuangan/biaya" className="btn btn-ghost btn-sm">Input Biaya</Link>
+          <div className="quick-action-grid">
+            <QuickAction href="/admin/input-timbangan" icon={<Truck size={20} />} title="Pengiriman Mitra" description="Input armada mitra masuk" />
+            <QuickAction href="/transaksi/beli" icon={<Store size={20} />} title="Pembelian Petani" description="Catat TBS petani lokal" />
+            <QuickAction href="/owner/kwitansi-mitra" icon={<ReceiptText size={20} />} title="Kwitansi Mitra" description="Cetak, bayar, kirim WA" />
+            <QuickAction href="/keuangan/hutang" icon={<Wallet size={20} />} title="Hutang & Panjar" description="Catat kasbon dan pelunasan" tone="gold" />
+            <QuickAction href="/laporan/harian" icon={<FileText size={20} />} title="Laporan Harian" description="Review sebelum tutup hari" tone="outline" />
           </div>
         </div>
-      </div>
-      </LockedWrapper>
+      </section>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', gap: 'var(--space-lg)', marginTop: 'var(--space-lg)' }}>
-        <LockedWrapper>
-        <div className="card">
-          <div className="card-header">
-            <span className="card-title">TBS Lokal Masuk 7 Hari</span>
+      <section className="dashboard-section dashboard-two-col">
+        <div className="card dashboard-card">
+          <div className="section-heading compact">
+            <div>
+              <h2>Tren Pembelian Petani 7 Hari</h2>
+              <p>Pembelian TBS lokal berdasarkan transaksi aktif.</p>
+            </div>
           </div>
           {loading ? (
             <div className="skeleton" style={{ height: 180 }} />
           ) : (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 10, alignItems: 'end', minHeight: 190 }}>
+            <div className="mini-chart">
               {tbsSevenDays.map((item) => (
-                <div key={item.date} style={{ display: 'flex', flexDirection: 'column', gap: 8, justifyContent: 'flex-end' }}>
+                <div key={item.date} className="mini-chart-bar">
                   <div
                     title={`${formatNumber(item.kg)} kg / ${formatRupiah(item.rp)}`}
-                    style={{
-                      height: Math.max(8, (item.kg / maxTbs) * 130),
-                      background: 'linear-gradient(180deg, var(--color-primary-400), var(--color-primary-700))',
-                      borderRadius: 6,
-                    }}
+                    style={{ height: Math.max(8, (item.kg / maxTbs) * 128) }}
                   />
-                  <div className="text-center text-tertiary text-sm">{item.label}</div>
-                  <div className="text-center text-mono text-sm">{formatNumber(item.kg)}</div>
+                  <span>{item.label}</span>
+                  <strong>{formatNumber(item.kg)}</strong>
                 </div>
               ))}
             </div>
           )}
         </div>
-        </LockedWrapper>
-      </div>
 
-      <div style={{ marginTop: 'var(--space-lg)' }}>
-        <LockedWrapper>
-        <div className="card">
-        <div className="card-header">
-          <span className="card-title">Transaksi Terakhir</span>
-          <Link href="/transaksi/beli" className="btn btn-outline btn-sm">Lihat Semua</Link>
-        </div>
-        {loading ? (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-            {[1, 2, 3].map((item) => <div key={item} className="skeleton" style={{ height: 44 }} />)}
+        <div className="card dashboard-card">
+          <div className="section-heading compact">
+            <div>
+              <h2>Aktivitas Terbaru</h2>
+              <p>Transaksi lokal dan mitra terakhir untuk orientasi cepat.</p>
+            </div>
           </div>
-        ) : recentTransactions.length === 0 ? (
-          <div className="empty-state">
-            <div className="empty-state-title">Belum ada transaksi</div>
-            <div className="empty-state-text">Mulai input pembelian TBS dari petani lokal</div>
-          </div>
-        ) : (
-          <div className="table-container" style={{ border: 'none' }}>
-            <table className="table">
-              <thead>
-                <tr>
-                  <th>No. Struk</th>
-                  <th>Petani</th>
-                  <th style={{ textAlign: 'right' }}>Berat (kg)</th>
-                  <th style={{ textAlign: 'right' }}>Total</th>
-                </tr>
-              </thead>
-              <tbody>
+          <div className="recent-grid">
+            <div>
+              <div className="recent-title">Pembelian Petani</div>
+              <div className="recent-list">
+                {recentTransactions.length === 0 && <div className="empty-compact">Belum ada pembelian.</div>}
                 {recentTransactions.map((transaction) => (
-                  <tr key={transaction.id}>
-                    <td className="table-mono">{transaction.no_struk || '-'}</td>
-                    <td>{transaction.petani?.nama || '-'}</td>
-                    <td className="table-mono" style={{ textAlign: 'right' }}>{formatNumber(transaction.berat_bersih_kg)}</td>
-                    <td className="table-mono" style={{ textAlign: 'right' }}>{formatRupiah(transaction.total_harga)}</td>
-                  </tr>
+                  <Link href="/transaksi/beli" className="recent-row" key={transaction.id}>
+                    <span>
+                      <strong>{transaction.no_struk || '-'}</strong>
+                      <small>{transaction.petani?.nama || '-'}</small>
+                    </span>
+                    <b>{formatNumber(transaction.berat_bersih_kg)} kg</b>
+                  </Link>
                 ))}
-              </tbody>
-            </table>
+              </div>
+            </div>
+            <div>
+              <div className="recent-title">Pengiriman Mitra</div>
+              <div className="recent-list">
+                {recentMitra.length === 0 && <div className="empty-compact">Belum ada pengiriman mitra.</div>}
+                {recentMitra.map((transaction) => (
+                  <Link href="/owner/riwayat-pengiriman-mitra" className="recent-row" key={transaction.id}>
+                    <span>
+                      <strong>{transaction.master_mitra?.kode || transaction.master_mitra?.nama || '-'}</strong>
+                      <small>{formatDateDisplay(transaction.tanggal)}</small>
+                    </span>
+                    <b>{formatNumber(transaction.tonase)} kg</b>
+                  </Link>
+                ))}
+              </div>
+            </div>
           </div>
-        )}
         </div>
-        </LockedWrapper>
-      </div>
+      </section>
 
-      <div style={{ marginTop: 'var(--space-xl)' }}>
-        <h3 style={{ fontSize: 'var(--text-base)', fontWeight: 600, marginBottom: 'var(--space-md)', color: 'var(--text-secondary)' }}>
-          Aksi Cepat
-        </h3>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 'var(--space-md)' }}>
-          <LockedWrapper>
-          <div className="card" style={{ textAlign: 'center', textDecoration: 'none' }}>
-            <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>Input TBS Lokal</div>
-            <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', marginTop: 4 }}>Pembelian dari petani</div>
-          </div>
-          </LockedWrapper>
-          <LockedWrapper>
-          <div className="card" style={{ textAlign: 'center', textDecoration: 'none' }}>
-            <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>Harga TBS</div>
-            <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', marginTop: 4 }}>{hargaAktif ? `${formatRupiah(hargaAktif.harga_per_kg)}/kg` : 'Belum diset'}</div>
-          </div>
-          </LockedWrapper>
-          <Link href="/admin/input-timbangan" className="card spring-transition" style={{ textAlign: 'center', textDecoration: 'none' }}>
-            <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>Input Pengiriman</div>
-            <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', marginTop: 4 }}>Input ke pabrik</div>
-          </Link>
-          <LockedWrapper>
-          <div className="card" style={{ textAlign: 'center', textDecoration: 'none' }}>
-            <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>Biaya Operasional</div>
-            <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', marginTop: 4 }}>Solar, gaji, retribusi</div>
-          </div>
-          </LockedWrapper>
-        </div>
-      </div>
+      <style jsx global>{`
+        .dashboard-section {
+          margin-bottom: var(--space-xl);
+        }
+
+        .section-heading {
+          display: flex;
+          justify-content: space-between;
+          align-items: flex-start;
+          gap: var(--space-md);
+          margin-bottom: var(--space-md);
+        }
+
+        .section-heading.compact {
+          margin-bottom: var(--space-lg);
+        }
+
+        .section-heading h2 {
+          margin: 0;
+          color: var(--text-primary);
+          font-size: var(--text-lg);
+          font-weight: 800;
+        }
+
+        .section-heading p {
+          margin: 4px 0 0;
+          color: var(--text-tertiary);
+          font-size: var(--text-sm);
+        }
+
+        .dashboard-status-row {
+          display: flex;
+          gap: var(--space-sm);
+          flex-wrap: wrap;
+          justify-content: flex-end;
+        }
+
+        .dashboard-card-link {
+          display: block;
+          color: inherit;
+          text-decoration: none;
+        }
+
+        .dashboard-card:hover {
+          transform: none;
+          border-color: var(--border-hover);
+          box-shadow: var(--shadow-md);
+        }
+
+        .dashboard-card .card-value span {
+          font-size: var(--text-base);
+          font-weight: 500;
+        }
+
+        .price-grid,
+        .dashboard-two-col {
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: var(--space-lg);
+        }
+
+        .price-card-header,
+        .inline-edit-form {
+          display: flex;
+          align-items: flex-end;
+          justify-content: space-between;
+          gap: var(--space-md);
+          flex-wrap: wrap;
+        }
+
+        .inline-edit-form {
+          margin-top: var(--space-md);
+        }
+
+        .inline-edit-form input {
+          flex: 1 1 220px;
+        }
+
+        .price-value {
+          margin-top: var(--space-lg);
+          font-family: var(--font-mono);
+          color: var(--color-primary-400);
+          font-size: var(--text-3xl);
+          font-weight: 900;
+        }
+
+        .price-value.muted {
+          color: var(--text-primary);
+        }
+
+        .dashboard-metrics {
+          grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+          margin-bottom: var(--space-lg);
+        }
+
+        .finance-metrics {
+          margin-bottom: 0;
+        }
+
+        .pending-list,
+        .quick-action-grid,
+        .recent-list {
+          display: flex;
+          flex-direction: column;
+          gap: var(--space-sm);
+        }
+
+        .pending-item {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: var(--space-md);
+          padding: 12px 14px;
+          border: 1px solid var(--border-default);
+          border-radius: var(--radius-md);
+          background: rgba(15, 23, 42, 0.38);
+          color: var(--text-primary);
+          text-decoration: none;
+        }
+
+        .pending-item:hover {
+          border-color: var(--border-hover);
+          background: var(--bg-card-hover);
+        }
+
+        .pending-item-warning .pending-item-value {
+          color: var(--color-warning);
+        }
+
+        .pending-item-danger .pending-item-value {
+          color: var(--color-danger);
+        }
+
+        .pending-item-success .pending-item-value {
+          color: var(--color-success);
+        }
+
+        .pending-item-title {
+          font-weight: 800;
+          font-size: var(--text-sm);
+        }
+
+        .pending-item-description {
+          margin-top: 3px;
+          color: var(--text-tertiary);
+          font-size: var(--text-xs);
+          line-height: 1.4;
+        }
+
+        .pending-item-value {
+          flex: 0 0 auto;
+          font-family: var(--font-mono);
+          font-weight: 900;
+          font-size: var(--text-lg);
+          text-align: right;
+        }
+
+        .quick-action-grid {
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+
+        .quick-action {
+          display: flex;
+          align-items: center;
+          gap: var(--space-md);
+          min-height: 76px;
+          padding: 12px;
+          border: 1px solid var(--border-default);
+          border-radius: var(--radius-md);
+          background: rgba(15, 23, 42, 0.38);
+          color: var(--text-primary);
+          text-decoration: none;
+        }
+
+        .quick-action:hover {
+          border-color: var(--color-primary-400);
+          background: rgba(59, 171, 113, 0.1);
+        }
+
+        .quick-action-gold:hover {
+          border-color: var(--color-gold-500);
+          background: rgba(240, 165, 0, 0.1);
+        }
+
+        .quick-action-outline:hover {
+          border-color: var(--border-hover);
+          background: var(--bg-card-hover);
+        }
+
+        .quick-action-icon {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          width: 38px;
+          height: 38px;
+          flex: 0 0 38px;
+          border-radius: var(--radius-md);
+          color: var(--color-primary-400);
+          background: rgba(59, 171, 113, 0.12);
+        }
+
+        .quick-action-title,
+        .quick-action-description {
+          display: block;
+        }
+
+        .quick-action-title {
+          font-weight: 800;
+          font-size: var(--text-sm);
+        }
+
+        .quick-action-description {
+          margin-top: 2px;
+          color: var(--text-tertiary);
+          font-size: var(--text-xs);
+          line-height: 1.35;
+        }
+
+        .mini-chart {
+          display: grid;
+          grid-template-columns: repeat(7, 1fr);
+          gap: 10px;
+          align-items: end;
+          min-height: 190px;
+        }
+
+        .mini-chart-bar {
+          display: flex;
+          flex-direction: column;
+          justify-content: flex-end;
+          gap: 8px;
+          min-width: 0;
+        }
+
+        .mini-chart-bar div {
+          border-radius: var(--radius-sm);
+          background: linear-gradient(180deg, var(--color-primary-400), var(--color-primary-700));
+        }
+
+        .mini-chart-bar span,
+        .mini-chart-bar strong {
+          text-align: center;
+          font-size: var(--text-xs);
+        }
+
+        .mini-chart-bar span {
+          color: var(--text-tertiary);
+        }
+
+        .mini-chart-bar strong {
+          color: var(--text-secondary);
+          font-family: var(--font-mono);
+          font-weight: 700;
+        }
+
+        .recent-grid {
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: var(--space-lg);
+        }
+
+        .recent-title {
+          margin-bottom: var(--space-sm);
+          color: var(--text-secondary);
+          font-size: var(--text-xs);
+          font-weight: 800;
+          text-transform: uppercase;
+        }
+
+        .recent-row {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: var(--space-md);
+          padding: 10px 0;
+          border-bottom: 1px solid var(--border-default);
+          color: var(--text-primary);
+          text-decoration: none;
+        }
+
+        .recent-row:hover {
+          color: var(--color-primary-400);
+        }
+
+        .recent-row span,
+        .recent-row small {
+          display: block;
+          min-width: 0;
+        }
+
+        .recent-row strong,
+        .recent-row b {
+          font-family: var(--font-mono);
+          font-size: var(--text-sm);
+        }
+
+        .recent-row small {
+          margin-top: 2px;
+          color: var(--text-tertiary);
+          font-size: var(--text-xs);
+        }
+
+        .recent-row b {
+          flex: 0 0 auto;
+          color: var(--text-secondary);
+        }
+
+        .empty-compact {
+          padding: 18px 0;
+          color: var(--text-tertiary);
+          font-size: var(--text-sm);
+        }
+
+        @media (max-width: 900px) {
+          .price-grid,
+          .dashboard-two-col,
+          .recent-grid {
+            grid-template-columns: 1fr;
+          }
+
+          .quick-action-grid {
+            grid-template-columns: 1fr;
+          }
+        }
+
+        @media (max-width: 560px) {
+          .dashboard-status-row {
+            justify-content: flex-start;
+          }
+
+          .pending-item {
+            align-items: flex-start;
+            flex-direction: column;
+          }
+
+          .pending-item-value {
+            text-align: left;
+          }
+        }
+      `}</style>
     </AppShell>
   );
 }

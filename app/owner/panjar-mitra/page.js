@@ -1,15 +1,16 @@
 'use client';
 
-import { useMemo, useState, useEffect } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
 import AppShell from '@/components/layout/AppShell';
-import SearchableCombobox from '@/components/ui/SearchableCombobox';
 import SortableHeader from '@/components/ui/SortableHeader';
 import TablePagination from '@/components/ui/TablePagination';
+import { Search } from 'lucide-react';
 import { formatMitraLabel, getMitraSearchText } from '@/lib/display-labels';
 import { paginateRows } from '@/lib/pagination-utils';
 import { getNextSort, sortRows } from '@/lib/sort-utils';
 import { supabase } from '@/lib/supabase';
-import { formatDateDisplay, formatRupiah, getTodayISO } from '@/lib/utils';
+import { formatDateDisplay, formatRupiah } from '@/lib/utils';
 
 const TABLE_PAGE_SIZE = 20;
 
@@ -23,20 +24,10 @@ const panjarSortAccessors = {
 
 export default function PanjarMitraPage() {
   const [panjars, setPanjars] = useState([]);
-  const [mitras, setMitras] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [showModal, setShowModal] = useState(false);
-  const [saving, setSaving] = useState(false);
   const [search, setSearch] = useState('');
   const [sort, setSort] = useState({ key: 'tanggal', direction: 'desc' });
   const [page, setPage] = useState(1);
-
-  const [form, setForm] = useState({
-    tanggal: '',
-    mitra_id: '',
-    jumlah: '',
-    keterangan: ''
-  });
 
   useEffect(() => {
     loadData();
@@ -44,9 +35,8 @@ export default function PanjarMitraPage() {
 
   async function loadData() {
     setLoading(true);
-    
-    // Load Panjar
-    const { data: pData } = await supabase
+
+    const { data } = await supabase
       .from('panjar_mitra')
       .select(`
         *,
@@ -54,52 +44,9 @@ export default function PanjarMitraPage() {
       `)
       .neq('status', 'dibatalkan')
       .order('tanggal', { ascending: false });
-      
-    setPanjars(pData || []);
 
-    // Load Mitra
-    const { data: mData } = await supabase
-      .from('master_mitra')
-      .select('id, kode, alamat, nama')
-      .eq('aktif', true)
-      .order('kode');
-      
-    setMitras(mData || []);
-    
+    setPanjars(data || []);
     setLoading(false);
-  }
-
-  function openNew() {
-    setForm({ tanggal: getTodayISO(), mitra_id: '', jumlah: '', keterangan: '' });
-    setShowModal(true);
-  }
-
-  async function handleSave(e) {
-    e.preventDefault();
-    setSaving(true);
-
-    if (!form.mitra_id) {
-      alert("Pilih mitra terlebih dahulu.");
-      setSaving(false);
-      return;
-    }
-
-    const { error } = await supabase.rpc('create_panjar_mitra_kas', {
-      p_mitra_id: form.mitra_id,
-      p_tanggal: form.tanggal,
-      p_jumlah: parseFloat(form.jumlah) || 0,
-      p_keterangan: form.keterangan || null,
-      p_rekening_kas_id: null,
-    });
-    
-    if (error) {
-      alert("Gagal menyimpan panjar: " + error.message);
-    } else {
-      setShowModal(false);
-      loadData();
-    }
-    
-    setSaving(false);
   }
 
   async function handleLunasi(id) {
@@ -146,27 +93,31 @@ export default function PanjarMitraPage() {
     if (!keyword) return panjars;
     return panjars.filter(p => getMitraSearchText(p.master_mitra || {}).toLowerCase().includes(keyword));
   }, [panjars, search]);
+
   const sortedPanjars = useMemo(() => {
     return sortRows(filteredPanjars, sort, panjarSortAccessors);
   }, [filteredPanjars, sort]);
+
   const paginatedPanjars = useMemo(() => {
     return paginateRows(sortedPanjars, page, TABLE_PAGE_SIZE);
   }, [page, sortedPanjars]);
 
   return (
-    <AppShell title="Panjar Mitra" subtitle="Kelola kasbon/panjar mitra">
+    <AppShell title="Arsip Panjar Mitra" subtitle="Pantau panjar mitra dari Hutang & Panjar">
       <div className="page-header">
         <div>
-          <p className="page-description">Kasbon yang akan memotong otomatis tagihan kwitansi</p>
+          <p className="page-description">Input panjar sekarang satu pintu melalui Hutang & Panjar Semua Pihak.</p>
         </div>
-        <button className="btn btn-primary" onClick={openNew}>
-          + Tambah Panjar
-        </button>
+        <Link className="btn btn-primary" href="/keuangan/hutang">Input di Hutang & Panjar</Link>
+      </div>
+
+      <div className="alert alert-info" style={{ marginBottom: 'var(--space-lg)' }}>
+        Halaman ini hanya untuk memantau panjar mitra yang akan dipotong saat kwitansi. Untuk mencatat panjar baru, pilih pihak Mitra dan jenis Panjar di Hutang & Panjar Semua Pihak.
       </div>
 
       <div className="toolbar">
         <div className="search-box" style={{ flex: 1, maxWidth: 400 }}>
-          <span className="search-box-icon">🔍</span>
+          <span className="search-box-icon"><Search size={16} /></span>
           <input
             type="text"
             className="form-input"
@@ -216,11 +167,15 @@ export default function PanjarMitraPage() {
                       <span className="badge badge-green">Lunas</span>
                     )}
                   </td>
-                  <td style={{ textAlign: 'center', display: 'flex', gap: 8, justifyContent: 'center' }}>
-                    {p.status === 'belum_lunas' && (
-                      <button className="btn btn-ghost btn-sm" onClick={() => handleLunasi(p.id)} title="Tandai Lunas">✅</button>
+                  <td style={{ textAlign: 'center' }}>
+                    {p.status === 'belum_lunas' ? (
+                      <div className="flex gap-xs" style={{ justifyContent: 'center' }}>
+                        <button className="btn btn-ghost btn-sm" onClick={() => handleLunasi(p.id)}>Lunasi Manual</button>
+                        <button className="btn btn-ghost btn-sm" onClick={() => handleCancel(p.id)}>Batalkan</button>
+                      </div>
+                    ) : (
+                      <span className="text-tertiary">-</span>
                     )}
-                    <button className="btn btn-ghost btn-sm" onClick={() => handleCancel(p.id)} title="Batalkan">Batalkan</button>
                   </td>
                 </tr>
               ))
@@ -236,72 +191,6 @@ export default function PanjarMitraPage() {
           onPageChange={setPage}
         />
       </div>
-
-      {showModal && (
-        <div className="modal-overlay" onClick={() => setShowModal(false)}>
-          <div className="modal" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header">
-              <h3 className="modal-title">Tambah Panjar Mitra</h3>
-              <button className="modal-close" onClick={() => setShowModal(false)}>✕</button>
-            </div>
-            <form onSubmit={handleSave}>
-              <div className="modal-body">
-                <div className="form-group">
-                  <label className="form-label form-label-required">Tanggal Pencairan</label>
-                  <input type="date" className="form-input" required value={form.tanggal} onChange={e => setForm({...form, tanggal: e.target.value})} />
-                </div>
-                <div className="form-group">
-                  <label className="form-label form-label-required">Pilih Mitra</label>
-                  <SearchableCombobox
-                    value={form.mitra_id}
-                    options={mitras}
-                    onChange={mitraId => setForm({ ...form, mitra_id: mitraId })}
-                    getOptionLabel={formatMitraLabel}
-                    getSearchText={getMitraSearchText}
-                    placeholder="Cari kode, alamat, atau nama mitra..."
-                    emptyLabel="Mitra tidak ditemukan"
-                  />
-                </div>
-                <div className="form-group">
-                  <label className="form-label form-label-required">Jumlah Panjar (Rp)</label>
-                  <input type="number" className="form-input" required min={1} value={form.jumlah} onChange={e => setForm({...form, jumlah: e.target.value})} />
-                  <div style={{ display: 'flex', gap: 6, marginTop: 8, flexWrap: 'wrap' }}>
-                    {[1, 5, 10, 50, 100].map(val => (
-                      <button 
-                        key={val} 
-                        type="button" 
-                        className="btn btn-outline btn-sm" 
-                        onClick={() => setForm(prev => ({ ...prev, jumlah: (Number(prev.jumlah) || 0) + (val * 1000000) }))}
-                        style={{ padding: '4px 8px', fontSize: 12 }}
-                      >
-                        + {val} Jt
-                      </button>
-                    ))}
-                    <button 
-                      type="button" 
-                      className="btn btn-ghost btn-sm" 
-                      onClick={() => setForm(prev => ({ ...prev, jumlah: '' }))}
-                      style={{ padding: '4px 8px', fontSize: 12, color: 'var(--text-tertiary)' }}
-                    >
-                      Reset
-                    </button>
-                  </div>
-                </div>
-                <div className="form-group">
-                  <label className="form-label">Keterangan (Opsional)</label>
-                  <input type="text" className="form-input" value={form.keterangan} onChange={e => setForm({...form, keterangan: e.target.value})} placeholder="Contoh: Pinjaman operasional truk" />
-                </div>
-              </div>
-              <div className="modal-footer">
-                <button type="button" className="btn btn-outline" onClick={() => setShowModal(false)}>Batal</button>
-                <button type="submit" className="btn btn-primary" disabled={saving}>
-                  {saving ? 'Menyimpan...' : 'Simpan Kasbon'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
     </AppShell>
   );
 }
