@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import AppShell from '@/components/layout/AppShell';
+import ConfirmDialog from '@/components/ui/ConfirmDialog';
 import SortableHeader from '@/components/ui/SortableHeader';
 import TablePagination from '@/components/ui/TablePagination';
 import { FileSpreadsheet, Pencil, Search, Trash2, X } from 'lucide-react';
@@ -38,6 +39,8 @@ export default function MitraPage() {
   const [search, setSearch] = useState('');
   const [sort, setSort] = useState({ key: 'kode', direction: 'asc' });
   const [page, setPage] = useState(1);
+  const [toast, setToast] = useState(null);
+  const [deleteTarget, setDeleteTarget] = useState(null);
   const [formMitra, setFormMitra] = useState({
     kode: '',
     nama: '',
@@ -108,6 +111,11 @@ export default function MitraPage() {
     setSort(current => getNextSort(current, key));
   }
 
+  function showToast(message, type = 'error', timeout = 4000) {
+    setToast({ message, type });
+    setTimeout(() => setToast(null), timeout);
+  }
+
   async function handleSave(e) {
     e.preventDefault();
     setSaving(true);
@@ -123,18 +131,19 @@ export default function MitraPage() {
       fee_per_kg: feePerKg,
     };
     let savedMitraId = editingId;
+    let historyFailed = false;
 
     if (editingId) {
       const { error } = await supabase.from('master_mitra').update(payload).eq('id', editingId);
       if (error) {
-        alert('Gagal menyimpan mitra: ' + error.message);
+        showToast(`Gagal menyimpan mitra: ${error.message}`, 'error', 5000);
         setSaving(false);
         return;
       }
     } else {
       const { data, error } = await supabase.from('master_mitra').insert(payload).select('id').single();
       if (error) {
-        alert('Gagal menyimpan mitra: ' + error.message);
+        showToast(`Gagal menyimpan mitra: ${error.message}`, 'error', 5000);
         setSaving(false);
         return;
       }
@@ -153,18 +162,30 @@ export default function MitraPage() {
         }, { onConflict: 'master_mitra_id,berlaku_mulai' });
 
       if (historyError) {
-        alert('Mitra tersimpan, tetapi riwayat Fee Owner gagal dicatat: ' + historyError.message);
+        historyFailed = true;
+        showToast(`Mitra tersimpan, tetapi riwayat Fee Owner gagal dicatat: ${historyError.message}`, 'error', 6000);
       }
     }
 
     setSaving(false);
     setShowModal(false);
+    if (!historyFailed) {
+      showToast('Mitra berhasil disimpan.', 'success', 3000);
+    }
     await loadData();
   }
 
-  async function handleDelete(id) {
-    if (!confirm('Yakin ingin menonaktifkan mitra ini?')) return;
-    await supabase.from('master_mitra').update({ aktif: false }).eq('id', id);
+  async function handleDelete() {
+    if (!deleteTarget) return;
+
+    const { error } = await supabase.from('master_mitra').update({ aktif: false }).eq('id', deleteTarget.id);
+    if (error) {
+      showToast(`Gagal menonaktifkan mitra: ${error.message}`, 'error', 5000);
+      return;
+    }
+
+    setDeleteTarget(null);
+    showToast('Mitra berhasil dinonaktifkan.', 'success', 3000);
     await loadData();
   }
 
@@ -203,6 +224,14 @@ export default function MitraPage() {
 
   return (
     <AppShell title="Mitra" subtitle="Kelola mitra eksternal, mitra internal, dan fee owner">
+      {toast && (
+        <div className="toast-container">
+          <div className={`toast toast-${toast.type}`}>
+            <span>{toast.message}</span>
+          </div>
+        </div>
+      )}
+
       <div className="page-header">
         <div className="toolbar" style={{ flex: 1, marginBottom: 0 }}>
           <div className="search-box" style={{ flex: 1, maxWidth: 420 }}>
@@ -270,7 +299,7 @@ export default function MitraPage() {
                     <button className="btn btn-ghost btn-sm" onClick={() => openEdit(mitra)} aria-label={`Edit ${mitra.nama}`}>
                       <Pencil size={16} />
                     </button>
-                    <button className="btn btn-ghost btn-sm" onClick={() => handleDelete(mitra.id)} aria-label={`Nonaktifkan ${mitra.nama}`}>
+                    <button className="btn btn-ghost btn-sm" onClick={() => setDeleteTarget(mitra)} aria-label={`Nonaktifkan ${mitra.nama}`}>
                       <Trash2 size={16} />
                     </button>
                   </td>
@@ -372,6 +401,17 @@ export default function MitraPage() {
           </div>
         </div>
       )}
+
+      <ConfirmDialog
+        open={!!deleteTarget}
+        title="Nonaktifkan Mitra"
+        message={deleteTarget ? `${deleteTarget.nama} tidak akan tampil lagi sebagai mitra aktif.` : ''}
+        confirmText="Nonaktifkan"
+        cancelText="Batal"
+        variant="danger"
+        onConfirm={handleDelete}
+        onCancel={() => setDeleteTarget(null)}
+      />
     </AppShell>
   );
 }

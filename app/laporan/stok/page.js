@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import AppShell from '@/components/layout/AppShell';
+import ConfirmDialog from '@/components/ui/ConfirmDialog';
 import { supabase } from '@/lib/supabase';
 import { canManageBusinessSettings, normalizeRole } from '@/lib/roles';
 import { exportToExcel } from '@/lib/export';
@@ -55,6 +56,7 @@ export default function LaporanStokPage() {
   const [saving, setSaving] = useState(false);
   const [showKoreksi, setShowKoreksi] = useState(false);
   const [toast, setToast] = useState(null);
+  const [pendingNegativeKoreksi, setPendingNegativeKoreksi] = useState(null);
   const [form, setForm] = useState({
     arah: 'tambah',
     berat_kg: '',
@@ -120,22 +122,8 @@ export default function LaporanStokPage() {
     loadData();
   }, [loadData]);
 
-  async function handleKoreksi(e) {
-    e.preventDefault();
+  async function saveKoreksi(signedBerat) {
     if (!canAdjustStock) return;
-
-    const berat = Number(form.berat_kg);
-    if (!berat || berat <= 0) return;
-
-    const signedBerat = form.arah === 'tambah' ? berat : -berat;
-    const saldoSetelah = saldoAkhir + signedBerat;
-
-    if (saldoSetelah < 0) {
-      const lanjut = window.confirm(
-        `Koreksi ini membuat stok menjadi minus ${formatNumber(saldoSetelah)} kg.\n\nLanjutkan sebagai koreksi khusus?`
-      );
-      if (!lanjut) return;
-    }
 
     setSaving(true);
     const { data: { session } } = await supabase.auth.getSession();
@@ -160,6 +148,24 @@ export default function LaporanStokPage() {
     setToast({ type: 'success', message: 'Koreksi stok berhasil disimpan.' });
     setTimeout(() => setToast(null), 3000);
     await loadData();
+  }
+
+  async function handleKoreksi(e) {
+    e.preventDefault();
+    if (!canAdjustStock) return;
+
+    const berat = Number(form.berat_kg);
+    if (!berat || berat <= 0) return;
+
+    const signedBerat = form.arah === 'tambah' ? berat : -berat;
+    const saldoSetelah = saldoAkhir + signedBerat;
+
+    if (saldoSetelah < 0) {
+      setPendingNegativeKoreksi({ signedBerat, saldoSetelah });
+      return;
+    }
+
+    await saveKoreksi(signedBerat);
   }
 
   function exportStok() {
@@ -356,6 +362,21 @@ export default function LaporanStokPage() {
           </div>
         </div>
       )}
+
+      <ConfirmDialog
+        open={!!pendingNegativeKoreksi}
+        title="Stok Menjadi Minus"
+        message={pendingNegativeKoreksi ? `Koreksi ini membuat stok menjadi minus ${formatNumber(pendingNegativeKoreksi.saldoSetelah)} kg. Lanjutkan sebagai koreksi khusus?` : ''}
+        confirmText="Lanjutkan Koreksi"
+        cancelText="Kembali"
+        variant="warning"
+        onConfirm={async () => {
+          const pending = pendingNegativeKoreksi;
+          setPendingNegativeKoreksi(null);
+          if (pending) await saveKoreksi(pending.signedBerat);
+        }}
+        onCancel={() => setPendingNegativeKoreksi(null)}
+      />
     </AppShell>
   );
 }

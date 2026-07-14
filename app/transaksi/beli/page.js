@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import AppShell from '@/components/layout/AppShell';
-import ConfirmDialog from '@/components/ui/ConfirmDialog';
+import PromptDialog from '@/components/ui/PromptDialog';
 import { supabase } from '@/lib/supabase';
 import {
   formatRupiah,
@@ -37,6 +37,7 @@ export default function InputTBSPage() {
   const [toast, setToast] = useState(null);
   const [showStruk, setShowStruk] = useState(null);
   const [cancelTarget, setCancelTarget] = useState(null);
+  const [canceling, setCanceling] = useState(false);
   const strukRef = useRef(null);
 
   const [form, setForm] = useState({
@@ -163,16 +164,15 @@ export default function InputTBSPage() {
     }
   }
 
-  async function handleCancelTransaction() {
-    if (!cancelTarget) return;
+  async function handleCancelTransaction(reason) {
+    if (!cancelTarget || canceling) return;
 
-    const alasan = window.prompt(`Alasan pembatalan transaksi ${cancelTarget.no_struk}:`);
-    if (!alasan || !alasan.trim()) return;
-
+    setCanceling(true);
     const { error } = await supabase.rpc('cancel_transaksi_beli_tbs', {
       p_transaksi_id: cancelTarget.id,
-      p_alasan: alasan.trim(),
+      p_alasan: reason,
     });
+    setCanceling(false);
 
     if (error) {
       showToast(`Gagal membatalkan transaksi: ${error.message}`, 'error');
@@ -465,15 +465,18 @@ export default function InputTBSPage() {
         </div>
       )}
 
-      <ConfirmDialog
+      <PromptDialog
         open={!!cancelTarget}
-        title="Batalkan Transaksi?"
-        message={cancelTarget ? `Transaksi ${cancelTarget.no_struk} akan dibatalkan dengan reversal stok dan hutang. Lanjutkan?` : ''}
-        confirmText="Ya, Batalkan"
+        title="Batalkan Transaksi"
+        message={cancelTarget ? `Transaksi ${cancelTarget.no_struk} akan dibatalkan dengan reversal stok dan hutang.` : ''}
+        label="Alasan pembatalan"
+        placeholder="Contoh: salah timbang / salah petani / input ganda"
+        confirmText="Batalkan Transaksi"
         cancelText="Kembali"
         variant="danger"
+        loading={canceling}
         onConfirm={handleCancelTransaction}
-        onCancel={() => setCancelTarget(null)}
+        onCancel={() => !canceling && setCancelTarget(null)}
       />
     </AppShell>
   );

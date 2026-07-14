@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import AppShell from '@/components/layout/AppShell';
+import PromptDialog from '@/components/ui/PromptDialog';
 import SortableHeader from '@/components/ui/SortableHeader';
 import TablePagination from '@/components/ui/TablePagination';
 import { Search } from 'lucide-react';
@@ -28,6 +29,9 @@ export default function PanjarMitraPage() {
   const [search, setSearch] = useState('');
   const [sort, setSort] = useState({ key: 'tanggal', direction: 'desc' });
   const [page, setPage] = useState(1);
+  const [promptTarget, setPromptTarget] = useState(null);
+  const [savingAction, setSavingAction] = useState(false);
+  const [toast, setToast] = useState(null);
 
   useEffect(() => {
     loadData();
@@ -49,38 +53,37 @@ export default function PanjarMitraPage() {
     setLoading(false);
   }
 
-  async function handleLunasi(id) {
-    const alasan = prompt('Alasan pelunasan manual panjar:');
-    if (!alasan || !alasan.trim()) return;
-
-    const { error } = await supabase.rpc('settle_panjar_mitra_manual', {
-      p_panjar_id: id,
-      p_alasan: alasan.trim(),
-    });
-
-    if (error) {
-      alert('Gagal melunasi panjar: ' + error.message);
-      return;
-    }
-
-    loadData();
+  function showToast(message, type = 'success') {
+    setToast({ message, type });
+    setTimeout(() => setToast(null), type === 'error' ? 5000 : 3000);
   }
 
-  async function handleCancel(id) {
-    const alasan = prompt('Alasan pembatalan panjar:');
-    if (!alasan || !alasan.trim()) return;
+  async function handlePromptConfirm(reason) {
+    if (!promptTarget || savingAction) return;
 
-    const { error } = await supabase.rpc('cancel_panjar_mitra_kas', {
-      p_panjar_id: id,
-      p_alasan: alasan.trim(),
-    });
+    setSavingAction(true);
+    const isSettle = promptTarget.type === 'settle';
+
+    const { error } = isSettle
+      ? await supabase.rpc('settle_panjar_mitra_manual', {
+        p_panjar_id: promptTarget.panjar.id,
+        p_alasan: reason,
+      })
+      : await supabase.rpc('cancel_panjar_mitra_kas', {
+        p_panjar_id: promptTarget.panjar.id,
+        p_alasan: reason,
+      });
+
+    setSavingAction(false);
 
     if (error) {
-      alert('Gagal membatalkan panjar: ' + error.message);
+      showToast(`${isSettle ? 'Gagal melunasi' : 'Gagal membatalkan'} panjar: ${error.message}`, 'error');
       return;
     }
 
-    loadData();
+    showToast(isSettle ? 'Panjar berhasil dilunasi manual.' : 'Panjar berhasil dibatalkan.');
+    setPromptTarget(null);
+    await loadData();
   }
 
   function handleSort(key) {
@@ -104,6 +107,14 @@ export default function PanjarMitraPage() {
 
   return (
     <AppShell title="Arsip Panjar Mitra" subtitle="Pantau panjar mitra dari Hutang & Panjar">
+      {toast && (
+        <div className="toast-container">
+          <div className={`toast toast-${toast.type}`}>
+            <span>{toast.message}</span>
+          </div>
+        </div>
+      )}
+
       <div className="page-header">
         <div>
           <p className="page-description">Input panjar sekarang satu pintu melalui Hutang & Panjar Semua Pihak.</p>
@@ -170,8 +181,8 @@ export default function PanjarMitraPage() {
                   <td style={{ textAlign: 'center' }}>
                     {p.status === 'belum_lunas' ? (
                       <div className="flex gap-xs" style={{ justifyContent: 'center' }}>
-                        <button className="btn btn-ghost btn-sm" onClick={() => handleLunasi(p.id)}>Lunasi Manual</button>
-                        <button className="btn btn-ghost btn-sm" onClick={() => handleCancel(p.id)}>Batalkan</button>
+                        <button className="btn btn-ghost btn-sm" onClick={() => setPromptTarget({ type: 'settle', panjar: p })}>Lunasi Manual</button>
+                        <button className="btn btn-ghost btn-sm" onClick={() => setPromptTarget({ type: 'cancel', panjar: p })}>Batalkan</button>
                       </div>
                     ) : (
                       <span className="text-tertiary">-</span>
@@ -191,6 +202,20 @@ export default function PanjarMitraPage() {
           onPageChange={setPage}
         />
       </div>
+
+      <PromptDialog
+        open={!!promptTarget}
+        title={promptTarget?.type === 'settle' ? 'Lunasi Panjar Manual' : 'Batalkan Panjar'}
+        message={promptTarget ? `${formatMitraLabel(promptTarget.panjar.master_mitra)} - ${formatRupiah(promptTarget.panjar.jumlah)}` : ''}
+        label={promptTarget?.type === 'settle' ? 'Alasan pelunasan manual' : 'Alasan pembatalan'}
+        placeholder={promptTarget?.type === 'settle' ? 'Contoh: sudah dibayar tunai' : 'Contoh: salah input / duplikat'}
+        confirmText={promptTarget?.type === 'settle' ? 'Lunasi Panjar' : 'Batalkan Panjar'}
+        cancelText="Kembali"
+        variant="danger"
+        loading={savingAction}
+        onConfirm={handlePromptConfirm}
+        onCancel={() => !savingAction && setPromptTarget(null)}
+      />
     </AppShell>
   );
 }

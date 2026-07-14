@@ -26,6 +26,7 @@ export default function InputTimbanganPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [successMsg, setSuccessMsg] = useState('');
+  const [toast, setToast] = useState(null);
 
   const [form, setForm] = useState({
     tanggal: getTodayISO(),
@@ -238,6 +239,11 @@ export default function InputTimbanganPage() {
     });
   }
 
+  function showToast(message, type = 'error') {
+    setToast({ message, type });
+    setTimeout(() => setToast(null), 4000);
+  }
+
   async function handleSubmit(e) {
     e.preventDefault();
     setSaving(true);
@@ -245,20 +251,20 @@ export default function InputTimbanganPage() {
 
     const tonase = parseFloat(form.tonase);
     if (isNaN(tonase) || tonase <= 0) {
-      alert("Tonase tidak valid");
+      showToast('Tonase tidak valid.');
       setSaving(false);
       return;
     }
 
     if (!form.mitra_id) {
-      alert("Pilih mitra transaksi terlebih dahulu.");
+      showToast('Pilih mitra transaksi terlebih dahulu.');
       setSaving(false);
       return;
     }
 
     const sopirAktualNama = form.sopir_aktual_nama.trim();
     if (!sopirAktualNama) {
-      alert("Sopir aktual wajib diisi.");
+      showToast('Sopir aktual wajib diisi.');
       setSaving(false);
       return;
     }
@@ -301,7 +307,7 @@ export default function InputTimbanganPage() {
     });
 
     if (error) {
-      alert("Gagal menyimpan data: " + error.message);
+      showToast(`Gagal menyimpan data: ${error.message}`);
     } else {
       const infoSopir = sopirDiganti ? `, sopir aktual: ${sopirAktualNama}` : '';
       setSuccessMsg(`Berhasil menyimpan ${tonase} Kg untuk armada ${form.plat_nomor}${infoSopir} (Mitra: ${form.mitra_nama}).`);
@@ -329,6 +335,14 @@ export default function InputTimbanganPage() {
 
   return (
     <AppShell title="Pengiriman Mitra" subtitle="Catat pengiriman mitra masuk">
+      {toast && (
+        <div className="toast-container">
+          <div className={`toast toast-${toast.type}`}>
+            <span>{toast.message}</span>
+          </div>
+        </div>
+      )}
+
       <div className="page-header">
         <div>
           <p className="page-description">Harga Pabrik / TWB Hari Ini: <strong>{formatRupiah(latestHarga)} / Kg</strong></p>

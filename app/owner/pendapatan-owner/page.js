@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, BadgeDollarSign, Printer, ReceiptText, RefreshCw, Scale } from 'lucide-react';
 import AppShell from '@/components/layout/AppShell';
+import ConfirmDialog from '@/components/ui/ConfirmDialog';
 import SearchableCombobox from '@/components/ui/SearchableCombobox';
 import SortableHeader from '@/components/ui/SortableHeader';
 import TablePagination from '@/components/ui/TablePagination';
@@ -45,6 +46,8 @@ export default function PendapatanOwnerPage() {
   const [summaryPage, setSummaryPage] = useState(1);
   const [detailPage, setDetailPage] = useState(1);
   const [syncingFee, setSyncingFee] = useState(false);
+  const [showSyncConfirm, setShowSyncConfirm] = useState(false);
+  const [toast, setToast] = useState(null);
 
   const checkRole = useCallback(async () => {
     const { data: { session } } = await supabase.auth.getSession();
@@ -244,14 +247,18 @@ export default function PendapatanOwnerPage() {
     window.print();
   };
 
-  const handleSyncFeePeriod = async () => {
+  function showToast(message, type = 'success') {
+    setToast({ message, type });
+    setTimeout(() => setToast(null), type === 'error' ? 5000 : 3000);
+  }
+
+  const handleSyncFeePeriod = () => {
     if (!dateFrom || !dateTo || syncingFee) return;
+    setShowSyncConfirm(true);
+  };
 
-    const confirmed = window.confirm(
-      `Sinkronkan Fee Owner untuk periode ${displayPeriode}? Hanya transaksi pada filter yang sedang dibuka yang akan diperbarui.`
-    );
-    if (!confirmed) return;
-
+  const confirmSyncFeePeriod = async () => {
+    setShowSyncConfirm(false);
     setSyncingFee(true);
     const { data, error } = await supabase.rpc('sync_fee_owner_mitra_period', {
       p_date_from: dateFrom,
@@ -263,12 +270,12 @@ export default function PendapatanOwnerPage() {
     setSyncingFee(false);
 
     if (error) {
-      alert('Gagal sinkronisasi Fee Owner: ' + error.message);
+      showToast(`Gagal sinkronisasi Fee Owner: ${error.message}`, 'error');
       return;
     }
 
     const updatedCount = Number(data?.updated_count || 0);
-    alert(`Sinkronisasi selesai. ${updatedCount} transaksi diperbarui.`);
+    showToast(`Sinkronisasi selesai. ${updatedCount} transaksi diperbarui.`);
     await loadLaporan();
   };
 
@@ -307,6 +314,14 @@ export default function PendapatanOwnerPage() {
 
   return (
     <AppShell title="Pendapatan Owner Bruto" subtitle="Fee Owner bruto dari pengiriman mitra">
+      {toast && (
+        <div className="toast-container">
+          <div className={`toast toast-${toast.type}`}>
+            <span>{toast.message}</span>
+          </div>
+        </div>
+      )}
+
       <div className="page-header no-print">
         <div>
           <p className="page-description">
@@ -680,6 +695,17 @@ export default function PendapatanOwnerPage() {
           .no-print { display: none !important; }
         }
       `}</style>
+
+      <ConfirmDialog
+        open={showSyncConfirm}
+        title="Sinkronkan Fee Owner?"
+        message={`Sinkronkan Fee Owner untuk periode ${displayPeriode}? Hanya transaksi pada filter yang sedang dibuka yang akan diperbarui.`}
+        confirmText="Sinkronkan"
+        cancelText="Batal"
+        variant="warning"
+        onConfirm={confirmSyncFeePeriod}
+        onCancel={() => setShowSyncConfirm(false)}
+      />
     </AppShell>
   );
 }

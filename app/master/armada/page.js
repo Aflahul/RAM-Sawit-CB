@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import AppShell from '@/components/layout/AppShell';
+import ConfirmDialog from '@/components/ui/ConfirmDialog';
 import SearchableCombobox from '@/components/ui/SearchableCombobox';
 import SortableHeader from '@/components/ui/SortableHeader';
 import TablePagination from '@/components/ui/TablePagination';
@@ -36,6 +37,8 @@ export default function ArmadaPage() {
   const [search, setSearch] = useState('');
   const [sort, setSort] = useState({ key: 'nama', direction: 'asc' });
   const [page, setPage] = useState(1);
+  const [toast, setToast] = useState(null);
+  const [deleteTarget, setDeleteTarget] = useState(null);
   const [formArmada, setFormArmada] = useState({
     nama: '',
     no_hp: '',
@@ -97,6 +100,11 @@ export default function ArmadaPage() {
     setSort(current => getNextSort(current, key));
   }
 
+  function showToast(message, type = 'error', timeout = 4000) {
+    setToast({ message, type });
+    setTimeout(() => setToast(null), timeout);
+  }
+
   async function handleSave(e) {
     e.preventDefault();
     setSaving(true);
@@ -111,14 +119,14 @@ export default function ArmadaPage() {
     if (editingId) {
       const { error } = await supabase.from('sopir').update(payload).eq('id', editingId);
       if (error) {
-        alert('Gagal menyimpan armada: ' + error.message);
+        showToast(`Gagal menyimpan armada: ${error.message}`, 'error', 5000);
         setSaving(false);
         return;
       }
     } else {
       const { error } = await supabase.from('sopir').insert(payload);
       if (error) {
-        alert('Gagal menyimpan armada: ' + error.message);
+        showToast(`Gagal menyimpan armada: ${error.message}`, 'error', 5000);
         setSaving(false);
         return;
       }
@@ -126,12 +134,21 @@ export default function ArmadaPage() {
 
     setSaving(false);
     setShowModal(false);
+    showToast('Armada berhasil disimpan.', 'success', 3000);
     await loadData();
   }
 
-  async function handleDelete(id) {
-    if (!confirm('Yakin ingin menonaktifkan armada ini?')) return;
-    await supabase.from('sopir').update({ aktif: false }).eq('id', id);
+  async function handleDelete() {
+    if (!deleteTarget) return;
+
+    const { error } = await supabase.from('sopir').update({ aktif: false }).eq('id', deleteTarget.id);
+    if (error) {
+      showToast(`Gagal menonaktifkan armada: ${error.message}`, 'error', 5000);
+      return;
+    }
+
+    setDeleteTarget(null);
+    showToast('Armada berhasil dinonaktifkan.', 'success', 3000);
     await loadData();
   }
 
@@ -169,6 +186,14 @@ export default function ArmadaPage() {
 
   return (
     <AppShell title="Armada" subtitle="Kelola sopir, plat default, dan afiliasi mitra">
+      {toast && (
+        <div className="toast-container">
+          <div className={`toast toast-${toast.type}`}>
+            <span>{toast.message}</span>
+          </div>
+        </div>
+      )}
+
       <div className="page-header">
         <div className="toolbar" style={{ flex: 1, marginBottom: 0 }}>
           <div className="search-box" style={{ flex: 1, maxWidth: 420 }}>
@@ -226,7 +251,7 @@ export default function ArmadaPage() {
                     <button className="btn btn-ghost btn-sm" onClick={() => openEdit(armada)} aria-label={`Edit ${armada.nama}`}>
                       <Pencil size={16} />
                     </button>
-                    <button className="btn btn-ghost btn-sm" onClick={() => handleDelete(armada.id)} aria-label={`Nonaktifkan ${armada.nama}`}>
+                    <button className="btn btn-ghost btn-sm" onClick={() => setDeleteTarget(armada)} aria-label={`Nonaktifkan ${armada.nama}`}>
                       <Trash2 size={16} />
                     </button>
                   </td>
@@ -308,6 +333,17 @@ export default function ArmadaPage() {
           </div>
         </div>
       )}
+
+      <ConfirmDialog
+        open={!!deleteTarget}
+        title="Nonaktifkan Armada"
+        message={deleteTarget ? `${deleteTarget.nama} tidak akan tampil lagi di pilihan armada aktif.` : ''}
+        confirmText="Nonaktifkan"
+        cancelText="Batal"
+        variant="danger"
+        onConfirm={handleDelete}
+        onCancel={() => setDeleteTarget(null)}
+      />
     </AppShell>
   );
 }

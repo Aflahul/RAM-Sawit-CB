@@ -1,7 +1,8 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import AppShell from '@/components/layout/AppShell';
+import ConfirmDialog from '@/components/ui/ConfirmDialog';
 import { supabase } from '@/lib/supabase';
 import { formatRupiah } from '@/lib/utils';
 
@@ -19,12 +20,15 @@ export default function PetaniPage() {
     batas_hutang: 0,
   });
   const [saving, setSaving] = useState(false);
+  const [toast, setToast] = useState(null);
+  const [deleteTarget, setDeleteTarget] = useState(null);
 
-  useEffect(() => {
-    loadPetani();
+  const showToast = useCallback((message, type = 'error', timeout = 4000) => {
+    setToast({ message, type });
+    setTimeout(() => setToast(null), timeout);
   }, []);
 
-  async function loadPetani() {
+  const loadPetani = useCallback(async () => {
     setLoading(true);
     const { data, error } = await supabase
       .from('petani')
@@ -32,9 +36,18 @@ export default function PetaniPage() {
       .eq('aktif', true)
       .order('nama');
 
-    if (!error) setPetaniList(data || []);
+    if (error) {
+      showToast(`Gagal memuat petani: ${error.message}`, 'error', 5000);
+    } else {
+      setPetaniList(data || []);
+    }
     setLoading(false);
-  }
+  }, [showToast]);
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    loadPetani();
+  }, [loadPetani]);
 
   function openNew() {
     setEditingId(null);
@@ -66,21 +79,34 @@ export default function PetaniPage() {
       batas_hutang: parseFloat(form.batas_hutang) || 0,
     };
 
-    if (editingId) {
-      await supabase.from('petani').update(payload).eq('id', editingId);
-    } else {
-      await supabase.from('petani').insert(payload);
+    const result = editingId
+      ? await supabase.from('petani').update(payload).eq('id', editingId)
+      : await supabase.from('petani').insert(payload);
+
+    if (result.error) {
+      showToast(`Gagal menyimpan petani: ${result.error.message}`, 'error', 5000);
+      setSaving(false);
+      return;
     }
 
     setSaving(false);
     setShowModal(false);
-    loadPetani();
+    showToast('Petani berhasil disimpan.', 'success', 3000);
+    await loadPetani();
   }
 
-  async function handleDelete(id) {
-    if (!confirm('Yakin ingin menonaktifkan petani ini?')) return;
-    await supabase.from('petani').update({ aktif: false }).eq('id', id);
-    loadPetani();
+  async function handleDelete() {
+    if (!deleteTarget) return;
+
+    const { error } = await supabase.from('petani').update({ aktif: false }).eq('id', deleteTarget.id);
+    if (error) {
+      showToast(`Gagal menonaktifkan petani: ${error.message}`, 'error', 5000);
+      return;
+    }
+
+    setDeleteTarget(null);
+    showToast('Petani berhasil dinonaktifkan.', 'success', 3000);
+    await loadPetani();
   }
 
   const filtered = petaniList.filter(
@@ -91,6 +117,14 @@ export default function PetaniPage() {
 
   return (
     <AppShell title="Petani / Mitra" subtitle="Kelola data petani dan mitra TBS">
+      {toast && (
+        <div className="toast-container">
+          <div className={`toast toast-${toast.type}`}>
+            <span>{toast.message}</span>
+          </div>
+        </div>
+      )}
+
       <div className="page-header">
         <div>
           <p className="page-description">Total: {petaniList.length} petani aktif</p>
@@ -160,7 +194,7 @@ export default function PetaniPage() {
                       <button className="btn btn-ghost btn-sm" onClick={() => openEdit(p)}>
                         ✏️
                       </button>
-                      <button className="btn btn-ghost btn-sm" onClick={() => handleDelete(p.id)}>
+                      <button className="btn btn-ghost btn-sm" onClick={() => setDeleteTarget(p)}>
                         🗑️
                       </button>
                     </div>
@@ -252,6 +286,17 @@ export default function PetaniPage() {
           </div>
         </div>
       )}
+
+      <ConfirmDialog
+        open={!!deleteTarget}
+        title="Nonaktifkan Petani"
+        message={deleteTarget ? `${deleteTarget.nama} tidak akan tampil lagi sebagai petani aktif.` : ''}
+        confirmText="Nonaktifkan"
+        cancelText="Batal"
+        variant="danger"
+        onConfirm={handleDelete}
+        onCancel={() => setDeleteTarget(null)}
+      />
     </AppShell>
   );
 }

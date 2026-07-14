@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { AlertTriangle, FileText } from 'lucide-react';
+import { AlertTriangle, FileText, X } from 'lucide-react';
 
 export default function PromptDialog({
   open,
@@ -56,12 +56,14 @@ export default function PromptDialog({
             </span>
             <h3 className="modal-title">{title || 'Isi Alasan'}</h3>
           </div>
-          <button className="modal-close" onClick={onCancel} disabled={loading}>x</button>
+          <button className="modal-close" onClick={onCancel} disabled={loading} aria-label="Tutup">
+            <X size={18} />
+          </button>
         </div>
         <form onSubmit={handleSubmit}>
-          <div className="modal-body">
+          <div className="modal-body" style={{ maxHeight: 'min(68vh, 520px)', overflowY: 'auto' }}>
             {message && (
-              <p className="text-secondary" style={{ marginBottom: 'var(--space-md)', lineHeight: 1.6 }}>
+              <p className="text-secondary" style={{ marginBottom: 'var(--space-md)', fontSize: 'var(--text-sm)', lineHeight: 1.6 }}>
                 {message}
               </p>
             )}

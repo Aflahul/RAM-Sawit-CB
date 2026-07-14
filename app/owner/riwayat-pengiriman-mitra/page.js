@@ -127,6 +127,7 @@ export default function RiwayatPengirimanMitraPage() {
   const [cancelReason, setCancelReason] = useState('');
   const [sort, setSort] = useState({ key: 'waktu', direction: 'desc' });
   const [page, setPage] = useState(1);
+  const [toast, setToast] = useState(null);
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -273,6 +274,11 @@ export default function RiwayatPengirimanMitraPage() {
   function handleSort(key) {
     setPage(1);
     setSort(current => getNextSort(current, key, ['tanggal', 'waktu'].includes(key) ? 'desc' : 'asc'));
+  }
+
+  function showToast(message, type = 'error') {
+    setToast({ message, type });
+    setTimeout(() => setToast(null), type === 'error' ? 5000 : 3000);
   }
 
   function getEffectiveFeeSnapshot(mitraId, tanggal) {
@@ -455,11 +461,11 @@ export default function RiwayatPengirimanMitraPage() {
     if (!editTarget || saving) return;
 
     const tonase = toNumber(editForm.tonase);
-    if (!editForm.sopir_default_id) return alert('Pilih armada / sopir default.');
-    if (!editForm.mitra_id) return alert('Pilih mitra transaksi.');
-    if (!editForm.sopir_aktual_nama.trim()) return alert('Sopir aktual wajib diisi.');
-    if (tonase <= 0) return alert('Tonase harus lebih dari 0.');
-    if (!editForm.alasan_edit.trim()) return alert('Alasan edit wajib diisi.');
+    if (!editForm.sopir_default_id) return showToast('Pilih armada / sopir default.');
+    if (!editForm.mitra_id) return showToast('Pilih mitra transaksi.');
+    if (!editForm.sopir_aktual_nama.trim()) return showToast('Sopir aktual wajib diisi.');
+    if (tonase <= 0) return showToast('Tonase harus lebih dari 0.');
+    if (!editForm.alasan_edit.trim()) return showToast('Alasan edit wajib diisi.');
 
     setSaving(true);
     const userId = await getCurrentUserId();
@@ -504,7 +510,7 @@ export default function RiwayatPengirimanMitraPage() {
       .neq('status', 'dibatalkan');
 
     if (error) {
-      alert(`Gagal menyimpan edit: ${error.message}`);
+      showToast(`Gagal menyimpan edit: ${error.message}`);
       setSaving(false);
       return;
     }
@@ -519,7 +525,7 @@ export default function RiwayatPengirimanMitraPage() {
   async function handleCancelTransaction(event) {
     event.preventDefault();
     if (!cancelTarget || saving) return;
-    if (!cancelReason.trim()) return alert('Alasan batal wajib diisi.');
+    if (!cancelReason.trim()) return showToast('Alasan batal wajib diisi.');
 
     setSaving(true);
     const userId = await getCurrentUserId();
@@ -539,7 +545,7 @@ export default function RiwayatPengirimanMitraPage() {
       .neq('status', 'dibatalkan');
 
     if (error) {
-      alert(`Gagal membatalkan transaksi: ${error.message}`);
+      showToast(`Gagal membatalkan transaksi: ${error.message}`);
       setSaving(false);
       return;
     }
@@ -553,6 +559,14 @@ export default function RiwayatPengirimanMitraPage() {
 
   return (
     <AppShell title="Riwayat Pengiriman Mitra" subtitle="Edit dan koreksi transaksi mitra">
+      {toast && (
+        <div className="toast-container">
+          <div className={`toast toast-${toast.type}`}>
+            <span>{toast.message}</span>
+          </div>
+        </div>
+      )}
+
       <div className="page-header">
         <div>
           <p className="page-description">Daftar transaksi detail untuk koreksi input dan pembatalan tanpa hapus data</p>

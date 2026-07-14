@@ -6,8 +6,8 @@ import AppShell from '@/components/layout/AppShell';
 import PromptDialog from '@/components/ui/PromptDialog';
 import { canManageFinance, normalizeRole } from '@/lib/roles';
 import { supabase } from '@/lib/supabase';
-import { resolveHargaPabrikPerKg, resolveTotalKotorPabrik, toNumber } from '@/lib/transaksi-mitra-calculations';
-import { formatDateDisplay, formatNumber, formatRupiah, getTodayISO } from '@/lib/utils';
+import { resolveHargaPabrikPerKg, toNumber } from '@/lib/transaksi-mitra-calculations';
+import { formatDateDisplay, formatNumber, formatRupiah, formatWaktu, getTodayISO } from '@/lib/utils';
 import { AlertTriangle, BadgeDollarSign, CheckCircle2, RotateCcw, Scale } from 'lucide-react';
 
 function getMitraLabel(mitra) {
@@ -41,6 +41,7 @@ export default function PembayaranPabrikPage() {
   const [userRole, setUserRole] = useState(null);
   const [accounts, setAccounts] = useState([]);
   const [pabriks, setPabriks] = useState([]);
+  const [hargaTwb, setHargaTwb] = useState(0);
   const [transactions, setTransactions] = useState([]);
   const [payments, setPayments] = useState([]);
   const [selectedIds, setSelectedIds] = useState([]);
@@ -91,11 +92,13 @@ export default function PembayaranPabrikPage() {
     const [
       { data: accountData, error: accountError },
       { data: pabrikData, error: pabrikError },
+      { data: hargaData, error: hargaError },
       { data: trxData, error: trxError },
       { data: paymentData, error: paymentError },
     ] = await Promise.all([
       supabase.from('rekening_kas').select('id, nama, tipe, is_default').eq('aktif', true).order('is_default', { ascending: false }).order('nama'),
-      supabase.from('pabrik').select('id, nama, harga_pabrik_per_kg').eq('aktif', true).order('nama'),
+      supabase.from('pabrik').select('id, nama').eq('aktif', true).order('nama'),
+      supabase.from('harga_tbs').select('harga_per_kg').order('tanggal', { ascending: false }).limit(1).maybeSingle(),
       trxQuery,
       supabase
         .from('pembayaran_pabrik_batch')
@@ -117,7 +120,7 @@ export default function PembayaranPabrikPage() {
         .limit(30),
     ]);
 
-    const firstError = accountError || pabrikError || trxError || paymentError;
+    const firstError = accountError || pabrikError || hargaError || trxError || paymentError;
     if (firstError) {
       setToast({ type: 'error', message: `Gagal memuat pembayaran pabrik: ${firstError.message}` });
       setTimeout(() => setToast(null), 5000);
@@ -125,12 +128,14 @@ export default function PembayaranPabrikPage() {
 
     setAccounts(accountData || []);
     setPabriks(pabrikData || []);
+    setHargaTwb(Number(hargaData?.harga_per_kg || 0));
     setTransactions(trxData || []);
     setPayments(paymentData || []);
     setForm((current) => ({
       ...current,
       rekening_kas_id: current.rekening_kas_id || accountData?.find((item) => item.is_default)?.id || accountData?.[0]?.id || '',
       pabrik_id: current.pabrik_id || pabrikData?.[0]?.id || '',
+      harga_pabrik_per_kg: hargaData?.harga_per_kg ? String(hargaData.harga_per_kg) : '',
     }));
     setSelectedIds((current) => current.filter((id) => (trxData || []).some((row) => row.id === id)));
     setLoading(false);
@@ -158,11 +163,27 @@ export default function PembayaranPabrikPage() {
     transactions.filter((row) => selectedIds.includes(row.id))
   ), [selectedIds, transactions]);
 
+  const resolvePaymentHargaPerKg = useCallback((row) => (
+    hargaTwb > 0 ? hargaTwb : resolveHargaPabrikPerKg(row)
+  ), [hargaTwb]);
+
+  const resolvePaymentTotal = useCallback((row) => (
+    Math.round(toNumber(row.tonase) * resolvePaymentHargaPerKg(row))
+  ), [resolvePaymentHargaPerKg]);
+
+  const visibleSummary = useMemo(() => (
+    visibleTransactions.reduce((summary, row) => ({
+      count: summary.count + 1,
+      tonase: summary.tonase + toNumber(row.tonase),
+      nilai: summary.nilai + resolvePaymentTotal(row),
+    }), { count: 0, tonase: 0, nilai: 0 })
+  ), [resolvePaymentTotal, visibleTransactions]);
+
   const reconciliationSummary = useMemo(() => {
     const totalTonaseSistem = selectedRows.reduce((sum, row) => sum + toNumber(row.tonase), 0);
-    const totalNilaiSistem = selectedRows.reduce((sum, row) => sum + resolveTotalKotorPabrik(row), 0);
+    const totalNilaiSistem = selectedRows.reduce((sum, row) => sum + resolvePaymentTotal(row), 0);
     const tonasePabrik = Number(form.tonase_pabrik || 0);
-    const hargaPabrik = Number(form.harga_pabrik_per_kg || 0);
+    const hargaPabrik = Number(hargaTwb || 0);
     const nominalDiterima = Number(form.nominal_diterima || 0);
     const nilaiPabrik = tonasePabrik * hargaPabrik;
 
@@ -176,7 +197,7 @@ export default function PembayaranPabrikPage() {
       selisihTonase: tonasePabrik - totalTonaseSistem,
       selisihKas: nilaiPabrik - nominalDiterima,
     };
-  }, [form.harga_pabrik_per_kg, form.nominal_diterima, form.tonase_pabrik, selectedRows]);
+  }, [form.nominal_diterima, form.tonase_pabrik, hargaTwb, resolvePaymentTotal, selectedRows]);
 
   function setCalculatedNominal() {
     const calculated = Math.max(reconciliationSummary.nilaiPabrik, 0);
@@ -203,7 +224,7 @@ export default function PembayaranPabrikPage() {
     if (saving) return;
 
     const tonasePabrik = Number(form.tonase_pabrik || 0);
-    const hargaPabrik = Number(form.harga_pabrik_per_kg || 0);
+    const hargaPabrik = Number(hargaTwb || 0);
 
     if (!tonasePabrik || tonasePabrik <= 0) {
       setToast({ type: 'error', message: 'Tonase dari pabrik wajib lebih dari 0.' });
@@ -212,7 +233,7 @@ export default function PembayaranPabrikPage() {
     }
 
     if (!hargaPabrik || hargaPabrik <= 0) {
-      setToast({ type: 'error', message: 'Harga pabrik per kg wajib lebih dari 0.' });
+      setToast({ type: 'error', message: 'Harga Pabrik / TWB belum diset di Dashboard.' });
       setTimeout(() => setToast(null), 4000);
       return;
     }
@@ -251,6 +272,7 @@ export default function PembayaranPabrikPage() {
       ...emptyForm,
       pabrik_id: current.pabrik_id,
       rekening_kas_id: current.rekening_kas_id,
+      harga_pabrik_per_kg: hargaTwb ? String(hargaTwb) : '',
       tanggal_bayar: getTodayISO(),
     }));
     setTimeout(() => setToast(null), 4000);
@@ -321,7 +343,7 @@ export default function PembayaranPabrikPage() {
         <div className="card">
           <div className="card-header"><span className="card-title">Data Dipilih</span><CheckCircle2 size={18} /></div>
           <div className="card-value">{selectedRows.length}</div>
-          <div className="card-label">{selectedRows.length} catatan timbang kita</div>
+              <div className="card-label">{formatNumber(reconciliationSummary.totalTonaseSistem)} kg catatan kita</div>
         </div>
         <div className="card">
           <div className="card-header"><span className="card-title">Tonase dari Pabrik</span><Scale size={18} /></div>
@@ -390,8 +412,9 @@ export default function PembayaranPabrikPage() {
                 )}
               </div>
               <div className="form-group">
-                <label className="form-label form-label-required">Harga per Kg dari Pabrik</label>
-                <input type="number" min={1} step="1" className="form-input form-input-mono" value={form.harga_pabrik_per_kg} onChange={(event) => setForm({ ...form, harga_pabrik_per_kg: event.target.value })} required />
+                <label className="form-label form-label-required">Harga Pabrik / TWB</label>
+                <input type="number" min={1} step="1" className="form-input form-input-mono" value={form.harga_pabrik_per_kg} readOnly required />
+                <div className="form-hint">Mengikuti harga yang diset di Dashboard: {hargaTwb ? `${formatRupiah(hargaTwb)} / kg` : 'belum diset'}.</div>
               </div>
             </div>
             <div className="form-grid">
@@ -414,6 +437,11 @@ export default function PembayaranPabrikPage() {
             <div className="alert alert-info" style={{ marginBottom: 'var(--space-md)' }}>
               Pilih data timbang di bawah hanya untuk mencocokkan. Jika belum siap, uang masuk tetap bisa dicatat dulu dari nota pabrik.
             </div>
+            {!hargaTwb && (
+              <div className="alert alert-warning" style={{ marginBottom: 'var(--space-md)' }}>
+                Harga Pabrik / TWB belum diset. Isi dulu dari Dashboard agar pembayaran pabrik memakai harga yang sama.
+              </div>
+            )}
             <button className="btn btn-primary" disabled={saving}>
               {saving ? 'Mencatat...' : 'Catat Pembayaran Pabrik'}
             </button>
@@ -455,12 +483,20 @@ export default function PembayaranPabrikPage() {
         <div className="section-heading">
           <div>
             <h2>Cocokkan Dengan Catatan Kita</h2>
-            <p>Pilih data timbang kita yang termasuk dalam pembayaran pabrik ini.</p>
+            <p>Pilih data timbang kita yang termasuk dalam pembayaran pabrik ini. Harga memakai TWB Dashboard.</p>
           </div>
           <div className="flex gap-sm" style={{ flexWrap: 'wrap', justifyContent: 'flex-end' }}>
             <button className="btn btn-outline btn-sm" onClick={selectAllVisible} disabled={visibleTransactions.length === 0}>Pilih Semua</button>
             <button className="btn btn-ghost btn-sm" onClick={clearSelected}>Kosongkan</button>
           </div>
+        </div>
+
+        <div className="reconciliation-strip">
+          <span>{visibleSummary.count.toLocaleString('id-ID')} data tampil</span>
+          <span>{formatNumber(visibleSummary.tonase)} kg catatan kita</span>
+          <span>{formatRupiah(visibleSummary.nilai)} nilai TWB</span>
+          <span>{selectedRows.length.toLocaleString('id-ID')} data dipilih</span>
+          <span>{formatRupiah(reconciliationSummary.totalNilaiSistem)} nilai dipilih</span>
         </div>
 
         <div className="toolbar">
@@ -475,35 +511,56 @@ export default function PembayaranPabrikPage() {
               <tr>
                 <th style={{ width: 44 }}></th>
                 <th>Tanggal</th>
+                <th>Waktu</th>
                 <th>Mitra</th>
                 <th>Sopir / Plat</th>
                 <th style={{ textAlign: 'right' }}>Tonase</th>
-                <th style={{ textAlign: 'right' }}>Harga</th>
-                <th style={{ textAlign: 'right' }}>Nilai Catatan Kita</th>
+                <th style={{ textAlign: 'right' }}>Harga TWB</th>
+                <th style={{ textAlign: 'right' }}>Nilai TWB Catatan Kita</th>
               </tr>
             </thead>
             <tbody>
               {loading ? (
-                <tr><td colSpan={7} style={{ textAlign: 'center', padding: 24 }}>Memuat data timbang...</td></tr>
+                <tr><td colSpan={8} style={{ textAlign: 'center', padding: 24 }}>Memuat data timbang...</td></tr>
               ) : visibleTransactions.length === 0 ? (
-                <tr><td colSpan={7} style={{ textAlign: 'center', padding: 24 }}>Tidak ada data timbang yang belum dicocokkan pada tanggal ini.</td></tr>
-              ) : visibleTransactions.map((row) => (
-                <tr key={row.id} className={selectedIds.includes(row.id) ? 'row-selected' : ''}>
-                  <td>
-                    <input type="checkbox" checked={selectedIds.includes(row.id)} onChange={() => toggleSelected(row.id)} aria-label={`Pilih data timbang ${row.id}`} />
-                  </td>
-                  <td>{formatDateDisplay(row.tanggal)}</td>
-                  <td>{getMitraLabel(row.master_mitra)}</td>
-                  <td>
-                    <div>{row.sopir_aktual_nama || row.sopir_default_nama || '-'}</div>
-                    <small className="text-tertiary table-mono">{row.plat_nomor || '-'}</small>
-                  </td>
-                  <td className="table-mono" style={{ textAlign: 'right' }}>{formatNumber(row.tonase)} kg</td>
-                  <td className="table-mono" style={{ textAlign: 'right' }}>{formatRupiah(resolveHargaPabrikPerKg(row))}</td>
-                  <td className="table-mono" style={{ textAlign: 'right', fontWeight: 800 }}>{formatRupiah(resolveTotalKotorPabrik(row))}</td>
-                </tr>
-              ))}
+                <tr><td colSpan={8} style={{ textAlign: 'center', padding: 24 }}>Tidak ada data timbang yang belum dicocokkan pada tanggal ini.</td></tr>
+              ) : visibleTransactions.map((row) => {
+                const hargaTampilan = resolvePaymentHargaPerKg(row);
+                const hargaSaatInput = resolveHargaPabrikPerKg(row);
+                const hargaBerbeda = hargaTwb > 0 && hargaSaatInput > 0 && Math.round(hargaSaatInput) !== Math.round(hargaTampilan);
+
+                return (
+                  <tr key={row.id} className={selectedIds.includes(row.id) ? 'row-selected' : ''}>
+                    <td>
+                      <input type="checkbox" checked={selectedIds.includes(row.id)} onChange={() => toggleSelected(row.id)} aria-label={`Pilih data timbang ${row.id}`} />
+                    </td>
+                    <td>{formatDateDisplay(row.tanggal)}</td>
+                    <td className="table-mono">{formatWaktu(row.created_at)}</td>
+                    <td>{getMitraLabel(row.master_mitra)}</td>
+                    <td>
+                      <div>{row.sopir_aktual_nama || row.sopir_default_nama || '-'}</div>
+                      <small className="text-tertiary table-mono">{row.plat_nomor || '-'}</small>
+                    </td>
+                    <td className="table-mono" style={{ textAlign: 'right' }}>{formatNumber(row.tonase)} kg</td>
+                    <td className="table-mono" style={{ textAlign: 'right' }}>
+                      <div>{formatRupiah(hargaTampilan)}</div>
+                      {hargaBerbeda && <small className="text-warning">Saat input: {formatRupiah(hargaSaatInput)}</small>}
+                    </td>
+                    <td className="table-mono" style={{ textAlign: 'right', fontWeight: 800 }}>{formatRupiah(resolvePaymentTotal(row))}</td>
+                  </tr>
+                );
+              })}
             </tbody>
+            {visibleTransactions.length > 0 && (
+              <tfoot>
+                <tr>
+                  <td colSpan={5} style={{ textAlign: 'right', fontWeight: 800 }}>TOTAL TAMPIL:</td>
+                  <td className="table-mono" style={{ textAlign: 'right', fontWeight: 800 }}>{formatNumber(visibleSummary.tonase)} kg</td>
+                  <td></td>
+                  <td className="table-mono" style={{ textAlign: 'right', fontWeight: 800 }}>{formatRupiah(visibleSummary.nilai)}</td>
+                </tr>
+              </tfoot>
+            )}
           </table>
         </div>
       </section>
@@ -604,6 +661,23 @@ export default function PembayaranPabrikPage() {
 
         .row-selected {
           background: rgba(46, 204, 113, 0.08);
+        }
+
+        .reconciliation-strip {
+          margin: calc(var(--space-md) * -0.25) 0 var(--space-md);
+          display: flex;
+          flex-wrap: wrap;
+          gap: 8px;
+        }
+
+        .reconciliation-strip span {
+          padding: 6px 10px;
+          border: 1px solid var(--border-default);
+          border-radius: 8px;
+          background: rgba(15, 23, 42, 0.36);
+          color: var(--text-secondary);
+          font-size: 12px;
+          font-weight: 700;
         }
 
         @media (max-width: 980px) {

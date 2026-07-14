@@ -2,10 +2,13 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import AppShell from '@/components/layout/AppShell';
+import ConfirmDialog from '@/components/ui/ConfirmDialog';
+import PromptDialog from '@/components/ui/PromptDialog';
 import { formatMitraLabel } from '@/lib/display-labels';
 import { supabase } from '@/lib/supabase';
 import { formatDateDisplay, formatRupiah, getTodayISO } from '@/lib/utils';
 import { exportToExcel } from '@/lib/export';
+import { X } from 'lucide-react';
 
 const PARTY_TYPES = [
   { value: 'petani', label: 'Petani' },
@@ -134,6 +137,9 @@ export default function HutangPage() {
   const [showModal, setShowModal] = useState(false);
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState(null);
+  const [limitConfirm, setLimitConfirm] = useState(null);
+  const [cancelTarget, setCancelTarget] = useState(null);
+  const [canceling, setCanceling] = useState(false);
   const [selector, setSelector] = useState({ type: 'petani', id: '', manualName: '' });
   const [form, setForm] = useState({
     pihak_type: 'petani',
@@ -188,6 +194,11 @@ export default function HutangPage() {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     loadData();
   }, [loadData]);
+
+  function showToast(message, type = 'error', timeout = 4000) {
+    setToast({ message, type });
+    setTimeout(() => setToast(null), timeout);
+  }
 
   const summaryRows = useMemo(() => {
     const groups = {};
@@ -306,20 +317,18 @@ export default function HutangPage() {
     setShowModal(true);
   }
 
-  async function handleSave(e) {
-    e.preventDefault();
+  async function saveLedger({ bypassLimit = false } = {}) {
     const jumlah = Number(form.jumlah);
     if (!jumlah || jumlah <= 0) return;
 
-    if (form.tipe === 'debit' && selectedParty?.batas > 0 && (saldo + jumlah) > selectedParty.batas) {
-      const lanjut = window.confirm(
-        `Hutang akan melebihi batas ${formatRupiah(selectedParty.batas)}.\n\n` +
-        `Sisa saat ini: ${formatRupiah(saldo)}\n` +
-        `Tambahan: ${formatRupiah(jumlah)}\n` +
-        `Total: ${formatRupiah(saldo + jumlah)}\n\n` +
-        'Lanjutkan?'
-      );
-      if (!lanjut) return;
+    if (!bypassLimit && form.tipe === 'debit' && selectedParty?.batas > 0 && (saldo + jumlah) > selectedParty.batas) {
+      setLimitConfirm({
+        jumlah,
+        saldo,
+        batas: selectedParty.batas,
+        total: saldo + jumlah,
+      });
+      return;
     }
 
     setSaving(true);
@@ -351,34 +360,42 @@ export default function HutangPage() {
     setSaving(false);
 
     if (error) {
-      setToast({ message: `Gagal menyimpan hutang/panjar: ${error.message}`, type: 'error' });
-      setTimeout(() => setToast(null), 5000);
+      showToast(`Gagal menyimpan hutang/panjar: ${error.message}`, 'error', 5000);
       return;
     }
 
     setShowModal(false);
-    setToast({ message: isMitraPanjar ? 'Panjar mitra berhasil dicatat dan siap dipotong di kwitansi.' : 'Hutang/panjar berhasil dicatat.', type: 'success' });
-    setTimeout(() => setToast(null), 3000);
+    showToast(isMitraPanjar ? 'Panjar mitra berhasil dicatat dan siap dipotong di kwitansi.' : 'Hutang/panjar berhasil dicatat.', 'success', 3000);
     await loadData();
   }
 
-  async function handleCancelLedger(id) {
-    const alasan = window.prompt('Alasan pembatalan / reversal hutang:');
-    if (!alasan || !alasan.trim()) return;
+  async function handleSave(e) {
+    e.preventDefault();
+    await saveLedger();
+  }
 
+  async function handleConfirmLimit() {
+    setLimitConfirm(null);
+    await saveLedger({ bypassLimit: true });
+  }
+
+  async function handleCancelLedger(reason) {
+    if (!cancelTarget || canceling) return;
+
+    setCanceling(true);
     const { error } = await supabase.rpc('cancel_hutang_ledger', {
-      p_hutang_ledger_id: id,
-      p_alasan: alasan.trim(),
+      p_hutang_ledger_id: cancelTarget.id,
+      p_alasan: reason.trim(),
     });
+    setCanceling(false);
 
     if (error) {
-      setToast({ message: `Gagal membatalkan hutang: ${error.message}`, type: 'error' });
-      setTimeout(() => setToast(null), 5000);
+      showToast(`Gagal membatalkan hutang: ${error.message}`, 'error', 5000);
       return;
     }
 
-    setToast({ message: 'Hutang/panjar berhasil dibatalkan dengan reversal.', type: 'success' });
-    setTimeout(() => setToast(null), 3000);
+    setCancelTarget(null);
+    showToast('Hutang/panjar berhasil dibatalkan dengan reversal.', 'success', 3000);
     await loadData();
   }
 
@@ -566,7 +583,7 @@ export default function HutangPage() {
                           </td>
                           <td style={{ textAlign: 'right' }}>
                             {item.status === 'aktif' && (
-                              <button className="btn btn-ghost btn-sm" onClick={() => handleCancelLedger(item.id)}>Batalkan</button>
+                              <button className="btn btn-ghost btn-sm" onClick={() => setCancelTarget(item)}>Batalkan</button>
                             )}
                           </td>
                         </tr>
@@ -585,7 +602,9 @@ export default function HutangPage() {
           <div className="modal" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <h3 className="modal-title">{form.tipe === 'debit' ? 'Tambah Hutang & Panjar' : 'Catat Pembayaran'}</h3>
-              <button className="modal-close" onClick={() => setShowModal(false)}>x</button>
+              <button className="modal-close" onClick={() => setShowModal(false)} aria-label="Tutup">
+                <X size={18} />
+              </button>
             </div>
             <form onSubmit={handleSave}>
               <div className="modal-body">
@@ -720,6 +739,31 @@ export default function HutangPage() {
           </div>
         </div>
       )}
+
+      <ConfirmDialog
+        open={!!limitConfirm}
+        title="Batas Hutang Terlewati"
+        message={limitConfirm ? `Sisa sekarang ${formatRupiah(limitConfirm.saldo)}, tambahan ${formatRupiah(limitConfirm.jumlah)}, total menjadi ${formatRupiah(limitConfirm.total)}. Batas pihak ini ${formatRupiah(limitConfirm.batas)}.` : ''}
+        confirmText="Tetap Simpan"
+        cancelText="Cek Lagi"
+        variant="warning"
+        onConfirm={handleConfirmLimit}
+        onCancel={() => setLimitConfirm(null)}
+      />
+
+      <PromptDialog
+        open={!!cancelTarget}
+        title="Batalkan Catatan"
+        message={cancelTarget ? `${getLedgerLabel(cancelTarget)} ${formatRupiah(cancelTarget.jumlah)} akan dibatalkan dan dibuat catatan balik.` : ''}
+        label="Alasan pembatalan"
+        placeholder="Contoh: salah input / duplikat / sudah diganti catatan baru"
+        confirmText="Batalkan Catatan"
+        cancelText="Kembali"
+        variant="danger"
+        loading={canceling}
+        onConfirm={handleCancelLedger}
+        onCancel={() => !canceling && setCancelTarget(null)}
+      />
     </AppShell>
   );
 }
