@@ -28,6 +28,8 @@ const mitraSortAccessors = {
   no_hp: row => row.no_hp,
   alamat: row => row.alamat,
   fee: row => Number(row.fee_per_kg),
+  sewa_angkut: row => Number(row.tarif_sewa_angkut_per_kg),
+  perongkosan: row => Number(row.nominal_perongkosan),
 };
 
 export default function MitraPage() {
@@ -229,6 +231,8 @@ export default function MitraPage() {
           { header: 'No. HP / WA', key: 'no_hp', width: 18 },
           { header: 'Alamat / Lokasi', key: 'alamat', width: 28 },
           { header: 'Fee Owner/Kg', key: 'fee_per_kg', type: 'currency', width: 16 },
+          { header: 'Sewa Angkut', key: 'tarif_sewa_angkut_per_kg', type: 'currency', width: 16 },
+          { header: 'Perongkosan', key: 'nominal_perongkosan', type: 'currency', width: 16 },
         ],
         rows: sortedMitras,
       }],
@@ -282,17 +286,19 @@ export default function MitraPage() {
               <SortableHeader label="No. HP" sortKey="no_hp" sort={sort} onSort={handleSort} />
               <SortableHeader label="Alamat" sortKey="alamat" sort={sort} onSort={handleSort} />
               <SortableHeader label="Fee Owner/Kg" sortKey="fee" sort={sort} onSort={handleSort} align="right" />
+              <SortableHeader label="Sewa Angkut" sortKey="sewa_angkut" sort={sort} onSort={handleSort} align="right" />
+              <SortableHeader label="Perongkosan" sortKey="perongkosan" sort={sort} onSort={handleSort} align="right" />
               <th style={{ textAlign: 'center' }}>Aksi</th>
             </tr>
           </thead>
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={8}>Memuat data...</td>
+                <td colSpan={10}>Memuat data...</td>
               </tr>
             ) : paginatedMitras.rows.length === 0 ? (
               <tr>
-                <td colSpan={8}>Data mitra tidak ditemukan.</td>
+                <td colSpan={10}>Data mitra tidak ditemukan.</td>
               </tr>
             ) : (
               paginatedMitras.rows.map(mitra => (
@@ -308,6 +314,8 @@ export default function MitraPage() {
                   <td className="table-mono">{mitra.no_hp || '-'}</td>
                   <td>{mitra.alamat || '-'}</td>
                   <td className="table-mono" style={{ textAlign: 'right' }}>{formatRupiah(mitra.fee_per_kg)}</td>
+                  <td className="table-mono" style={{ textAlign: 'right', color: 'var(--text-secondary)' }}>{mitra.tarif_sewa_angkut_per_kg > 0 ? formatRupiah(mitra.tarif_sewa_angkut_per_kg) : '-'}</td>
+                  <td className="table-mono" style={{ textAlign: 'right', color: 'var(--text-secondary)' }}>{mitra.nominal_perongkosan > 0 ? formatRupiah(mitra.nominal_perongkosan) : '-'}</td>
                   <td style={{ textAlign: 'center' }}>
                     <button className="btn btn-ghost btn-sm" onClick={() => openEdit(mitra)} aria-label={`Edit ${mitra.nama}`}>
                       <Pencil size={16} />
