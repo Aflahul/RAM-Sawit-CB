@@ -987,18 +987,19 @@ export default function KwitansiMitraPage() {
           align-items: center;
           justify-content: space-between;
           gap: 16px;
-          margin-bottom: 12px;
+          margin-bottom: 18px;
         }
         .kwitansi-total-divider {
           border-top: 2px solid var(--border-default);
           margin: 16px 0;
         }
         .kwitansi-final-total span {
-          font-size: 17px;
-          font-weight: 800;
+          font-size: 14px;
+          font-weight: 700;
         }
         .kwitansi-final-total strong {
-          font-size: 22px;
+          font-size: 14px;
+          font-weight: 700;
           color: var(--color-success);
         }
         .danger-text {
@@ -1136,12 +1137,21 @@ export default function KwitansiMitraPage() {
             border: 1px solid #111 !important;
             border-radius: 4px !important;
           }
+          .kwitansi-total-row {
+            margin-top: 48px !important;
+          }
           .kwitansi-total-box {
             width: 360px !important;
-            padding: 12px !important;
+            padding: 16px !important;
           }
+          .kwitansi-final-total span,
           .kwitansi-final-total strong {
-            font-size: 15px !important;
+            font-size: 12px !important;
+            font-weight: 700 !important;
+          }
+          .kwitansi-total-box > div:not(.kwitansi-total-divider) > span,
+          .kwitansi-total-box > div:not(.kwitansi-total-divider) > strong {
+            font-size: 12px !important;
           }
         }
       `}</style>
