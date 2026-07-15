@@ -68,6 +68,8 @@ function mapPaymentItemToRow(item) {
     berat_dibayar_kg: item.berat_dibayar_snapshot ?? item.tonase_snapshot,
     pakai_sewa_armada_bl: item.pakai_sewa_armada_snapshot ?? false,
     biaya_sewa_armada_total: item.biaya_sewa_armada_snapshot ?? 0,
+    biaya_sewa_armada_kotor: transaksi.biaya_sewa_armada_kotor ?? 0,
+    nominal_perongkosan: transaksi.nominal_perongkosan_snapshot ?? 0,
     harga_bersih_per_kg: item.harga_bersih_per_kg_snapshot,
     total_nilai_bersih: item.total_nilai_bersih_snapshot,
     plat_nomor: item.plat_nomor,
@@ -193,6 +195,7 @@ export default function KwitansiMitraPage() {
           total_fee_owner, total_nilai_bersih, plat_nomor,
           berat_netto_pabrik_kg, potongan_pabrik_kg, berat_dibayar_kg,
           pakai_sewa_armada_bl, biaya_sewa_armada_total,
+          biaya_sewa_armada_kotor, nominal_perongkosan_snapshot,
           sopir_default_nama, sopir_aktual_nama, sopir_diganti_dari_default, catatan_sopir,
           master_mitra ( id, kode, alamat, nama, fee_per_kg )
         `)
@@ -239,6 +242,7 @@ export default function KwitansiMitraPage() {
               harga_pabrik_per_kg, fee_owner_per_kg, harga_bersih_per_kg, total_fee_owner,
               berat_netto_pabrik_kg, potongan_pabrik_kg, berat_dibayar_kg,
               pakai_sewa_armada_bl, biaya_sewa_armada_total,
+              biaya_sewa_armada_kotor, nominal_perongkosan_snapshot,
               updated_at,
               master_mitra ( id, kode, alamat, nama, fee_per_kg )
             )
@@ -711,7 +715,12 @@ export default function KwitansiMitraPage() {
                             <td style={{ textAlign: 'right' }} className="table-mono">{formatRupiah(resolveHargaBersihPerKg(row))}</td>
                             <td style={{ textAlign: 'right' }} className="table-mono">
                               {formatRupiah(resolveTotalNilaiBersihMitra(row))}
-                              {sewaArmada > 0 && <div style={{ fontSize: 11, color: 'var(--color-warning)' }}>-sewa {formatRupiah(sewaArmada)}</div>}
+                              {sewaArmada > 0 && (
+                                <div style={{ fontSize: 10, color: 'var(--color-warning)', lineHeight: 1.2, marginTop: 4 }}>
+                                  -sewa {formatRupiah(row.biaya_sewa_armada_kotor)}
+                                  {row.nominal_perongkosan > 0 && <div>+ongkos {formatRupiah(row.nominal_perongkosan)}</div>}
+                                </div>
+                              )}
                             </td>
                           </tr>
                           );
@@ -1112,7 +1121,7 @@ export default function KwitansiMitraPage() {
             margin: 0 !important;
             padding: 0 !important;
             transform: none !important;
-            font-size: 10.5px !important;
+            font-size: 9.5px !important;
           }
           .kwitansi-doc-header {
             border-bottom: 1.5px dashed #111 !important;
@@ -1139,8 +1148,8 @@ export default function KwitansiMitraPage() {
           }
           .kwitansi-detail-table th,
           .kwitansi-detail-table td {
-            padding: 5px 6px !important;
-            font-size: 10px !important;
+            padding: 4px 5px !important;
+            font-size: 9px !important;
             border-bottom: 1px solid #b8b8b8 !important;
           }
           .kwitansi-group-breakdown {

@@ -13,7 +13,7 @@ import {
 } from '@/lib/display-labels';
 import { supabase } from '@/lib/supabase';
 import {
-  hitungSewaArmadaBL,
+  hitungSewaArmadaCB,
   kalkulasiTransaksiMitra,
   resolveEffectiveMitraFeeSnapshot,
 } from '@/lib/transaksi-mitra-calculations';
@@ -34,6 +34,14 @@ export default function FormPengirimanModal({ open, onClose, onSuccess, initialD
   const [successMsg, setSuccessMsg] = useState('');
   const [toast, setToast] = useState(null);
 
+  const [showQuickAddArmada, setShowQuickAddArmada] = useState(false);
+  const [savingArmada, setSavingArmada] = useState(false);
+  const [formArmadaCepat, setFormArmadaCepat] = useState({
+    nama: '',
+    plat_nomor: '',
+    is_armada_cb: false,
+  });
+
   const [form, setForm] = useState({
     tanggal: initialDate || getTodayISO(),
     sopir_id: '',
@@ -51,6 +59,8 @@ export default function FormPengirimanModal({ open, onClose, onSuccess, initialD
     berat_netto: '',
     potongan_pabrik: '0',
     pakai_sewa_armada_cb: false,
+    tarif_sewa_angkut: 0,
+    nominal_perongkosan: 0,
   });
 
   useEffect(() => {
@@ -83,7 +93,7 @@ export default function FormPengirimanModal({ open, onClose, onSuccess, initialD
         .order('nama'),
       supabase
         .from('master_mitra')
-        .select('id, kode, nama, alamat, fee_per_kg')
+        .select('id, kode, nama, alamat, fee_per_kg, tarif_sewa_angkut_per_kg, nominal_perongkosan')
         .eq('aktif', true)
         .order('kode'),
       supabase
@@ -93,7 +103,7 @@ export default function FormPengirimanModal({ open, onClose, onSuccess, initialD
         .limit(1),
       supabase
         .from('fee_owner_mitra_history')
-        .select('id, master_mitra_id, fee_per_kg, berlaku_mulai, berlaku_sampai, aktif, alasan_perubahan')
+        .select('id, master_mitra_id, fee_per_kg, tarif_sewa_angkut_per_kg, nominal_perongkosan, berlaku_mulai, berlaku_sampai, aktif, alasan_perubahan')
         .eq('aktif', true)
         .order('berlaku_mulai', { ascending: false }),
     ]);
@@ -169,10 +179,16 @@ export default function FormPengirimanModal({ open, onClose, onSuccess, initialD
     const totalNilaiBersih  = Math.round(beratDibayar * hargaBersih);
 
     const pakaiSewaArmada = form.pakai_sewa_armada_cb;
+    const isSewa = hitungSewaArmadaCB({ 
+      isArmadaCB: pakaiSewaArmada, 
+      beratNettoPabrikKg: beratNetto,
+      tarifSewaAngkut: form.tarif_sewa_angkut,
+      nominalPerongkosan: form.nominal_perongkosan
+    });
     const sewaArmada = {
-      pakaiSewaArmada,
-      biayaSewaArmadaPerKg: pakaiSewaArmada ? 150 : 0,
-      biayaSewaArmadaTotal: pakaiSewaArmada ? Math.round(beratNetto * 150) : 0,
+      pakaiSewaArmada: isSewa.pakaiSewaArmada,
+      biayaSewaArmadaKotor: isSewa.biayaSewaArmadaKotor,
+      biayaSewaArmadaTotal: isSewa.biayaSewaArmadaTotal,
     };
 
     const totalBersihMitra = totalNilaiBersih - sewaArmada.biayaSewaArmadaTotal;
@@ -191,6 +207,11 @@ export default function FormPengirimanModal({ open, onClose, onSuccess, initialD
       ...sewaArmada,
     };
   }, [form.berat_netto, form.potongan_pabrik, form.mitra_fee, form.pakai_sewa_armada_cb, latestHarga]);
+
+  const beratNettoNum = kalkulasi.beratNetto;
+  const potonganNum = kalkulasi.potongan;
+  const beratDibayarNum = kalkulasi.beratDibayar;
+  const reviewReady = beratNettoNum > 0 && form.mitra_id;
 
   // ---------------------------------------------------------------------------
   // Helpers mitra/sopir
@@ -214,6 +235,8 @@ export default function FormPengirimanModal({ open, onClose, onSuccess, initialD
       mitra_id: mitraId,
       mitra_nama: formatMitraLabel(mitra),
       mitra_fee: feeSnapshot.fee,
+      tarif_sewa_angkut: feeSnapshot.tarifSewaAngkut || 0,
+      nominal_perongkosan: feeSnapshot.nominalPerongkosan || 0,
       fee_owner_history_id: feeSnapshot.historyId,
     };
   }
@@ -244,9 +267,8 @@ export default function FormPengirimanModal({ open, onClose, onSuccess, initialD
     if (sopir) {
       const nextMitraId = form.mitra_id || sopir.mitra_id || '';
       
-      const mitraTx = mitras.find(m => m.id === nextMitraId);
-      const mitraAfiliasi = mitras.find(m => m.id === sopir.mitra_id);
-      const autoSewa = hitungSewaArmadaBL({ mitraTransaksi: mitraTx, mitraAfiliasiSopir: mitraAfiliasi, beratNettoPabrikKg: 0 }).pakaiSewaArmada;
+      const isCb = Boolean(sopir.is_armada_cb);
+      const autoSewa = hitungSewaArmadaCB({ isArmadaCB: isCb, beratNettoPabrikKg: 0 }).pakaiSewaArmada;
 
       setForm(applyMitraSnapshot({
         ...form,
@@ -281,10 +303,9 @@ export default function FormPengirimanModal({ open, onClose, onSuccess, initialD
       }, '', form.tanggal));
       return;
     }
-    const mitraTx = mitras.find(m => m.id === selectedId);
     const sopir = sopirs.find(s => s.id === form.sopir_id);
-    const mitraAfiliasi = mitras.find(m => m.id === sopir?.mitra_id);
-    const autoSewa = hitungSewaArmadaBL({ mitraTransaksi: mitraTx, mitraAfiliasiSopir: mitraAfiliasi, beratNettoPabrikKg: 0 }).pakaiSewaArmada;
+    const isCb = Boolean(sopir?.is_armada_cb);
+    const autoSewa = hitungSewaArmadaCB({ isArmadaCB: isCb, beratNettoPabrikKg: 0 }).pakaiSewaArmada;
 
     setForm(applyMitraSnapshot({ ...form, pakai_sewa_armada_cb: autoSewa }, selectedId, form.tanggal));
   }
@@ -331,6 +352,53 @@ export default function FormPengirimanModal({ open, onClose, onSuccess, initialD
   function showToast(message, type = 'error') {
     setToast({ message, type });
     setTimeout(() => setToast(null), 4000);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Quick Add Armada
+  // ---------------------------------------------------------------------------
+
+  async function handleSimpanArmadaCepat(e) {
+    e.preventDefault();
+    if (!formArmadaCepat.nama.trim() || !formArmadaCepat.plat_nomor.trim()) {
+      showToast('Nama Sopir dan Plat Nomor wajib diisi.');
+      return;
+    }
+    setSavingArmada(true);
+
+    const payload = {
+      nama: formArmadaCepat.nama.trim(),
+      plat_nomor: formArmadaCepat.plat_nomor.toUpperCase().trim(),
+      is_armada_cb: formArmadaCepat.is_armada_cb,
+    };
+
+    const { data, error } = await supabase.from('sopir').insert(payload).select().single();
+
+    if (error) {
+      showToast(`Gagal menyimpan armada: ${error.message}`);
+      setSavingArmada(false);
+      return;
+    }
+
+    setSopirs(prev => [...prev, data]);
+    
+    setForm({
+      ...form,
+      sopir_id: data.id,
+      plat_nomor: data.plat_nomor || '-',
+      mitra_id: '',
+      sopir_default_nama: data.nama,
+      sopir_aktual_mode: SOPIR_AKTUAL_DEFAULT,
+      sopir_aktual_id: data.id,
+      sopir_aktual_nama: data.nama,
+      sopir_aktual_no_hp: '',
+      catatan_sopir: '',
+      pakai_sewa_armada_cb: Boolean(data.is_armada_cb),
+    });
+
+    setFormArmadaCepat({ nama: '', plat_nomor: '', is_armada_cb: false });
+    setShowQuickAddArmada(false);
+    setSavingArmada(false);
   }
 
   // ---------------------------------------------------------------------------
@@ -418,8 +486,10 @@ export default function FormPengirimanModal({ open, onClose, onSuccess, initialD
 
       // Sewa armada CB
       pakai_sewa_armada_bl:      form.pakai_sewa_armada_cb,
-      biaya_sewa_armada_per_kg:  form.pakai_sewa_armada_cb ? k.biayaSewaArmadaPerKg : null,
-      biaya_sewa_armada_total:   form.pakai_sewa_armada_cb ? k.biayaSewaArmadaTotal : 0,
+      tarif_sewa_angkut_per_kg_snapshot: form.pakai_sewa_armada_cb ? form.tarif_sewa_angkut : 0,
+      nominal_perongkosan_snapshot:      form.pakai_sewa_armada_cb ? form.nominal_perongkosan : 0,
+      biaya_sewa_armada_kotor:           form.pakai_sewa_armada_cb ? k.biayaSewaArmadaKotor : 0,
+      biaya_sewa_armada_total:           form.pakai_sewa_armada_cb ? k.biayaSewaArmadaTotal : 0,
     });
 
     if (error) {
@@ -478,36 +548,84 @@ export default function FormPengirimanModal({ open, onClose, onSuccess, initialD
         </div>
       )}
 
-      <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-        {/* Row 1: Tanggal & Sopir/Armada */}
-        <div className="form-grid" style={{ gridTemplateColumns: '1fr 2fr' }}>
-          <div className="form-group">
-            <label className="form-label form-label-required">Tanggal</label>
-            <input
-              type="date"
-              className="form-input"
-              required
-              value={form.tanggal}
-              onChange={e => handleTanggalChange(e.target.value)}
-            />
+      {showQuickAddArmada ? (
+        <form onSubmit={handleSimpanArmadaCepat} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <div style={{ background: 'var(--bg-surface)', padding: 16, borderRadius: 8, border: '1px solid var(--border-default)' }}>
+            <h4 style={{ margin: '0 0 16px 0', fontSize: 16 }}>Tambah Armada Baru</h4>
+            <div className="form-group">
+              <label className="form-label form-label-required">Nama Sopir / Unit</label>
+              <input
+                className="form-input"
+                required
+                value={formArmadaCepat.nama}
+                onChange={e => setFormArmadaCepat({ ...formArmadaCepat, nama: e.target.value })}
+                placeholder="Contoh: Budi"
+              />
+            </div>
+            <div className="form-group">
+              <label className="form-label form-label-required">Plat Nomor</label>
+              <input
+                className="form-input form-input-mono"
+                required
+                value={formArmadaCepat.plat_nomor}
+                onChange={e => setFormArmadaCepat({ ...formArmadaCepat, plat_nomor: e.target.value.toUpperCase() })}
+                placeholder="Contoh: BM 1234 XY"
+              />
+            </div>
+            <div className="form-group">
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 14 }}>
+                <input
+                  type="checkbox"
+                  checked={formArmadaCepat.is_armada_cb}
+                  onChange={e => setFormArmadaCepat({ ...formArmadaCepat, is_armada_cb: e.target.checked })}
+                />
+                Ini adalah Armada Internal (CB)
+              </label>
+            </div>
+            <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end', marginTop: 16 }}>
+              <button type="button" className="btn btn-outline" onClick={() => setShowQuickAddArmada(false)}>Batal</button>
+              <button type="submit" className="btn btn-primary" disabled={savingArmada}>
+                {savingArmada ? 'Menyimpan...' : 'Simpan Armada'}
+              </button>
+            </div>
           </div>
+        </form>
+      ) : (
+        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          {/* Row 1: Tanggal & Sopir/Armada */}
+          <div className="form-grid" style={{ gridTemplateColumns: '1fr 2fr' }}>
+            <div className="form-group">
+              <label className="form-label form-label-required">Tanggal</label>
+              <input
+                type="date"
+                className="form-input"
+                required
+                value={form.tanggal}
+                onChange={e => handleTanggalChange(e.target.value)}
+              />
+            </div>
 
-          <div className="form-group">
-            <label className="form-label form-label-required">Sopir / Armada</label>
-            <SearchableCombobox
-              value={form.sopir_id}
-              options={prioritizedSopirs}
-              onChange={handleSopirChange}
-              getOptionLabel={formatSopirArmadaLabel}
-              getOptionDescription={formatSopirArmadaDescription}
-              getSearchText={getSopirArmadaSearchText}
-              placeholder="Cari plat nomor atau sopir..."
-              emptyLabel="Armada tidak ditemukan"
-              loading={loading}
-              disabled={false}
-            />
+            <div className="form-group">
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                <label className="form-label form-label-required" style={{ marginBottom: 0 }}>Sopir / Armada</label>
+                <button type="button" className="btn btn-ghost btn-sm" onClick={() => setShowQuickAddArmada(true)} style={{ padding: '0 8px', height: 24, fontSize: 12 }}>
+                  + Armada Baru
+                </button>
+              </div>
+              <SearchableCombobox
+                value={form.sopir_id}
+                options={prioritizedSopirs}
+                onChange={handleSopirChange}
+                getOptionLabel={formatSopirArmadaLabel}
+                getOptionDescription={formatSopirArmadaDescription}
+                getSearchText={getSopirArmadaSearchText}
+                placeholder="Cari plat nomor atau sopir..."
+                emptyLabel="Tidak ditemukan. Klik '+ Armada Baru' di atas."
+                loading={loading}
+                disabled={false}
+              />
+            </div>
           </div>
-        </div>
 
         {/* Row 2: Mitra Transaksi */}
         <div className="form-group">
@@ -565,7 +683,10 @@ export default function FormPengirimanModal({ open, onClose, onSuccess, initialD
               disabled={!siapInput}
               style={{ width: 18, height: 18 }}
             />
-            <span style={{ fontSize: 15, fontWeight: 500 }}>Pakai Armada CB (Dipotong Sewa Rp150/kg)</span>
+            <span style={{ fontSize: 15, fontWeight: 500 }}>
+              Pakai Armada CB (Dipotong Sewa Rp{form.tarif_sewa_angkut?.toLocaleString('id-ID')}/kg 
+              {form.nominal_perongkosan > 0 ? ` - perongkosan Rp${form.nominal_perongkosan?.toLocaleString('id-ID')}` : ''})
+            </span>
           </label>
         </div>
 
@@ -714,7 +835,10 @@ export default function FormPengirimanModal({ open, onClose, onSuccess, initialD
                 <span style={{ color: 'var(--text-tertiary)', fontSize: 14 }}>Sewa Armada CB:</span>
                 <span style={{ fontWeight: 600, color: 'var(--color-danger)', textAlign: 'right' }}>
                   - {formatRupiah(kalkulasi.biayaSewaArmadaTotal)}
-                  <div style={{ fontSize: 12, color: 'var(--text-tertiary)', fontWeight: 400 }}>({formatRupiah(kalkulasi.biayaSewaArmadaPerKg)}/kg neto)</div>
+                  <div style={{ fontSize: 12, color: 'var(--text-tertiary)', fontWeight: 400 }}>
+                    ({formatRupiah(form.tarif_sewa_angkut)}/kg neto
+                    {form.nominal_perongkosan > 0 ? ` - perongkosan ${formatRupiah(form.nominal_perongkosan)}` : ''})
+                  </div>
                 </span>
               </div>
             )}
@@ -724,7 +848,8 @@ export default function FormPengirimanModal({ open, onClose, onSuccess, initialD
               <span style={{ fontWeight: 800, color: 'var(--color-success)', fontSize: 18, textAlign: 'right' }}>
                 {formatRupiah(kalkulasi.totalBersihMitra)}
                 <div style={{ fontSize: 13, fontWeight: 500 }}>
-                  ({formatRupiah(kalkulasi.hargaBersih - kalkulasi.biayaSewaArmadaPerKg)}/kg)
+                  ({formatRupiah(kalkulasi.hargaBersih)}/kg bersih
+                  {kalkulasi.pakaiSewaArmada ? ' dipotong armada' : ''})
                 </div>
               </span>
             </div>
@@ -745,6 +870,7 @@ export default function FormPengirimanModal({ open, onClose, onSuccess, initialD
           </button>
         </div>
       </form>
+      )}
     </Modal>
   );
 }

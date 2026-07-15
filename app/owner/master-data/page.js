@@ -49,6 +49,8 @@ export default function MitraPage() {
     alamat: '',
     tipe_mitra: MITRA_TYPES.EKSTERNAL,
     fee_per_kg: 0,
+    tarif_sewa_angkut_per_kg: 0,
+    nominal_perongkosan: 0,
     fee_berlaku_mulai: getTodayISO(),
     fee_alasan: '',
   });
@@ -79,6 +81,8 @@ export default function MitraPage() {
       alamat: '',
       tipe_mitra: MITRA_TYPES.EKSTERNAL,
       fee_per_kg: 0,
+      tarif_sewa_angkut_per_kg: 0,
+      nominal_perongkosan: 0,
       fee_berlaku_mulai: getTodayISO(),
       fee_alasan: '',
     });
@@ -100,6 +104,8 @@ export default function MitraPage() {
       alamat: item.alamat || '',
       tipe_mitra: item.tipe_mitra || MITRA_TYPES.EKSTERNAL,
       fee_per_kg: item.fee_per_kg || 0,
+      tarif_sewa_angkut_per_kg: item.tarif_sewa_angkut_per_kg || 0,
+      nominal_perongkosan: item.nominal_perongkosan || 0,
       fee_berlaku_mulai: getTodayISO(),
       fee_alasan: '',
     });
@@ -121,6 +127,9 @@ export default function MitraPage() {
     setSaving(true);
 
     const feePerKg = parseFloat(formMitra.fee_per_kg) || 0;
+    const tarifSewaAngkut = parseFloat(formMitra.tarif_sewa_angkut_per_kg) || 0;
+    const nominalPerongkosan = parseFloat(formMitra.nominal_perongkosan) || 0;
+    
     const payload = {
       kode: formMitra.kode,
       nama: formMitra.nama,
@@ -129,6 +138,8 @@ export default function MitraPage() {
       alamat: formMitra.alamat || null,
       tipe_mitra: formMitra.tipe_mitra || MITRA_TYPES.EKSTERNAL,
       fee_per_kg: feePerKg,
+      tarif_sewa_angkut_per_kg: tarifSewaAngkut,
+      nominal_perongkosan: nominalPerongkosan,
     };
     let savedMitraId = editingId;
     let historyFailed = false;
@@ -156,8 +167,10 @@ export default function MitraPage() {
         .upsert({
           master_mitra_id: savedMitraId,
           fee_per_kg: feePerKg,
+          tarif_sewa_angkut_per_kg: tarifSewaAngkut,
+          nominal_perongkosan: nominalPerongkosan,
           berlaku_mulai: formMitra.fee_berlaku_mulai || getTodayISO(),
-          alasan_perubahan: formMitra.fee_alasan || 'Update Fee Owner dari Mitra',
+          alasan_perubahan: formMitra.fee_alasan || 'Update Tarif dari Master Mitra',
           aktif: true,
         }, { onConflict: 'master_mitra_id,berlaku_mulai' });
 
@@ -379,6 +392,16 @@ export default function MitraPage() {
                 <div className="form-group">
                   <label className="form-label">Fee Owner (Rp/Kg)</label>
                   <input type="number" className="form-input" value={formMitra.fee_per_kg} onChange={e => setFormMitra({ ...formMitra, fee_per_kg: e.target.value })} />
+                </div>
+                <div className="form-grid">
+                  <div className="form-group">
+                    <label className="form-label">Tarif Sewa Angkut (Rp/Kg)</label>
+                    <input type="number" className="form-input" value={formMitra.tarif_sewa_angkut_per_kg} onChange={e => setFormMitra({ ...formMitra, tarif_sewa_angkut_per_kg: e.target.value })} />
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label">Nominal Perongkosan (Rp/Trip)</label>
+                    <input type="number" className="form-input" value={formMitra.nominal_perongkosan} onChange={e => setFormMitra({ ...formMitra, nominal_perongkosan: e.target.value })} />
+                  </div>
                 </div>
                 <div className="form-grid">
                   <div className="form-group">

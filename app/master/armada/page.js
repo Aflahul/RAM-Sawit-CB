@@ -44,6 +44,7 @@ export default function ArmadaPage() {
     no_hp: '',
     mitra_id: '',
     plat_nomor: '',
+    is_armada_cb: false,
   });
 
   const loadData = useCallback(async () => {
@@ -75,7 +76,7 @@ export default function ArmadaPage() {
   }, [loadData]);
 
   function resetForm() {
-    setFormArmada({ nama: '', no_hp: '', mitra_id: '', plat_nomor: '' });
+    setFormArmada({ nama: '', no_hp: '', mitra_id: '', plat_nomor: '', is_armada_cb: false });
   }
 
   function openNew() {
@@ -91,6 +92,7 @@ export default function ArmadaPage() {
       no_hp: item.no_hp || '',
       mitra_id: item.mitra_id || '',
       plat_nomor: item.plat_nomor || '',
+      is_armada_cb: Boolean(item.is_armada_cb),
     });
     setShowModal(true);
   }
@@ -114,6 +116,7 @@ export default function ArmadaPage() {
       no_hp: formArmada.no_hp || null,
       mitra_id: formArmada.mitra_id || null,
       plat_nomor: formArmada.plat_nomor || null,
+      is_armada_cb: Boolean(formArmada.is_armada_cb),
     };
 
     if (editingId) {
@@ -246,7 +249,12 @@ export default function ArmadaPage() {
                   <td style={{ fontWeight: 600 }}>{armada.nama}</td>
                   <td className="table-mono">{armada.plat_nomor || '-'}</td>
                   <td className="table-mono">{armada.no_hp || '-'}</td>
-                  <td><span className="badge badge-blue">{armada.master_mitra ? formatMitraLabel(armada.master_mitra) : '-'}</span></td>
+                  <td>
+                    {armada.is_armada_cb && (
+                      <span className="badge badge-warning" style={{ marginRight: 8 }}>Internal CB</span>
+                    )}
+                    <span className="badge badge-blue">{armada.master_mitra ? formatMitraLabel(armada.master_mitra) : '-'}</span>
+                  </td>
                   <td style={{ textAlign: 'center' }}>
                     <button className="btn btn-ghost btn-sm" onClick={() => openEdit(armada)} aria-label={`Edit ${armada.nama}`}>
                       <Pencil size={16} />
@@ -321,6 +329,19 @@ export default function ArmadaPage() {
                     placeholder="Tanpa default / cari mitra..."
                     emptyLabel="Mitra tidak ditemukan"
                   />
+                  <div style={{ marginTop: 16 }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 14 }}>
+                      <input
+                        type="checkbox"
+                        checked={formArmada.is_armada_cb}
+                        onChange={e => setFormArmada({ ...formArmada, is_armada_cb: e.target.checked })}
+                      />
+                      Ini adalah Armada Internal (CB)
+                    </label>
+                    <div style={{ fontSize: 12, color: 'var(--text-tertiary)', marginTop: 4, marginLeft: 21 }}>
+                      Armada dengan centang ini akan otomatis memicu potongan Sewa Armada ke mitra yang bertransaksi.
+                    </div>
+                  </div>
                 </div>
               </div>
               <div className="modal-footer">
