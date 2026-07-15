@@ -635,23 +635,15 @@ export default function KwitansiMitraPage() {
             <div className="kwitansi-header-info">
               <div className="kwitansi-title-block">
                 <h1 className="kwitansi-title">
-                  <span>KWITANSI</span>
-                  <span>PEMBAYARAN TBS</span>
+                  <span>KWITANSI PEMBAYARAN TBS</span>
                 </h1>
                 <p className="kwitansi-brand-name">{branding.appName}</p>
               </div>
-              <div className="kwitansi-recipient">
-                <div style={{ fontSize: 14, color: 'var(--text-secondary)' }}>{isCombinedReceipt ? 'Penerima Gabungan:' : 'Mitra:'}</div>
-                <h2>{recipientLabel || '-'}</h2>
-                <div style={{ fontSize: 14, color: 'var(--text-secondary)', marginTop: 4 }}>
-                  Periode: {displayPeriode}
+              {payment && (
+                <div className="kwitansi-paid-stamp" style={{ marginLeft: 'auto' }}>
+                  {paymentReview.status === 'perlu_review' ? 'PERLU REVIEW' : 'SUDAH DIBAYAR'}
                 </div>
-                {payment && (
-                  <div className="kwitansi-paid-stamp">
-                    {paymentReview.status === 'perlu_review' ? 'PERLU REVIEW' : 'SUDAH DIBAYAR'}
-                  </div>
-                )}
-              </div>
+              )}
             </div>
           </div>
 
@@ -666,6 +658,7 @@ export default function KwitansiMitraPage() {
                   <div className="kwitansi-group-header">
                     <div>
                       <h3>{group.label}</h3>
+                      <div style={{ color: 'var(--text-secondary)', fontSize: 13, marginTop: 4, fontWeight: 600 }}>Periode: {displayPeriode}</div>
                       <p>{group.rows.length} transaksi, total tonase {formatNumber(group.totalTonase)} Kg</p>
                     </div>
                     <div className="kwitansi-group-subtotal">
@@ -715,12 +708,6 @@ export default function KwitansiMitraPage() {
                             <td style={{ textAlign: 'right' }} className="table-mono">{formatRupiah(resolveHargaBersihPerKg(row))}</td>
                             <td style={{ textAlign: 'right' }} className="table-mono">
                               {formatRupiah(resolveTotalNilaiBersihMitra(row))}
-                              {sewaArmada > 0 && (
-                                <div style={{ fontSize: 10, color: 'var(--color-warning)', lineHeight: 1.2, marginTop: 4 }}>
-                                  -sewa {formatRupiah(row.biaya_sewa_armada_kotor)}
-                                  {row.nominal_perongkosan > 0 && <div>+ongkos {formatRupiah(row.nominal_perongkosan)}</div>}
-                                </div>
-                              )}
                             </td>
                           </tr>
                           );
@@ -742,12 +729,21 @@ export default function KwitansiMitraPage() {
                       <span>Nilai bersih mitra</span>
                       <strong>{formatRupiah(group.totalNilaiBersih)}</strong>
                     </div>
-                    {(group.totalSewaArmada || 0) > 0 && (
-                      <div>
-                        <span>Sewa Armada CB</span>
-                        <strong className="danger-text">- {formatRupiah(group.totalSewaArmada)}</strong>
-                      </div>
-                    )}
+                    {(group.totalSewaArmada || 0) > 0 && (() => {
+                      const totalSewaKotor = group.rows.reduce((sum, row) => sum + (row.biaya_sewa_armada_kotor || 0), 0);
+                      const totalOngkos = group.rows.reduce((sum, row) => sum + (row.nominal_perongkosan || 0), 0);
+                      const tarifSewa = group.rows[0]?.tarif_sewa_angkut_per_kg || 0;
+                      return (
+                        <div>
+                          <span>Sewa Armada CB</span>
+                          <strong className="danger-text">- {formatRupiah(group.totalSewaArmada)}</strong>
+                          <div style={{ fontSize: 11, color: 'var(--text-tertiary)', marginTop: 4, lineHeight: 1.3 }}>
+                            Rincian: ({formatNumber(group.totalTonase)} kg x {formatRupiah(tarifSewa)})<br/>
+                            - Perongkosan {formatRupiah(totalOngkos)}
+                          </div>
+                        </div>
+                      );
+                    })()}
                     <div>
                       <span>Panjar mitra ini</span>
                       <strong className="danger-text">- {formatRupiah(group.totalPanjar)}</strong>
@@ -778,12 +774,21 @@ export default function KwitansiMitraPage() {
                     <span>Total Nilai Bersih TBS</span>
                     <strong className="table-mono">{formatRupiah(displayTotalNilaiBersih)}</strong>
                   </div>
-                  {displayTotalSewaArmada > 0 && (
-                    <div>
-                      <span>Potongan Sewa Armada CB</span>
-                      <strong className="table-mono danger-text">- {formatRupiah(displayTotalSewaArmada)}</strong>
-                    </div>
-                  )}
+                  {displayTotalSewaArmada > 0 && (() => {
+                    const totalSewaKotor = kwitansiRows.reduce((sum, row) => sum + (row.biaya_sewa_armada_kotor || 0), 0);
+                    const totalOngkos = kwitansiRows.reduce((sum, row) => sum + (row.nominal_perongkosan || 0), 0);
+                    return (
+                      <div>
+                        <span>
+                          Potongan Sewa Armada CB
+                          <div style={{ fontSize: 11, color: 'var(--text-tertiary)', marginTop: 2, fontWeight: 'normal' }}>
+                            Kotor {formatRupiah(totalSewaKotor)} - Ongkos {formatRupiah(totalOngkos)}
+                          </div>
+                        </span>
+                        <strong className="table-mono danger-text">- {formatRupiah(displayTotalSewaArmada)}</strong>
+                      </div>
+                    );
+                  })()}
                   <div>
                     <span>Potongan Panjar Mitra</span>
                     <strong className="table-mono danger-text">- {formatRupiah(displayTotalPanjar)}</strong>
@@ -1046,10 +1051,11 @@ export default function KwitansiMitraPage() {
           .toolbar.no-print.card {
             grid-template-columns: 1fr !important;
           }
-          .kwitansi-doc-header,
-          .kwitansi-header-info,
           .kwitansi-group-header {
             flex-direction: column;
+          }
+          .kwitansi-header-info {
+            align-items: center;
           }
           .kwitansi-recipient {
             max-width: none;
@@ -1127,6 +1133,9 @@ export default function KwitansiMitraPage() {
             border-bottom: 1.5px dashed #111 !important;
             padding-bottom: 12px !important;
             margin-bottom: 12px !important;
+            display: flex !important;
+            flex-direction: row !important;
+            align-items: center !important;
           }
           .kwitansi-logo {
             width: 90px !important;
