@@ -631,6 +631,7 @@ export default function LaporanMitraPage() {
         .laporan-filter-card {
           margin: 0 auto var(--space-lg) auto;
           padding: var(--space-sm);
+          overflow: hidden;
         }
         .laporan-filter-grid {
           display: grid;
@@ -792,14 +793,17 @@ export default function LaporanMitraPage() {
         @media (min-width: 768px) {
           .laporan-filter-card {
             padding: var(--space-md);
+            overflow-x: auto;
           }
           .laporan-filter-grid {
-            grid-template-columns: minmax(145px, 0.7fr) minmax(145px, 0.7fr) minmax(260px, 1.4fr) minmax(150px, 0.7fr) minmax(150px, 0.7fr);
-            gap: 24px;
+            grid-template-columns: 1fr 1fr 1.8fr 1fr 1fr;
+            gap: 12px;
+            min-width: 0;
           }
           .date-filter-item {
             justify-content: flex-start;
             gap: 12px;
+            min-width: 0;
           }
           .date-filter-label {
             font-size: 13px;
