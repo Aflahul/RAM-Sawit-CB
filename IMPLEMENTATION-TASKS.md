@@ -1028,3 +1028,13 @@ Task yang Menunggu Keputusan:
 - [ ] Menentukan opsi pencatatan: **Real-time Kas Keluar di form Input Timbangan** ATAU **Modul Khusus Pencairan Gaji/Perongkosan Mingguan**.
 - [ ] Membuat RPC atau *trigger* untuk memotong `kas_ledger` dengan nilai `nominal_perongkosan` secara otomatis sesuai opsi yang dipilih.
 - [ ] Memastikan pemotongan kas perongkosan ini tidak menduplikasi *record* jika menggunakan modul terpisah.
+
+### Implementasi Sewa Armada Dinamis & Perongkosan (Selesai - 15 Juli 2026)
+
+- [x] Migration penambahan kolom `tarif_sewa_angkut_per_kg` dan `nominal_perongkosan` pada `master_mitra`, `fee_owner_mitra_history`, dan `transaksi_mitra` (`20260715075100_add_dynamic_sewa_armada.sql`).
+- [x] Perhitungan biaya akhir armada: `(berat_netto * tarif_sewa_angkut) - nominal_perongkosan`.
+- [x] Update form Input Timbangan untuk membaca tarif dinamis berdasarkan afiliasi mitra.
+- [x] Update Kwitansi Mitra untuk menampilkan rincian kolom Sewa Angkut dan Perongkosan.
+- [x] Update halaman Pendapatan Owner Bruto menggunakan perhitungan Sewa Armada Bersih.
+- [x] Update halaman Master Data Mitra untuk mengatur nilai Tarif Sewa Angkut dan Perongkosan.
+- [x] Tampilan Master Data Mitra disempurnakan (merge kolom Kode + Nama, Penanggung Jawab + No HP, Tipe di-hide).
