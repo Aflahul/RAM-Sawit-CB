@@ -156,6 +156,64 @@ export default function LaporanArmadaCBPage() {
   const canPay = canManageFinance(userRole);
   const canSeeMargin = canViewProfit(userRole);
 
+  const armadaSummaries = useMemo(() => {
+    const rowsByArmada = new Map();
+    const visibleArmadas = selectedArmada === 'semua'
+      ? armadas
+      : armadas.filter(armada => armada.id === selectedArmada);
+
+    visibleArmadas.forEach(armada => {
+      rowsByArmada.set(armada.id, {
+        id: armada.id,
+        platNomor: armada.plat_nomor || '-',
+        sopir: armada.nama || '-',
+        trip: 0,
+        muatan: 0,
+        sewa: 0,
+        danaTrip: 0,
+        danaDibayar: 0,
+        biayaLain: 0,
+      });
+    });
+
+    transactions.forEach(transaction => {
+      const key = transaction.sopir_id;
+      if (!key) return;
+      const current = rowsByArmada.get(key) || {
+        id: key,
+        platNomor: transaction.plat_nomor || '-',
+        sopir: transaction.sopir_default_nama || transaction.sopir_aktual_nama || '-',
+        trip: 0,
+        muatan: 0,
+        sewa: 0,
+        danaTrip: 0,
+        danaDibayar: 0,
+        biayaLain: 0,
+      };
+      const danaTrip = resolveDanaOperasionalTrip(transaction);
+      current.trip += 1;
+      current.muatan += toNumber(transaction.berat_netto_pabrik_kg ?? transaction.tonase);
+      current.sewa += toNumber(transaction.biaya_sewa_armada_kotor ?? transaction.biaya_sewa_armada_total);
+      current.danaTrip += danaTrip;
+      if (transaction.biaya_sopir_dibayar_at) current.danaDibayar += danaTrip;
+      rowsByArmada.set(key, current);
+    });
+
+    expenses.forEach(expense => {
+      if (['gaji_sopir', 'dana_operasional_trip'].includes(expense.kategori)) return;
+      const current = rowsByArmada.get(expense.armada_sopir_id);
+      if (current) current.biayaLain += toNumber(expense.jumlah);
+    });
+
+    return [...rowsByArmada.values()]
+      .map(row => ({
+        ...row,
+        danaBelumDibayar: Math.max(row.danaTrip - row.danaDibayar, 0),
+        margin: row.sewa - row.danaTrip - row.biayaLain,
+      }))
+      .sort((a, b) => b.muatan - a.muatan || b.trip - a.trip || a.platNomor.localeCompare(b.platNomor, 'id'));
+  }, [armadas, expenses, selectedArmada, transactions]);
+
   function showToast(message, type = 'success') {
     setToast({ message, type });
     setTimeout(() => setToast(null), type === 'error' ? 5000 : 3000);
@@ -172,12 +230,12 @@ export default function LaporanArmadaCBPage() {
     setPaying(false);
 
     if (error) {
-      showToast(`Gagal membayar sopir: ${error.message}`, 'error');
+      showToast(`Gagal membayar Dana Operasional Trip: ${error.message}`, 'error');
       return;
     }
 
     setPayTarget(null);
-    showToast('Pembayaran sopir tercatat di Buku Kas dan Biaya Operasional.');
+    showToast('Dana Operasional Trip tercatat di Buku Kas dan Biaya Operasional.');
     await loadData();
   }
 
@@ -240,7 +298,7 @@ export default function LaporanArmadaCBPage() {
   }
 
   return (
-    <AppShell title="Laporan Armada CB" subtitle="Trip, sewa masuk, dan biaya sopir per armada">
+    <AppShell title="Laporan Armada CB" subtitle="Muatan, trip, pendapatan sewa, dan biaya per armada">
       {toast && (
         <div className="toast-container"><div className={`toast toast-${toast.type}`}><span>{toast.message}</span></div></div>
       )}
@@ -286,7 +344,56 @@ export default function LaporanArmadaCBPage() {
         </div>
       )}
 
-      <div className="table-container" style={{ marginTop: 'var(--space-lg)' }}>
+      <div style={{ marginTop: 'var(--space-xl)' }}>
+        <div className="page-header" style={{ marginBottom: 'var(--space-md)' }}>
+          <div>
+            <h2 style={{ margin: 0, fontSize: 20 }}>Rekap per Armada</h2>
+            <div className="text-tertiary text-sm" style={{ marginTop: 4 }}>Perbandingan semua Armada CB pada periode yang dipilih.</div>
+          </div>
+        </div>
+        <div className="table-container">
+          <table className="table">
+            <thead>
+              <tr>
+                <th>Armada / Sopir</th>
+                <th style={{ textAlign: 'right' }}>Trip</th>
+                <th style={{ textAlign: 'right' }}>Muatan</th>
+                <th style={{ textAlign: 'right' }}>Sewa Masuk</th>
+                <th style={{ textAlign: 'right' }}>Dana Trip</th>
+                <th style={{ textAlign: 'right' }}>Belum Dibayar</th>
+                {canSeeMargin && <th style={{ textAlign: 'right' }}>Biaya Lain</th>}
+                {canSeeMargin && <th style={{ textAlign: 'right' }}>Margin</th>}
+                {selectedArmada === 'semua' && <th style={{ textAlign: 'center' }}>Aksi</th>}
+              </tr>
+            </thead>
+            <tbody>
+              {loading ? (
+                <tr><td colSpan={canSeeMargin ? (selectedArmada === 'semua' ? 9 : 8) : (selectedArmada === 'semua' ? 7 : 6)}>Memuat rekap armada...</td></tr>
+              ) : armadaSummaries.length === 0 ? (
+                <tr><td colSpan={canSeeMargin ? (selectedArmada === 'semua' ? 9 : 8) : (selectedArmada === 'semua' ? 7 : 6)}>Belum ada Armada CB aktif.</td></tr>
+              ) : armadaSummaries.map(row => (
+                <tr key={row.id}>
+                  <td><strong className="table-mono">{row.platNomor}</strong><div className="text-tertiary text-xs">{row.sopir}</div></td>
+                  <td className="table-mono" style={{ textAlign: 'right' }}>{row.trip.toLocaleString('id-ID')}</td>
+                  <td className="table-mono" style={{ textAlign: 'right' }}>{row.muatan.toLocaleString('id-ID')} kg</td>
+                  <td className="table-mono text-success" style={{ textAlign: 'right' }}>{formatRupiah(row.sewa)}</td>
+                  <td className="table-mono" style={{ textAlign: 'right' }}>{formatRupiah(row.danaTrip)}</td>
+                  <td className="table-mono text-warning" style={{ textAlign: 'right' }}>{formatRupiah(row.danaBelumDibayar)}</td>
+                  {canSeeMargin && <td className="table-mono" style={{ textAlign: 'right' }}>{formatRupiah(row.biayaLain)}</td>}
+                  {canSeeMargin && <td className={`table-mono ${row.margin >= 0 ? 'text-success' : 'text-danger'}`} style={{ textAlign: 'right', fontWeight: 700 }}>{formatRupiah(row.margin)}</td>}
+                  {selectedArmada === 'semua' && <td style={{ textAlign: 'center' }}><button className="btn btn-outline btn-sm" onClick={() => setSelectedArmada(row.id)}>Lihat Detail</button></td>}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div style={{ marginTop: 'var(--space-xl)', marginBottom: 'var(--space-md)' }}>
+        <h2 style={{ margin: 0, fontSize: 20 }}>Rincian Trip</h2>
+        <div className="text-tertiary text-sm" style={{ marginTop: 4 }}>Daftar pengiriman yang membentuk rekap di atas.</div>
+      </div>
+      <div className="table-container">
         <table className="table">
           <thead>
             <tr>

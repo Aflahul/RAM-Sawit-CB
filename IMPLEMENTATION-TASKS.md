@@ -1060,6 +1060,7 @@ Task P1:
 
 Task P2:
 - [x] Buat laporan per truk/per bulan: total trip, total muatan, sewa masuk, Dana Operasional Trip, biaya operasional lain, dan margin.
+- [x] Tambahkan tabel rekap semua Armada CB per periode lengkap dengan aksi menuju rincian tiap plat.
 - [x] Tambahkan pilihan Armada CB pada biaya operasional manual seperti ganti oli.
 - [x] Batasi margin/profit Armada CB untuk owner/super admin; admin keuangan hanya melihat antrean pembayaran dan data operasional.
 

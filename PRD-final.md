@@ -2029,6 +2029,7 @@ Pada fase ini aplikasi bisa dianggap utuh dan matang, bukan hanya sistem operasi
 - Ekspor Excel settlement mitra.
 - Dashboard owner dengan margin per sumber.
 - Laporan profit Armada CB per truk/bulan: total trip, total muatan, sewa masuk, Dana Operasional Trip, biaya operasional lain, dan margin.
+- Tampilan Semua Armada menyediakan rekap per plat untuk membandingkan produktivitas armada dalam satu layar.
 - Template WhatsApp otomatis untuk bukti pembayaran.
 - Rekonsiliasi lanjutan selisih timbang mitra vs pabrik.
 

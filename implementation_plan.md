@@ -50,6 +50,7 @@ P0 adalah koreksi fondasi karena memengaruhi angka kwitansi, pendapatan owner, d
 ### P2 - Add-on Laporan Profit Armada
 
 - Laporan per truk/per bulan: total trip, total muatan, sewa masuk, Dana Operasional Trip, biaya operasional lain, dan margin.
+- Saat memilih Semua Armada, tampilkan rekap per plat agar owner bisa membandingkan jumlah trip, total muatan, dan margin tanpa mengganti filter satu per satu.
 
 ## Alur UX Target
 
