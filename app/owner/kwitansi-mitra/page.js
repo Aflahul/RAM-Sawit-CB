@@ -972,7 +972,7 @@ export default function KwitansiMitraPage() {
         .kwitansi-total-row {
           display: flex;
           justify-content: flex-end;
-          margin-top: 24px;
+          margin-top: 12px;
         }
         .kwitansi-total-box {
           width: min(440px, 100%);
@@ -1137,7 +1137,7 @@ export default function KwitansiMitraPage() {
             border-radius: 4px !important;
           }
           .kwitansi-total-row {
-            margin-top: 12px !important;
+            margin-top: 4px !important;
           }
           .kwitansi-total-box {
             width: 440px !important;
