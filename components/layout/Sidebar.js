@@ -52,6 +52,7 @@ const menuSections = [
     title: 'Laporan',
     items: [
       { href: '/owner/laporan-mitra', icon: <FileText size={20} />, label: 'Laporan Mitra' },
+      { href: '/owner/laporan-armada-cb', icon: <Truck size={20} />, label: 'Laporan Armada CB', armadaReport: true },
       { href: '/laporan/petani', icon: <Users size={20} />, label: 'Laporan Petani', badge: 'comingsoon' },
       { href: '/laporan/stok', icon: <Box size={20} />, label: 'Stok Lokal', badge: 'comingsoon' },
       { href: '/owner/pendapatan-owner', icon: <BadgeDollarSign size={20} />, label: 'Pendapatan Owner Bruto', profitOnly: true },
@@ -67,6 +68,7 @@ const menuSections = [
 ];
 
 function canSeeMenuItem(item, role) {
+  if (item.armadaReport) return canManageFinance(role) || canViewProfit(role);
   if (item.profitOnly) return canViewProfit(role);
   if (item.settingsOnly) return canManageBusinessSettings(role);
   if (item.financeOnly) return canManageFinance(role);

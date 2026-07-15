@@ -199,7 +199,7 @@ Gap utama: pencocokan stok lokal ke transaksi mitra internal, bukti pembayaran p
 8. Sistem membuat snapshot pembayaran, kas keluar, dan potongan panjar.
 9. Kwitansi dicetak/dikirim WhatsApp.
 
-Gap utama: settlement per DO berbasis pembayaran pabrik, selisih tonase mitra vs pabrik, biaya bantuan mitra, tarif armada perusahaan, dan status revisi kwitansi yang lebih lengkap.
+Gap utama: settlement per DO berbasis pembayaran pabrik, selisih tonase mitra vs pabrik, biaya bantuan mitra, sewa Armada CB, biaya sopir CB, dan status revisi kwitansi yang lebih lengkap.
 
 ### 7.3 Alur C - Armada Internal sebagai Mitra
 
@@ -246,9 +246,11 @@ Alur target pencatatan laba:
 8. Sistem membuat kas keluar `pembayaran_mitra` dan snapshot item kwitansi.
 9. Laba/Rugi menghitung laba kas dari ledger dan menandai data yang belum lengkap dicocokkan.
 
-### 7.4.1 Scope Urgent - Berat Netto, Potongan Pabrik, dan Sewa Armada BL/SL
+### 7.4.1 Scope Urgent - Berat Netto, Potongan Pabrik, dan Armada CB
 
-Status: **Urgent / P0**. Aturan ini harus dibereskan sebelum angka pendapatan owner, kwitansi mitra, dan laba/rugi dianggap final.
+Status: **Urgent / P0 untuk koreksi alur dan field utama**. Tracking upah sopir, uang jalan, dan laporan profit armada adalah **add-on P1/P2** di bawah payung yang sama.
+
+Tujuan besarnya: Pengiriman Mitra harus menjadi satu pintu untuk mencatat muatan ke pabrik, menghitung hak mitra, memotong sewa Armada CB jika armada CB dipakai, lalu menjadi dasar kwitansi, kas, laba/rugi, dan laporan armada.
 
 Bahasa admin yang dipakai:
 
@@ -257,6 +259,8 @@ Bahasa admin yang dipakai:
 - **Berat Dibayar**: berat yang dipakai untuk menghitung pembayaran, yaitu Berat Netto dari Pabrik dikurangi Potongan Pabrik.
 - **Harga Pabrik/TWB**: harga pabrik aktif yang diset di Dashboard.
 - **Fee Owner/kg**: bagian owner per kg yang dipotong dari harga pabrik sebelum menghitung hak mitra.
+- **Mitra Transaksi**: pihak mitra yang punya muatan dan akan masuk kwitansi.
+- **Armada CB**: sopir/plat milik CB. Armada CB tidak wajib punya mitra default atau afiliasi mitra.
 
 Rumus yang wajib dipakai:
 
@@ -264,21 +268,24 @@ Rumus yang wajib dipakai:
 Berat Dibayar = Berat Netto dari Pabrik - Potongan Pabrik
 Nilai Bersih Mitra = Berat Dibayar x (Harga Pabrik/TWB - Fee Owner/kg)
 Fee Owner Dasar = Berat Dibayar x Fee Owner/kg
+Sewa Armada CB = Berat Netto dari Pabrik x Tarif Sewa Armada/kg
 ```
 
-Catatan istilah penting: rumus `Berat Dibayar x (Harga Pabrik - Fee Owner)` lebih tepat disebut **Nilai Bersih Mitra** atau uang yang menjadi dasar pembayaran mitra. Pendapatan owner yang murni dari fee tetap dihitung dari `Fee Owner Dasar`. Jika ada biaya sewa armada, itu ditampilkan sebagai komponen terpisah agar admin tidak bingung.
+Catatan istilah penting: rumus `Berat Dibayar x (Harga Pabrik - Fee Owner)` lebih tepat disebut **Nilai Bersih Mitra** atau uang yang menjadi dasar pembayaran mitra. Pendapatan owner yang murni dari fee tetap dihitung dari `Fee Owner Dasar`. Jika ada sewa Armada CB, uang sewa itu ditampilkan sebagai potongan/tagihan terpisah ke mitra dan menjadi pemasukan CB.
 
-Aturan sewa armada BL/SL:
+Aturan sewa Armada CB:
 
 ```text
-Biaya Sewa Armada = Rp150 x Berat Netto dari Pabrik
+Sewa Armada CB = Tarif Sewa Armada/kg x Berat Netto dari Pabrik
 ```
 
 Aturan ini berlaku jika:
 
-1. Mitra transaksi bukan BL dan bukan SL.
-2. Armada/sopir yang dipakai berafiliasi dengan mitra BL atau SL.
-3. Biaya dihitung memakai Berat Netto dari Pabrik, bukan Berat Dibayar setelah potongan.
+1. Sopir/plat yang dipilih berstatus Armada CB (`sopir.is_armada_cb = true`).
+2. Armada CB boleh tidak punya `mitra_id` atau mitra default.
+3. Admin tetap wajib memilih Mitra Transaksi karena kwitansi dan pembayaran mitra mengikuti pihak pemilik muatan, bukan pemilik armada.
+4. Biaya sewa dihitung memakai Berat Netto dari Pabrik, bukan Berat Dibayar setelah potongan.
+5. Uang sewa armada tidak dikurangi uang jalan/perongkosan. Uang jalan dan upah sopir adalah biaya CB ke sopir, bukan pengurang sewa yang dipotong dari mitra.
 
 Contoh awam:
 
@@ -287,13 +294,12 @@ Berat netto pabrik: 10.000 kg
 Potongan pabrik: 200 kg
 Harga pabrik/TWB: Rp2.910/kg
 Fee owner: Rp30/kg
+Tarif sewa Armada CB: Rp150/kg
 
 Berat dibayar = 10.000 - 200 = 9.800 kg
 Nilai bersih mitra = 9.800 x (2.910 - 30)
 Fee owner dasar = 9.800 x 30
-
-Jika mitra luar memakai armada BL/SL:
-Biaya sewa armada = 10.000 x 150
+Sewa Armada CB = 10.000 x 150
 ```
 
 Keputusan data:
@@ -301,6 +307,11 @@ Keputusan data:
 - Kolom lama `tonase` tidak langsung dihapus agar data lama dan laporan lama tidak rusak.
 - `tonase` selama masa transisi dibaca sebagai Berat Netto dari Pabrik.
 - Tambahkan kolom baru non-destruktif di `transaksi_mitra`: `berat_netto_pabrik_kg`, `potongan_pabrik_kg`, `berat_dibayar_kg`, `biaya_sewa_armada_per_kg`, `biaya_sewa_armada_total`, dan penanda apakah biaya sewa armada berlaku.
+- `sopir.mitra_id` harus tetap opsional. Untuk armada mitra, field ini boleh menjadi default mitra. Untuk Armada CB, field ini boleh kosong.
+- `sopir.is_armada_cb` menjadi penanda utama apakah plat/sopir adalah Armada CB.
+- Jangan menghidupkan kembali `armada_perusahaan` sebagai tabel aktif baru. Armada aktif tetap dikelola lewat `sopir`, `plat_nomor`, dan `is_armada_cb` sampai ada alasan kuat untuk membuat tabel baru yang bersih.
+- Nama `pakai_sewa_armada_bl` boleh dipertahankan sementara sebagai field legacy, tetapi istilah UI dan helper baru harus menyebut Armada CB.
+- `nominal_perongkosan` tidak boleh lagi dimaknai sebagai pengurang sewa armada. Untuk pengembangan berikutnya, uang jalan sopir harus dipisah menjadi biaya sopir CB, misalnya `uang_jalan_sopir_cb_snapshot`.
 - Backfill data lama: `berat_netto_pabrik_kg = tonase`, `potongan_pabrik_kg = 0`, `berat_dibayar_kg = tonase`, dan `biaya_sewa_armada_total = 0`.
 - Untuk kwitansi yang sudah dibayar, snapshot lama tidak dihitung ulang sembarangan. Jika butuh koreksi, gunakan kwitansi revisi atau transaksi baru.
 
@@ -308,17 +319,23 @@ Dampak halaman:
 
 | Halaman | Perubahan yang dibutuhkan |
 | --- | --- |
-| Pengiriman Mitra | Ganti label Tonase menjadi Berat Netto dari Pabrik, tambah input Potongan Pabrik, tampilkan otomatis Berat Dibayar. |
+| Pengiriman Mitra | Ganti label Tonase menjadi Berat Netto dari Pabrik, tambah input Potongan Pabrik, tampilkan otomatis Berat Dibayar, dan izinkan cari plat Armada CB tanpa mitra default. |
 | Riwayat & Koreksi Mitra | Tampilkan Netto, Potongan, Berat Dibayar, dan biaya sewa armada jika ada. |
 | Kwitansi & Pembayaran Mitra | Rincian per mitra harus menampilkan transaksi, netto, potongan, berat dibayar, panjar, sewa armada, lalu total akhir. |
 | Laporan Mitra | Status sudah/belum dibayar tetap ada, tetapi angka berat harus jelas: netto vs berat dibayar. |
 | Pembayaran Pabrik | Pencocokan tetap memakai angka nota pabrik; data internal yang dipilih harus bisa menjumlahkan Berat Netto dan Berat Dibayar. |
 | Dashboard dan Laba/Rugi | Pendapatan owner memisahkan fee owner, kas masuk pabrik, pembayaran mitra, biaya operasional, dan sewa armada. |
+| Laporan Armada CB | Add-on P1/P2 untuk melihat trip, total muatan, sewa masuk, upah sopir, uang jalan, biaya operasional, dan margin. |
+
+Posisi pengembangan:
+
+- **P0 wajib**: benahi pemisahan Armada CB vs Mitra Transaksi, field sewa armada, rumus sewa yang tidak dikurangi perongkosan, dan UX input agar plat CB bisa dipilih walaupun tidak punya mitra default.
+- **P1 add-on**: tracking tagihan sopir CB, yaitu upah flat per trip dan uang jalan.
+- **P2 add-on**: laporan profit Armada CB per bulan/per truk, termasuk biaya operasional seperti oli.
 
 Pending konfirmasi:
 
-- Poin aturan nomor 3 dari bisnis belum diisi. Jangan menambah aturan lain sebelum owner mengonfirmasi.
-- Perlu dipastikan apakah biaya sewa armada Rp150/kg menjadi potongan dari hak mitra, pendapatan tambahan owner, atau catatan tagihan terpisah. Rekomendasi awal: tampilkan sebagai baris terpisah di kwitansi dan laporan agar transparan.
+- Nominal upah sopir CB per trip dan uang jalan per trip belum diisi. Sistem boleh menyiapkan field, tetapi angka default harus dikonfirmasi sebelum dipakai operasional.
 
 ### 7.5 Tindak Lanjut Mitra yang Sudah Dibayar dan Diberi Kwitansi
 
@@ -449,7 +466,7 @@ Validasi wajib:
 - Berat Netto dari Pabrik harus lebih dari 0.
 - Potongan Pabrik tidak boleh minus.
 - Potongan Pabrik tidak boleh lebih besar dari Berat Netto dari Pabrik.
-- Jika mitra luar memakai armada BL/SL, sistem menampilkan info biaya sewa Rp150/kg x Berat Netto.
+- Jika pengiriman memakai Armada CB, sistem menampilkan info Sewa Armada CB berdasarkan tarif aktif x Berat Netto.
 
 ### Pembelian TBS Lokal
 
@@ -555,7 +572,7 @@ Tambahkan:
 - Hilangkan physical delete untuk semua transaksi finansial.
 - Tambahkan halaman Audit Log minimal.
 - Buat SOP backup, migration, dan rollback.
-- Kunci aturan berat transaksi mitra: Berat Netto dari Pabrik, Potongan Pabrik, Berat Dibayar, Fee Owner, dan biaya sewa armada BL/SL.
+- Kunci aturan berat transaksi mitra: Berat Netto dari Pabrik, Potongan Pabrik, Berat Dibayar, Fee Owner, dan sewa Armada CB.
 - Tambahkan migration non-destruktif untuk kolom berat/potongan/sewa armada di `transaksi_mitra` dan backfill data lama.
 - Ubah helper kalkulasi agar semua halaman memakai Berat Dibayar untuk hak mitra dan fee owner, serta memakai Berat Netto untuk biaya sewa armada.
 
@@ -584,7 +601,7 @@ Tambahkan:
 
 - Settlement per DO.
 - Selisih tonase mitra vs pabrik.
-- Potongan/biaya armada BL/SL dengan riwayat tarif.
+- Sewa Armada CB, biaya sopir CB, dan riwayat tarif.
 - Biaya bantuan mitra.
 - Tarif armada history dan override approval.
 - Kwitansi final berdasarkan settlement.
@@ -598,6 +615,8 @@ Tambahkan:
 - UI polish responsive untuk penggunaan HP di lapangan.
 
 ### 11.1 Rencana Implementasi Scope Berat dan Sewa Armada
+
+Status 15 Juli 2026: langkah 1-6 untuk P0/P1/P2 Armada CB sudah diterapkan. Pengembangan berikutnya tetap berada di bawah payung settlement final, bukti timbang, dan monitoring exception.
 
 Urutan implementasi yang disarankan:
 
@@ -618,8 +637,8 @@ Urutan implementasi yang disarankan:
    - Ubah input `tonase` menjadi label "Berat Netto dari Pabrik (kg)".
    - Tambah input "Potongan Pabrik (kg)" dengan default `0`.
    - Tampilkan "Berat Dibayar" otomatis sebelum simpan.
-   - Deteksi jika mitra transaksi bukan BL/SL tetapi sopir/armada berafiliasi BL/SL.
-   - Jika aturan berlaku, tampilkan info "Biaya sewa armada Rp150/kg x berat netto".
+   - Deteksi jika sopir/plat yang dipilih adalah Armada CB.
+   - Jika aturan berlaku, tampilkan info "Sewa Armada CB = tarif aktif x berat netto".
 
 4. **Kwitansi dan pembayaran mitra**
    - Snapshot kwitansi harus menyimpan netto, potongan, berat dibayar, harga bersih, total bersih, dan biaya sewa armada.
@@ -636,14 +655,14 @@ Urutan implementasi yang disarankan:
 6. **Validasi dan testing**
    - Uji transaksi lama tetap muncul dengan angka yang sama setelah backfill.
    - Uji potongan `0`, potongan normal, dan potongan lebih besar dari netto harus ditolak.
-   - Uji mitra BL/SL memakai armada sendiri tidak kena biaya sewa.
-   - Uji mitra selain BL/SL memakai armada BL/SL kena biaya sewa Rp150/kg.
+   - Uji Armada CB tanpa mitra default tetap bisa dipilih setelah admin memilih Mitra Transaksi.
+   - Uji Sewa Armada CB memakai Berat Netto dan tidak dikurangi uang jalan/perongkosan.
    - Uji kwitansi multi-mitra tetap memisahkan rincian per mitra dan total akhir.
 
 Keputusan implementasi awal:
 
-- Tarif Rp150/kg boleh hardcode dulu sebagai konstanta bisnis agar cepat jalan, tetapi harus diberi TODO untuk dipindah ke pengaturan/tarif history.
-- Penentuan BL/SL sementara bisa memakai kode mitra yang diawali `BL` atau `SL`. Implementasi jangka panjang lebih rapi memakai flag khusus di master mitra, misalnya "Mitra Armada Internal".
+- Tarif Rp150/kg boleh menjadi default awal jika memang disepakati, tetapi implementasi harus memakai sumber tarif yang bisa diubah tanpa mengubah transaksi lama.
+- Penentuan Armada CB memakai `sopir.is_armada_cb`, bukan kode mitra atau afiliasi mitra.
 - Jangan menghapus atau rename kolom `tonase` pada fase ini. Rename fisik baru dipertimbangkan setelah semua laporan sudah stabil.
 
 ## 12. Acceptance Criteria untuk Alur Baru
@@ -660,7 +679,7 @@ Keputusan implementasi awal:
 - Closing harian dapat mengungkap selisih kas, stok, settlement pending, hutang aktif, dan transaksi koreksi.
 - Pengiriman Mitra menyimpan Berat Netto dari Pabrik, Potongan Pabrik, dan Berat Dibayar tanpa merusak data `tonase` lama.
 - Hak mitra dan fee owner dihitung dari Berat Dibayar.
-- Biaya sewa armada BL/SL dihitung dari Berat Netto dari Pabrik dan ditampilkan sebagai baris terpisah.
+- Sewa Armada CB dihitung dari Berat Netto dari Pabrik dan ditampilkan sebagai baris terpisah.
 - Kwitansi dan Laporan Mitra menampilkan rincian berat dan biaya secara mudah dipahami admin.
 
 ## 12.1 Rencana Cleanup Database

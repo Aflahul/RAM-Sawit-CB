@@ -17,7 +17,6 @@ import { paginateRows } from '@/lib/pagination-utils';
 import { getNextSort, sortRows } from '@/lib/sort-utils';
 import { supabase } from '@/lib/supabase';
 import {
-  hitungSewaArmadaBL,
   resolveBeratDibayar,
   resolveBeratNettoPabrik,
   resolveBiayaSewaArmada,
@@ -53,6 +52,7 @@ const emptyEditForm = {
   total_fee_owner: 0,
   total_nilai_bersih: 0,
   pakai_sewa_armada_bl: false,
+  tarif_sewa_angkut_per_kg: 0,
   biaya_sewa_armada_total: 0,
   alasan_edit: '',
 };
@@ -154,6 +154,9 @@ export default function RiwayatPengirimanMitraPage() {
         total_nilai_bersih, fee_owner_history_id,
         berat_netto_pabrik_kg, potongan_pabrik_kg, berat_dibayar_kg,
         pakai_sewa_armada_bl, biaya_sewa_armada_per_kg, biaya_sewa_armada_total,
+        tarif_sewa_angkut_per_kg_snapshot, biaya_sewa_armada_kotor,
+        upah_sopir_cb_snapshot, uang_jalan_sopir_cb_snapshot, total_biaya_sopir_cb_snapshot,
+        tagihan_sopir_ledger_id, biaya_sopir_operasional_id, biaya_sopir_dibayar_at,
         status, created_at, updated_at, updated_by, alasan_edit, dibatalkan_at, dibatalkan_by, alasan_batal,
         sopir_default_id, sopir_default_nama, sopir_aktual_id, sopir_aktual_nama,
         sopir_aktual_no_hp, sopir_aktual_source, sopir_diganti_dari_default, catatan_sopir,
@@ -176,20 +179,20 @@ export default function RiwayatPengirimanMitraPage() {
       transaksiQuery,
       supabase
         .from('master_mitra')
-        .select('id, kode, alamat, nama, fee_per_kg')
+        .select('id, kode, alamat, nama, fee_per_kg, tarif_sewa_angkut_per_kg')
         .eq('aktif', true)
         .order('kode'),
       supabase
         .from('sopir')
         .select(`
-          id, nama, no_hp, plat_nomor, mitra_id,
+          id, nama, no_hp, plat_nomor, mitra_id, is_armada_cb,
           master_mitra ( id, kode, alamat, nama, fee_per_kg )
         `)
         .eq('aktif', true)
         .order('nama'),
       supabase
         .from('fee_owner_mitra_history')
-        .select('id, master_mitra_id, fee_per_kg, berlaku_mulai, berlaku_sampai, aktif, alasan_perubahan')
+        .select('id, master_mitra_id, fee_per_kg, tarif_sewa_angkut_per_kg, berlaku_mulai, berlaku_sampai, aktif, alasan_perubahan')
         .eq('aktif', true)
         .order('berlaku_mulai', { ascending: false }),
     ]);
@@ -315,6 +318,7 @@ export default function RiwayatPengirimanMitraPage() {
       mitra_id: mitraId,
       fee_owner_per_kg: snapshot.fee,
       fee_owner_history_id: snapshot.historyId,
+      tarif_sewa_angkut_per_kg: snapshot.tarifSewaAngkut || 0,
     };
   }
 
@@ -328,7 +332,7 @@ export default function RiwayatPengirimanMitraPage() {
 
     // Deteksi sewa armada dari form state (pakai_sewa_armada_bl sudah dihitung di openEdit)
     const sewaArmadaTotal = nextForm.pakai_sewa_armada_bl
-      ? Math.round(beratNetto * 150)
+      ? Math.round(beratNetto * toNumber(nextForm.tarif_sewa_angkut_per_kg))
       : 0;
 
     return {
@@ -351,7 +355,8 @@ export default function RiwayatPengirimanMitraPage() {
     const potongan     = toNumber(row.potongan_pabrik_kg);
     const beratDibayar = resolveBeratDibayar(row);
     const pakaiSewa    = Boolean(row.pakai_sewa_armada_bl);
-    const sewaTotal    = toNumber(row.biaya_sewa_armada_total);
+    const tarifSewa    = toNumber(row.tarif_sewa_angkut_per_kg_snapshot ?? row.biaya_sewa_armada_per_kg);
+    const sewaTotal    = pakaiSewa ? Math.round(beratNetto * tarifSewa) : 0;
 
     setEditTarget(row);
     setEditForm({
@@ -375,6 +380,7 @@ export default function RiwayatPengirimanMitraPage() {
       total_fee_owner:    toNumber(row.total_fee_owner),
       total_nilai_bersih: toNumber(row.total_nilai_bersih ?? row.total_kotor),
       pakai_sewa_armada_bl: pakaiSewa,
+      tarif_sewa_angkut_per_kg: tarifSewa,
       biaya_sewa_armada_total: sewaTotal,
       alasan_edit: '',
     });
@@ -400,14 +406,15 @@ export default function RiwayatPengirimanMitraPage() {
       sopir_default_id: sopir.id,
       sopir_default_nama: sopir.nama,
       plat_nomor: sopir.plat_nomor || '',
-      mitra_id: sopir.mitra_id || '',
+      mitra_id: editForm.mitra_id || sopir.mitra_id || '',
       sopir_aktual_mode: SOPIR_AKTUAL_DEFAULT,
       sopir_aktual_id: sopir.id,
       sopir_aktual_nama: sopir.nama,
       sopir_aktual_no_hp: sopir.no_hp || '',
+      pakai_sewa_armada_bl: Boolean(sopir.is_armada_cb),
     };
 
-    setEditForm(recalculateTotals(applyFeeSnapshot(nextForm, sopir.mitra_id || '', editForm.tanggal)));
+    setEditForm(recalculateTotals(applyFeeSnapshot(nextForm, nextForm.mitra_id, editForm.tanggal)));
   }
 
   function handleEditMitraChange(mitraId) {
@@ -549,7 +556,9 @@ export default function RiwayatPengirimanMitraPage() {
       total_nilai_bersih: editForm.total_nilai_bersih,
       // Sewa armada
       pakai_sewa_armada_bl:     editForm.pakai_sewa_armada_bl,
-      biaya_sewa_armada_per_kg: editForm.pakai_sewa_armada_bl ? 150 : null,
+      biaya_sewa_armada_per_kg: editForm.pakai_sewa_armada_bl ? editForm.tarif_sewa_angkut_per_kg : 0,
+      tarif_sewa_angkut_per_kg_snapshot: editForm.pakai_sewa_armada_bl ? editForm.tarif_sewa_angkut_per_kg : 0,
+      biaya_sewa_armada_kotor:  editForm.biaya_sewa_armada_total,
       biaya_sewa_armada_total:  editForm.biaya_sewa_armada_total,
       updated_by: userId,
       alasan_edit: editForm.alasan_edit.trim(),

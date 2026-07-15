@@ -186,7 +186,10 @@ export default function HutangPage() {
     setPetaniList(petani || []);
     setMitraList(mitra || []);
     setSopirList(sopir || []);
-    setLedgerAll(ledger || []);
+    setLedgerAll((ledger || []).filter(row => ![
+      'tagihan_sopir_cb',
+      'pembayaran_tagihan_sopir_cb',
+    ].includes(row.legacy_source_table)));
     setLoading(false);
   }, []);
 

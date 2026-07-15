@@ -29,7 +29,6 @@ const mitraSortAccessors = {
   alamat: row => row.alamat,
   fee: row => Number(row.fee_per_kg),
   sewa_angkut: row => Number(row.tarif_sewa_angkut_per_kg),
-  perongkosan: row => Number(row.nominal_perongkosan),
 };
 
 export default function MitraPage() {
@@ -52,7 +51,6 @@ export default function MitraPage() {
     tipe_mitra: MITRA_TYPES.EKSTERNAL,
     fee_per_kg: 0,
     tarif_sewa_angkut_per_kg: 0,
-    nominal_perongkosan: 0,
     fee_berlaku_mulai: getTodayISO(),
     fee_alasan: '',
   });
@@ -84,7 +82,6 @@ export default function MitraPage() {
       tipe_mitra: MITRA_TYPES.EKSTERNAL,
       fee_per_kg: 0,
       tarif_sewa_angkut_per_kg: 0,
-      nominal_perongkosan: 0,
       fee_berlaku_mulai: getTodayISO(),
       fee_alasan: '',
     });
@@ -107,7 +104,6 @@ export default function MitraPage() {
       tipe_mitra: item.tipe_mitra || MITRA_TYPES.EKSTERNAL,
       fee_per_kg: item.fee_per_kg || 0,
       tarif_sewa_angkut_per_kg: item.tarif_sewa_angkut_per_kg || 0,
-      nominal_perongkosan: item.nominal_perongkosan || 0,
       fee_berlaku_mulai: getTodayISO(),
       fee_alasan: '',
     });
@@ -130,7 +126,6 @@ export default function MitraPage() {
 
     const feePerKg = parseFloat(formMitra.fee_per_kg) || 0;
     const tarifSewaAngkut = parseFloat(formMitra.tarif_sewa_angkut_per_kg) || 0;
-    const nominalPerongkosan = parseFloat(formMitra.nominal_perongkosan) || 0;
     
     const payload = {
       kode: formMitra.kode,
@@ -141,7 +136,6 @@ export default function MitraPage() {
       tipe_mitra: formMitra.tipe_mitra || MITRA_TYPES.EKSTERNAL,
       fee_per_kg: feePerKg,
       tarif_sewa_angkut_per_kg: tarifSewaAngkut,
-      nominal_perongkosan: nominalPerongkosan,
     };
     let savedMitraId = editingId;
     let historyFailed = false;
@@ -170,7 +164,6 @@ export default function MitraPage() {
           master_mitra_id: savedMitraId,
           fee_per_kg: feePerKg,
           tarif_sewa_angkut_per_kg: tarifSewaAngkut,
-          nominal_perongkosan: nominalPerongkosan,
           berlaku_mulai: formMitra.fee_berlaku_mulai || getTodayISO(),
           alasan_perubahan: formMitra.fee_alasan || 'Update Tarif dari Master Mitra',
           aktif: true,
@@ -232,7 +225,6 @@ export default function MitraPage() {
           { header: 'Alamat / Lokasi', key: 'alamat', width: 28 },
           { header: 'Fee Owner/Kg', key: 'fee_per_kg', type: 'currency', width: 16 },
           { header: 'Sewa Angkut', key: 'tarif_sewa_angkut_per_kg', type: 'currency', width: 16 },
-          { header: 'Perongkosan', key: 'nominal_perongkosan', type: 'currency', width: 16 },
         ],
         rows: sortedMitras,
       }],
@@ -283,18 +275,17 @@ export default function MitraPage() {
               <SortableHeader label="Penanggung Jawab" sortKey="penanggung_jawab" sort={sort} onSort={handleSort} />
               <SortableHeader label="Fee Owner/Kg" sortKey="fee" sort={sort} onSort={handleSort} align="right" />
               <SortableHeader label="Sewa Angkut" sortKey="sewa_angkut" sort={sort} onSort={handleSort} align="right" />
-              <SortableHeader label="Perongkosan" sortKey="perongkosan" sort={sort} onSort={handleSort} align="right" />
               <th style={{ textAlign: 'center' }}>Aksi</th>
             </tr>
           </thead>
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={7}>Memuat data...</td>
+                <td colSpan={5}>Memuat data...</td>
               </tr>
             ) : paginatedMitras.rows.length === 0 ? (
               <tr>
-                <td colSpan={7}>Data mitra tidak ditemukan.</td>
+                <td colSpan={5}>Data mitra tidak ditemukan.</td>
               </tr>
             ) : (
               paginatedMitras.rows.map(mitra => (
@@ -309,7 +300,6 @@ export default function MitraPage() {
                   </td>
                   <td className="table-mono" style={{ textAlign: 'right' }}>{formatRupiah(mitra.fee_per_kg)}</td>
                   <td className="table-mono" style={{ textAlign: 'right', color: 'var(--text-secondary)' }}>{mitra.tarif_sewa_angkut_per_kg > 0 ? formatRupiah(mitra.tarif_sewa_angkut_per_kg) : '-'}</td>
-                  <td className="table-mono" style={{ textAlign: 'right', color: 'var(--text-secondary)' }}>{mitra.nominal_perongkosan > 0 ? formatRupiah(mitra.nominal_perongkosan) : '-'}</td>
                   <td style={{ textAlign: 'center' }}>
                     <button className="btn btn-ghost btn-sm" onClick={() => openEdit(mitra)} aria-label={`Edit ${mitra.nama}`}>
                       <Pencil size={16} />
@@ -395,15 +385,9 @@ export default function MitraPage() {
                   <label className="form-label">Fee Owner (Rp/Kg)</label>
                   <input type="number" className="form-input" value={formMitra.fee_per_kg} onChange={e => setFormMitra({ ...formMitra, fee_per_kg: e.target.value })} />
                 </div>
-                <div className="form-grid">
-                  <div className="form-group">
-                    <label className="form-label">Tarif Sewa Angkut (Rp/Kg)</label>
-                    <input type="number" className="form-input" value={formMitra.tarif_sewa_angkut_per_kg} onChange={e => setFormMitra({ ...formMitra, tarif_sewa_angkut_per_kg: e.target.value })} />
-                  </div>
-                  <div className="form-group">
-                    <label className="form-label">Nominal Perongkosan (Rp/Trip)</label>
-                    <input type="number" className="form-input" value={formMitra.nominal_perongkosan} onChange={e => setFormMitra({ ...formMitra, nominal_perongkosan: e.target.value })} />
-                  </div>
+                <div className="form-group">
+                  <label className="form-label">Tarif Sewa Armada CB (Rp/Kg Netto)</label>
+                  <input type="number" className="form-input" value={formMitra.tarif_sewa_angkut_per_kg} onChange={e => setFormMitra({ ...formMitra, tarif_sewa_angkut_per_kg: e.target.value })} />
                 </div>
                 <div className="form-grid">
                   <div className="form-group">

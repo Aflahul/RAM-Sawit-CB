@@ -18,6 +18,7 @@ const KATEGORI = [
 
 export default function BiayaPage() {
   const [list, setList] = useState([]);
+  const [armadas, setArmadas] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -28,7 +29,7 @@ export default function BiayaPage() {
   const [canceling, setCanceling] = useState(false);
 
   const [form, setForm] = useState({
-    tanggal: getTodayISO(), kategori: 'solar', jumlah: '', keterangan: '',
+    tanggal: getTodayISO(), kategori: 'solar', jumlah: '', keterangan: '', armada_sopir_id: '',
   });
 
   const loadData = useCallback(async () => {
@@ -43,8 +44,17 @@ export default function BiayaPage() {
       query = query.eq('tanggal', filterTanggal);
     }
 
-    const { data } = await query.limit(100);
+    const [{ data }, { data: armadaData }] = await Promise.all([
+      query.limit(100),
+      supabase
+        .from('sopir')
+        .select('id, nama, plat_nomor')
+        .eq('aktif', true)
+        .eq('is_armada_cb', true)
+        .order('plat_nomor'),
+    ]);
     setList(data || []);
+    setArmadas(armadaData || []);
     setLoading(false);
   }, [filterTanggal]);
 
@@ -57,13 +67,18 @@ export default function BiayaPage() {
     e.preventDefault();
     setSaving(true);
 
-    const { error } = await supabase.rpc('create_biaya_operasional_kas', {
+    const rpcName = form.armada_sopir_id
+      ? 'create_biaya_operasional_armada_kas'
+      : 'create_biaya_operasional_kas';
+    const payload = {
       p_tanggal: form.tanggal,
       p_kategori: form.kategori,
       p_jumlah: parseFloat(form.jumlah),
       p_keterangan: form.keterangan || null,
       p_rekening_kas_id: null,
-    });
+    };
+    if (form.armada_sopir_id) payload.p_armada_sopir_id = form.armada_sopir_id;
+    const { error } = await supabase.rpc(rpcName, payload);
 
     setSaving(false);
     if (error) {
@@ -73,7 +88,7 @@ export default function BiayaPage() {
     }
 
     setShowModal(false);
-    setForm({ tanggal: getTodayISO(), kategori: 'solar', jumlah: '', keterangan: '' });
+    setForm({ tanggal: getTodayISO(), kategori: 'solar', jumlah: '', keterangan: '', armada_sopir_id: '' });
     setToast({ message: 'Biaya berhasil dicatat!', type: 'success' });
     setTimeout(() => setToast(null), 3000);
     loadData();
@@ -122,6 +137,10 @@ export default function BiayaPage() {
             exportToExcel(filtered, [
               { key: 'tanggal', label: 'Tanggal', format: formatDateDisplay },
               { key: 'kategori', label: 'Kategori', format: v => kategoriLabel(v) },
+              { key: 'armada_sopir_id', label: 'Armada CB', format: value => {
+                const armada = armadas.find(item => item.id === value);
+                return armada ? `${armada.plat_nomor || '-'} - ${armada.nama}` : '-';
+              } },
               { key: 'jumlah', label: 'Jumlah (Rp)' },
               { key: 'keterangan', label: 'Keterangan' },
             ], `Biaya_Operasional_${filterTanggal}`, 'Biaya');
@@ -161,15 +180,23 @@ export default function BiayaPage() {
         <div className="table-container">
           <table className="table">
             <thead>
-              <tr><th>Kategori</th><th>Keterangan</th><th style={{ textAlign: 'right' }}>Jumlah</th><th></th></tr>
+              <tr><th>Kategori</th><th>Armada CB</th><th>Keterangan</th><th style={{ textAlign: 'right' }}>Jumlah</th><th></th></tr>
             </thead>
             <tbody>
               {filtered.map(b => (
                 <tr key={b.id}>
                   <td><span className="badge badge-neutral">{kategoriLabel(b.kategori)}</span></td>
+                  <td>{(() => {
+                    const armada = armadas.find(item => item.id === b.armada_sopir_id);
+                    return armada ? <span className="table-mono">{armada.plat_nomor || '-'} - {armada.nama}</span> : '-';
+                  })()}</td>
                   <td>{b.keterangan || '-'}</td>
                   <td className="table-mono text-danger" style={{ textAlign: 'right', fontWeight: 600 }}>{formatRupiah(b.jumlah)}</td>
-                  <td><button className="btn btn-ghost btn-sm" onClick={() => setCancelTarget(b)}>Batalkan</button></td>
+                  <td>
+                    {b.transaksi_mitra_id
+                      ? <span className="text-tertiary text-xs">Dari pembayaran sopir</span>
+                      : <button className="btn btn-ghost btn-sm" onClick={() => setCancelTarget(b)}>Batalkan</button>}
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -196,6 +223,19 @@ export default function BiayaPage() {
                   <select className="form-input form-select" value={form.kategori}
                     onChange={e => setForm({ ...form, kategori: e.target.value })}>
                     {KATEGORI.map(k => <option key={k.value} value={k.value}>{k.label}</option>)}
+                  </select>
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Armada CB</label>
+                  <select
+                    className="form-input form-select"
+                    value={form.armada_sopir_id}
+                    onChange={e => setForm({ ...form, armada_sopir_id: e.target.value })}
+                  >
+                    <option value="">Biaya umum perusahaan</option>
+                    {armadas.map(armada => (
+                      <option key={armada.id} value={armada.id}>{armada.plat_nomor || '-'} - {armada.nama}</option>
+                    ))}
                   </select>
                 </div>
                 <div className="form-group">

@@ -54,6 +54,7 @@ function getRowMitraLabel(row, selectedMitras = []) {
 
 function mapPaymentItemToRow(item) {
   const transaksi = item?.transaksi || {};
+  const sewaSnapshot = toNumber(item.biaya_sewa_armada_snapshot);
 
   return {
     id: item.transaksi_mitra_id,
@@ -67,9 +68,13 @@ function mapPaymentItemToRow(item) {
     potongan_pabrik_kg: item.potongan_snapshot ?? 0,
     berat_dibayar_kg: item.berat_dibayar_snapshot ?? item.tonase_snapshot,
     pakai_sewa_armada_bl: item.pakai_sewa_armada_snapshot ?? false,
-    biaya_sewa_armada_total: item.biaya_sewa_armada_snapshot ?? 0,
-    biaya_sewa_armada_kotor: transaksi.biaya_sewa_armada_kotor ?? 0,
-    nominal_perongkosan: transaksi.nominal_perongkosan_snapshot ?? 0,
+    biaya_sewa_armada_total: sewaSnapshot,
+    biaya_sewa_armada_kotor: sewaSnapshot,
+    tarif_sewa_angkut_per_kg_snapshot: item.tarif_sewa_angkut_per_kg_snapshot ?? 0,
+    biaya_sewa_armada_standar_snapshot: item.biaya_sewa_armada_standar_snapshot ?? sewaSnapshot,
+    selisih_sewa_armada_historis_snapshot: item.selisih_sewa_armada_historis_snapshot ?? 0,
+    metode_sewa_armada_snapshot: item.metode_sewa_armada_snapshot || 'legacy_snapshot',
+    is_kwitansi_snapshot: true,
     harga_bersih_per_kg: item.harga_bersih_per_kg_snapshot,
     total_nilai_bersih: item.total_nilai_bersih_snapshot,
     plat_nomor: item.plat_nomor,
@@ -79,6 +84,32 @@ function mapPaymentItemToRow(item) {
     catatan_sopir: '',
     transaksi,
   };
+}
+
+function getSewaFormulaLabel(rows) {
+  const sewaRows = rows.filter(row => resolveBiayaSewaArmada(row) > 0);
+  if (sewaRows.length === 0) return '';
+
+  if (sewaRows.some(row => row.metode_sewa_armada_snapshot === 'legacy_snapshot')) {
+    return 'Nominal sesuai kwitansi saat diterbitkan';
+  }
+
+  const tariffs = [...new Set(
+    sewaRows
+      .map(row => toNumber(row.tarif_sewa_angkut_per_kg_snapshot))
+      .filter(value => value > 0)
+      .map(value => value.toFixed(2))
+  )];
+
+  if (tariffs.length === 1) {
+    const totalBeratNetto = sewaRows.reduce(
+      (sum, row) => sum + toNumber(resolveBeratNettoPabrik(row) || row.berat_netto_pabrik_kg || row.tonase),
+      0
+    );
+    return `${formatNumber(totalBeratNetto)} kg x ${formatRupiah(Number(tariffs[0]))}/kg`;
+  }
+
+  return `Total ${sewaRows.length} transaksi sesuai tarif masing-masing`;
 }
 
 function buildWhatsappCaption({ appName, recipientLabel, dateFrom, dateTo, totalTonase, totalNilaiBersih, totalPanjar, sisaBersih }) {
@@ -195,7 +226,7 @@ export default function KwitansiMitraPage() {
           total_fee_owner, total_nilai_bersih, plat_nomor,
           berat_netto_pabrik_kg, potongan_pabrik_kg, berat_dibayar_kg,
           pakai_sewa_armada_bl, biaya_sewa_armada_total,
-          biaya_sewa_armada_kotor, nominal_perongkosan_snapshot, tarif_sewa_angkut_per_kg_snapshot,
+          biaya_sewa_armada_kotor, tarif_sewa_angkut_per_kg_snapshot,
           sopir_default_nama, sopir_aktual_nama, sopir_diganti_dari_default, catatan_sopir,
           master_mitra ( id, kode, alamat, nama, fee_per_kg )
         `)
@@ -229,7 +260,7 @@ export default function KwitansiMitraPage() {
         .select(`
           id, master_mitra_id, status, periode_dari, periode_sampai, tanggal_bayar, dibayar_at, metode_bayar,
           mode_pembayaran, mitra_ids, penerima_label, jumlah_mitra,
-          total_tonase, total_nilai_bersih, total_panjar, nominal_dibayar, jumlah_transaksi,
+          total_tonase, total_nilai_bersih, total_panjar, total_sewa_armada, nominal_dibayar, jumlah_transaksi,
           panjar_snapshot_json, transaksi_snapshot_json, catatan, created_at, rekening_kas_id, kas_ledger_id,
           items:pembayaran_mitra_kwitansi_item (
             transaksi_mitra_id, master_mitra_id, mitra_label_snapshot, tanggal, waktu_transaksi,
@@ -237,13 +268,10 @@ export default function KwitansiMitraPage() {
             total_nilai_bersih_snapshot, status_transaksi_snapshot,
             berat_netto_snapshot, potongan_snapshot, berat_dibayar_snapshot,
             pakai_sewa_armada_snapshot, biaya_sewa_armada_snapshot,
+            tarif_sewa_angkut_per_kg_snapshot, biaya_sewa_armada_standar_snapshot,
+            selisih_sewa_armada_historis_snapshot, metode_sewa_armada_snapshot,
             transaksi:transaksi_mitra (
-              id, mitra_id, status, tonase, harga_harian, total_nilai_bersih, total_kotor,
-              harga_pabrik_per_kg, fee_owner_per_kg, harga_bersih_per_kg, total_fee_owner,
-              berat_netto_pabrik_kg, potongan_pabrik_kg, berat_dibayar_kg,
-              pakai_sewa_armada_bl, biaya_sewa_armada_total,
-              biaya_sewa_armada_kotor, nominal_perongkosan_snapshot, tarif_sewa_angkut_per_kg_snapshot,
-              updated_at,
+              id, mitra_id, status, updated_at,
               master_mitra ( id, kode, alamat, nama, fee_per_kg )
             )
           ),
@@ -401,6 +429,9 @@ export default function KwitansiMitraPage() {
   const displayTotalNilaiBersih = isShowingPaidSnapshot ? toNumber(payment?.total_nilai_bersih) : currentTotalNilaiBersih;
   const displayTotalPanjar = isShowingPaidSnapshot ? toNumber(payment?.total_panjar) : currentTotalPanjar;
   const displayTotalSewaArmada = isShowingPaidSnapshot ? toNumber(payment?.total_sewa_armada) : currentTotalSewaArmada;
+  const totalSelisihSewaHistoris = isShowingPaidSnapshot
+    ? kwitansiRows.reduce((sum, row) => sum + toNumber(row.selisih_sewa_armada_historis_snapshot), 0)
+    : 0;
   const sisaBersih = isShowingPaidSnapshot
     ? toNumber(payment?.nominal_dibayar)
     : displayTotalNilaiBersih - displayTotalPanjar - displayTotalSewaArmada;
@@ -628,6 +659,18 @@ export default function KwitansiMitraPage() {
         </div>
       )}
 
+      {!loading && !errorMsg && isShowingPaidSnapshot && Math.abs(totalSelisihSewaHistoris) > 0.01 && (
+        <div className="alert alert-info no-print">
+          <AlertTriangle size={18} />
+          <div>
+            <strong>Kwitansi memakai nilai historis yang sudah dibekukan.</strong>
+            <div style={{ marginTop: 4 }}>
+              Ada selisih perhitungan sewa {formatRupiah(Math.abs(totalSelisihSewaHistoris))} terhadap rumus sekarang. Nilai kwitansi dan Buku Kas tetap mengikuti nominal saat pembayaran dibuat.
+            </div>
+          </div>
+        </div>
+      )}
+
       {!loading && !errorMsg && selectedMitraIds.length > 0 && (
         <div className="print-area card kwitansi-preview" style={{ padding: 'var(--space-xl)' }}>
           <div className="kwitansi-doc-header">
@@ -749,38 +792,30 @@ export default function KwitansiMitraPage() {
                   {displayTotalSewaArmada > 0 && (
                     kwitansiGroups.length > 1
                       ? kwitansiGroups.filter(g => (g.totalSewaArmada || 0) > 0).map(g => {
-                          const groupOngkos = g.rows.reduce((s, r) => s + (r.nominal_perongkosan_snapshot || 0), 0);
-                          const groupTarif = g.rows[0]?.tarif_sewa_angkut_per_kg_snapshot || 0;
-                          const groupBeratNetto = g.rows.reduce((s, r) => s + toNumber(resolveBeratNettoPabrik(r) || r.berat_netto_pabrik_kg || r.tonase || 0), 0);
                           return (
                             <div key={g.mitraId}>
                               <span>
                                 Potongan Sewa Armada CB
                                 <span style={{ fontSize: 10, color: 'var(--text-tertiary)', display: 'block', fontWeight: 400 }}>{g.label}</span>
                                 <span style={{ display: 'block', fontSize: 10, color: 'var(--text-tertiary)', marginTop: 2, fontWeight: 'normal', border: 'none', padding: 0, background: 'transparent' }}>
-                                  ({formatNumber(groupBeratNetto)} kg x {formatRupiah(groupTarif)}/kg) - Ongkos {formatRupiah(groupOngkos)}
+                                  {getSewaFormulaLabel(g.rows)}
                                 </span>
                               </span>
                               <strong className="table-mono danger-text">- {formatRupiah(g.totalSewaArmada || 0)}</strong>
                             </div>
                           );
                         })
-                      : (() => {
-                          const totalOngkos = kwitansiRows.reduce((sum, row) => sum + (row.nominal_perongkosan_snapshot || 0), 0);
-                          const tarifSewa = kwitansiRows[0]?.tarif_sewa_angkut_per_kg_snapshot || 0;
-                          const totalBeratNetto = kwitansiRows.reduce((sum, row) => sum + toNumber(resolveBeratNettoPabrik(row) || row.berat_netto_pabrik_kg || row.tonase || 0), 0);
-                          return (
+                      : (
                             <div>
                               <span>
                                 Potongan Sewa Armada CB
                                 <span style={{ display: 'block', fontSize: 10, color: 'var(--text-tertiary)', marginTop: 2, fontWeight: 'normal', border: 'none', padding: 0, background: 'transparent' }}>
-                                  ({formatNumber(totalBeratNetto)} kg x {formatRupiah(tarifSewa)}/kg) - Ongkos {formatRupiah(totalOngkos)}
+                                  {getSewaFormulaLabel(kwitansiRows)}
                                 </span>
                               </span>
                               <strong className="table-mono danger-text">- {formatRupiah(displayTotalSewaArmada)}</strong>
                             </div>
-                          );
-                        })()
+                        )
                   )}
                   {displayTotalPanjar > 0 && (
                     kwitansiGroups.length > 1
