@@ -279,12 +279,8 @@ export default function MitraPage() {
         <table className="table">
           <thead>
             <tr>
-              <SortableHeader label="Kode" sortKey="kode" sort={sort} onSort={handleSort} />
-              <SortableHeader label="Nama Mitra" sortKey="nama" sort={sort} onSort={handleSort} />
-              <SortableHeader label="Tipe" sortKey="tipe" sort={sort} onSort={handleSort} />
+              <SortableHeader label="Mitra" sortKey="kode" sort={sort} onSort={handleSort} />
               <SortableHeader label="Penanggung Jawab" sortKey="penanggung_jawab" sort={sort} onSort={handleSort} />
-              <SortableHeader label="No. HP" sortKey="no_hp" sort={sort} onSort={handleSort} />
-              <SortableHeader label="Alamat" sortKey="alamat" sort={sort} onSort={handleSort} />
               <SortableHeader label="Fee Owner/Kg" sortKey="fee" sort={sort} onSort={handleSort} align="right" />
               <SortableHeader label="Sewa Angkut" sortKey="sewa_angkut" sort={sort} onSort={handleSort} align="right" />
               <SortableHeader label="Perongkosan" sortKey="perongkosan" sort={sort} onSort={handleSort} align="right" />
@@ -294,25 +290,23 @@ export default function MitraPage() {
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={10}>Memuat data...</td>
+                <td colSpan={7}>Memuat data...</td>
               </tr>
             ) : paginatedMitras.rows.length === 0 ? (
               <tr>
-                <td colSpan={10}>Data mitra tidak ditemukan.</td>
+                <td colSpan={7}>Data mitra tidak ditemukan.</td>
               </tr>
             ) : (
               paginatedMitras.rows.map(mitra => (
                 <tr key={mitra.id}>
-                  <td className="table-mono" style={{ fontWeight: 600 }}>{mitra.kode || '-'}</td>
-                  <td style={{ fontWeight: 600 }}>{mitra.nama}</td>
                   <td>
-                    <span className={`badge ${getMitraTypeBadgeClass(mitra.tipe_mitra)}`}>
-                      {getMitraTypeLabel(mitra.tipe_mitra)}
-                    </span>
+                    <div style={{ fontWeight: 600, fontSize: 14 }}>{mitra.kode || '-'}</div>
+                    <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{mitra.nama} • {mitra.alamat || '-'}</div>
                   </td>
-                  <td>{mitra.penanggung_jawab || '-'}</td>
-                  <td className="table-mono">{mitra.no_hp || '-'}</td>
-                  <td>{mitra.alamat || '-'}</td>
+                  <td>
+                    <div style={{ fontWeight: 500 }}>{mitra.penanggung_jawab || '-'}</div>
+                    <div className="table-mono" style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{mitra.no_hp || '-'}</div>
+                  </td>
                   <td className="table-mono" style={{ textAlign: 'right' }}>{formatRupiah(mitra.fee_per_kg)}</td>
                   <td className="table-mono" style={{ textAlign: 'right', color: 'var(--text-secondary)' }}>{mitra.tarif_sewa_angkut_per_kg > 0 ? formatRupiah(mitra.tarif_sewa_angkut_per_kg) : '-'}</td>
                   <td className="table-mono" style={{ textAlign: 'right', color: 'var(--text-secondary)' }}>{mitra.nominal_perongkosan > 0 ? formatRupiah(mitra.nominal_perongkosan) : '-'}</td>
