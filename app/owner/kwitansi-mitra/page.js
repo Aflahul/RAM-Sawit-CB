@@ -886,7 +886,6 @@ export default function KwitansiMitraPage() {
         }
         .kwitansi-group {
           padding: 18px 0;
-          border-bottom: 1px solid var(--border-default);
         }
         .kwitansi-group:first-of-type {
           padding-top: 0;
@@ -938,9 +937,6 @@ export default function KwitansiMitraPage() {
           padding: 10px 12px;
           border-bottom: 1px solid var(--border-default);
           vertical-align: top;
-        }
-        .kwitansi-detail-table tfoot td {
-          border-bottom: none;
         }
         .kwitansi-detail-table thead tr,
         .kwitansi-detail-table tfoot tr {
@@ -1134,9 +1130,6 @@ export default function KwitansiMitraPage() {
             padding: 4px 5px !important;
             font-size: 9px !important;
             border-bottom: 1px solid #b8b8b8 !important;
-          }
-          .kwitansi-detail-table tfoot td {
-            border-bottom: none !important;
           }
           .kwitansi-total-box,
           .kwitansi-payment-note {
