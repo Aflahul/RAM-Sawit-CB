@@ -2086,3 +2086,17 @@ Berdasarkan tinjauan operasional, pengguna utama modul Pengiriman Mitra adalah *
 2. **Auto-Fill Mitra:** Pemilihan Mitra tidak lagi menjadi *blocker* (pengunci) untuk memilih Armada/Sopir. Admin dapat mengetik Plat Nomor armada terlebih dahulu, dan sistem akan meng-*auto-fill* Mitra berdasarkan afiliasi armada tersebut.
 3. **Sticky Date:** Tanggal transaksi dipertahankan setelah proses *submit* (tidak otomatis reset ke `today`) untuk mempercepat entri tumpukan nota dari hari sebelumnya.
 
+# ADDENDUM FASE 2 - Pencatatan Perongkosan Armada (15 Juli 2026)
+
+Berdasarkan audit alur kas dan pendapatan bruto, terdapat *gap* dalam alur **Buku Kas** terkait pencatatan **Sewa Angkut dan Perongkosan**.
+
+**Kondisi Saat Ini:**
+- Nilai `biaya_sewa_armada_total` yang disimpan di database adalah nilai bersih (Sewa Kotor - Perongkosan).
+- Pendapatan Bruto Owner dihitung berdasarkan (Total Fee Owner + Total Sewa Armada Bersih). Ini **SUDAH BENAR**, karena uang perongkosan bukan profit owner melainkan hak sopir/pekerja.
+- **Masalah:** Uang fisik Perongkosan yang diberikan *cash* ke sopir di timbangan **BELUM** tercatat sebagai Pengeluaran Kas (Kas Keluar) di Buku Kas. Hal ini dapat memicu selisih antara laci fisik kasir dan saldo di sistem web.
+
+**Opsi Workflow yang Sedang Dipending (Menunggu Keputusan Tim Lapangan):**
+1. **Opsi A (Real-time di Timbangan - Paling disarankan jika dibayar harian):** Saat Admin menyimpan form Input Timbangan, sistem otomatis menembak jurnal *Kas Keluar* (Biaya Perongkosan) ke Buku Kas. Laci kasir sinkron *real-time*.
+2. **Opsi B (Cicilan Mingguan / Modul Penggajian Sopir):** Dibuatkan menu khusus "Bayar Perongkosan Sopir" (mirip Kwitansi Mitra). Admin mengumpulkan transaksi beberapa hari, lalu dibayar sekaligus memotong Buku Kas. Cocok jika sopir menerima uang secara mingguan.
+
+Keputusan akan diambil setelah diskusi lebih lanjut terkait kebiasaan pencairan uang jalan/ongkos muat oleh kasir timbangan di lapangan.

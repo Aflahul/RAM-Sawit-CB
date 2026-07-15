@@ -1019,3 +1019,12 @@ Berdasarkan audit UX (15 Juli 2026), realita operasional Admin Owner adalah **Hi
 - [ ] Memastikan tanggal transaksi bersifat *sticky* (tidak otomatis reset ke hari ini setelah simpan) untuk mempermudah entri nota kemarin.
 - [ ] Mengubah halaman `/admin/input-timbangan` menjadi Data Grid (menampilkan tabel riwayat transaksi) yang dilengkapi tombol "+ Tambah Pengiriman".
 - [ ] Menghapus halaman lama `/owner/riwayat-pengiriman-mitra` dan mengalihkan routing (sidebar) agar terpusat di `/admin/input-timbangan`.
+
+### Agenda Baru - Pencatatan Kas Perongkosan Armada (15 Juli 2026)
+
+Berdasarkan audit laporan kas dan pendapatan bruto, terdapat *gap* di mana fisik uang "Perongkosan" yang diserahkan tunai ke sopir tidak ter-jurnal sebagai Kas Keluar di sistem. Keputusan *workflow* menunggu konfirmasi tim lapangan (kasir timbangan).
+
+Task yang Menunggu Keputusan:
+- [ ] Menentukan opsi pencatatan: **Real-time Kas Keluar di form Input Timbangan** ATAU **Modul Khusus Pencairan Gaji/Perongkosan Mingguan**.
+- [ ] Membuat RPC atau *trigger* untuk memotong `kas_ledger` dengan nilai `nominal_perongkosan` secara otomatis sesuai opsi yang dipilih.
+- [ ] Memastikan pemotongan kas perongkosan ini tidak menduplikasi *record* jika menggunakan modul terpisah.
