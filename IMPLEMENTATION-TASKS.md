@@ -89,6 +89,9 @@ Status implementasi MVP live:
 - [x] `/owner/laporan-mitra` menampilkan kolom hasil kotor pabrik dan nilai bersih mitra tanpa menampilkan harga per kg di tabel utama.
 - [x] `/owner/laporan-mitra` memakai tabel ringkas: Tanggal/Waktu digabung, Sopir/Mitra/Plat digabung, agar muat di layar laptop/tablet.
 - [x] `/owner/kwitansi-mitra` memakai typography dan spacing preview yang lebih compact untuk laptop/tablet.
+- [x] Optimasi tata letak cetak Kwitansi Mitra: header identitas sebaris untuk menghemat kertas, penguncian logo & judul, dan font rincian sewa armada yang lebih proporsional.
+- [x] Layout cetak Kwitansi Mitra memakai skala tetap (794px) sehingga saat dicetak di kertas kecil (A5) akan otomatis mengecil tanpa merusak/melipat tampilan.
+- [x] Perbaikan rumus keterangan Sewa Armada Kwitansi Mitra menggunakan total tonase kotor (sebelum potongan pabrik).
 - [x] Header tabel ringkas maksimal 2 kata untuk tabel operasional utama, misalnya `Tanggal`, `Mitra`, `Hasil Pabrik`, `Nilai Bersih`, dan `Bruto`.
 - [x] Input pengiriman mitra baru menyimpan `total_kotor` sebagai hasil kotor pabrik dan `total_nilai_bersih` sebagai hak mitra setelah Fee Owner.
 - [x] Menu dan halaman `/admin/input-timbangan` diganti label menjadi **Input Pengiriman**.
