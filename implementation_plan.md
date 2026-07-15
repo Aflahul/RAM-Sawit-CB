@@ -1,17 +1,20 @@
-# Implementation Plan: Pengiriman Mitra, Armada CB, dan Biaya Sopir
+# Implementation Plan: Pengiriman Mitra dan Operasional Armada CB
 
 Dokumen ini adalah plan ringkas yang menyambungkan `PRD-final.md` dan `IMPLEMENTATION-TASKS.md`.
 
 ## Status Implementasi - Selesai 15 Juli 2026
 
 - P0 selesai: alur Armada First, pemisahan Mitra Transaksi, dan rumus sewa kotor sudah aktif.
-- P1 selesai: tarif global/override, snapshot biaya sopir, tagihan otomatis, serta Bayar Tunai Sopir sudah aktif.
+- P1 dikoreksi: biaya satu kali jalan tidak lagi dipecah menjadi upah dan uang jalan. Sistem memakai **Dana Operasional Trip** berdasarkan Mitra Transaksi.
 - P2 selesai: laporan bulanan per armada, biaya operasional per truk, dan margin owner sudah tersedia.
 - Migrasi remote aktif: `20260715105207_armada_cb_driver_costs.sql`.
+- Koreksi final remote aktif: `20260715123147_armada_cb_dana_operasional_trip_mitra.sql`.
+- Pagar edit snapshot remote aktif: `20260715124617_correct_armada_cb_tariff_refresh.sql`.
+- Sinkronisasi tagihan saat mitra/tanggal berubah aktif: `20260715124759_sync_dana_trip_ledger_on_route_change.sql`.
 - Snapshot sewa kwitansi dibekukan melalui `20260715113428_freeze_kwitansi_sewa_snapshots.sql`; detail kwitansi dibayar tidak lagi mengambil nominal dari transaksi live.
 - RPC finansial lama dibersihkan melalui `20260715114309_repair_financial_rpc_lint.sql` dan `20260715114553_repair_kwitansi_panjar_audit_field.sql`; remote DB lint kini lulus tanpa error.
 - Verifikasi: lint dan production build lulus; remote memiliki dua trigger aktif dan tidak ada baris sewa yang totalnya berbeda dari sewa kotor.
-- Tindakan operasional tersisa: owner harus mengisi nominal **Upah Sopir / Trip** dan **Uang Jalan / Trip** di menu Armada. Nilai awal sengaja `Rp0` karena nominal belum dijawab; setelah diisi, gunakan **Terapkan Tarif Saat Ini** pada Laporan Armada CB untuk trip lama yang belum dibayar.
+- Tarif owner per 15 Juli 2026 disiapkan untuk `SL`, `BL`, `SL/F`, `SL/BS`, `SL/MLD`, dan `BL/ML`. Tarif mitra lain tetap `Rp0` sampai dikonfirmasi.
 
 ## Tujuan Utama
 
@@ -36,15 +39,18 @@ P0 adalah koreksi fondasi karena memengaruhi angka kwitansi, pendapatan owner, d
 - Sewa Armada CB tidak boleh dikurangi uang jalan/perongkosan.
 - `nominal_perongkosan` tidak lagi dipakai sebagai pengurang sewa armada.
 
-### P1 - Add-on Operasional
+### P1 - Dana Operasional Trip
 
-- Tracking tagihan sopir CB: upah flat per trip + uang jalan/perongkosan.
+- Satu Dana Operasional Trip diberikan untuk satu kali jalan Armada CB.
+- Dana ini sudah mencakup solar, makan, uang jalan, dan bagian sopir. Sistem tidak mengaku mengetahui upah bersih sopir.
+- Besarnya ditentukan oleh Mitra Transaksi yang menyewa Armada CB.
 - Kas tidak otomatis berkurang saat DO diinput.
-- Admin memakai aksi **Bayar Tunai Sopir** untuk mencatat kas keluar.
+- Admin memakai aksi **Bayar Dana Trip** untuk mencatat kas keluar.
 
 ### P2 - Add-on Laporan Profit Armada
 
-- Laporan per truk/per bulan: total trip, total muatan, sewa masuk, upah sopir, uang jalan, biaya operasional, dan margin.
+- Laporan per truk/per bulan: total trip, total muatan, sewa masuk, Dana Operasional Trip, biaya operasional lain, dan margin.
+- Saat memilih Semua Armada, tampilkan rekap per plat agar owner bisa membandingkan jumlah trip, total muatan, dan margin tanpa mengganti filter satu per satu.
 
 ## Alur UX Target
 
@@ -95,7 +101,7 @@ Yang harus dihapus dari kalkulasi sewa:
 Sewa Armada CB = (Berat Netto x Tarif) - Perongkosan
 ```
 
-Perongkosan/uang jalan pindah ke biaya sopir CB pada P1.
+Dana satu kali jalan dicatat sebagai Dana Operasional Trip pada P1.
 
 ### Snapshot Kwitansi
 
@@ -122,15 +128,11 @@ Perongkosan/uang jalan pindah ke biaya sopir CB pada P1.
 
 ## Perubahan P1
 
-- Tambahkan pengaturan global:
-  - `upah_sopir_cb_per_trip`
-  - `uang_jalan_sopir_cb_per_trip`
-- Simpan snapshot di transaksi:
-  - `upah_sopir_cb_snapshot`
-  - `uang_jalan_sopir_cb_snapshot`
-  - `total_biaya_sopir_cb_snapshot`
-- Buat tagihan sopir saat pengiriman Armada CB disimpan.
-- Buat aksi **Bayar Tunai Sopir** yang mencatat kas keluar.
+- Tambahkan `master_mitra.dana_operasional_trip` dan riwayat tanggal berlakunya.
+- Simpan `transaksi_mitra.dana_operasional_trip_snapshot` saat pengiriman dibuat.
+- Pertahankan field upah/uang jalan lama hanya untuk membaca arsip lama.
+- Buat tagihan Dana Operasional Trip saat pengiriman Armada CB disimpan.
+- Buat aksi **Bayar Dana Trip** yang mencatat biaya operasional dan kas keluar.
 - Cegah pembayaran ganda untuk tagihan sopir yang sama.
 
 ## Verification Plan
@@ -149,8 +151,8 @@ Perongkosan/uang jalan pindah ke biaya sopir CB pada P1.
 ### P1
 
 1. Simpan pengiriman dengan Armada CB.
-2. Pastikan tagihan sopir terbentuk: upah + uang jalan.
-3. Klik Bayar Tunai Sopir.
+2. Pastikan Dana Operasional Trip mengikuti tarif Mitra Transaksi pada tanggal pengiriman.
+3. Klik Bayar Dana Trip.
 4. Pastikan kas keluar tercatat satu kali.
 5. Pastikan pembayaran ulang ditolak atau dinonaktifkan.
 
@@ -158,4 +160,23 @@ Perongkosan/uang jalan pindah ke biaya sopir CB pada P1.
 
 1. Filter laporan per truk/per bulan.
 2. Cocokkan total trip dan total muatan.
-3. Cocokkan sewa masuk, biaya sopir, biaya operasional, dan margin.
+3. Cocokkan sewa masuk, Dana Operasional Trip, biaya operasional lain, dan margin.
+
+## Tarif Awal Owner - 15 Juli 2026
+
+| Mitra | Sewa Armada CB | Dana Operasional Trip |
+| --- | ---: | ---: |
+| SL | Rp150/kg | Rp800.000/trip |
+| BL | Rp150/kg | Rp750.000/trip |
+| SL/F | Rp150/kg | Rp750.000/trip |
+| SL/BS | Rp150/kg | Rp750.000/trip |
+| SL/MLD | Rp150/kg | Rp750.000/trip |
+| BL/ML | Rp180/kg | Rp900.000/trip |
+
+Rumus laporan armada:
+
+```text
+Sewa Masuk = Berat Netto x Tarif Sewa Mitra
+Margin Sebelum Perawatan = Sewa Masuk - Dana Operasional Trip
+Margin Armada = Sewa Masuk - Dana Operasional Trip - Biaya Operasional Lain
+```

@@ -2028,7 +2028,8 @@ Pada fase ini aplikasi bisa dianggap utuh dan matang, bukan hanya sistem operasi
 - Multi-lokasi timbang.
 - Ekspor Excel settlement mitra.
 - Dashboard owner dengan margin per sumber.
-- Laporan profit Armada CB per truk/bulan: total trip, total muatan, sewa masuk, upah sopir, uang jalan, biaya operasional, dan margin.
+- Laporan profit Armada CB per truk/bulan: total trip, total muatan, sewa masuk, Dana Operasional Trip, biaya operasional lain, dan margin.
+- Tampilan Semua Armada menyediakan rekap per plat untuk membandingkan produktivitas armada dalam satu layar.
 - Template WhatsApp otomatis untuk bukti pembayaran.
 - Rekonsiliasi lanjutan selisih timbang mitra vs pabrik.
 
@@ -2092,31 +2093,31 @@ Berdasarkan tinjauan operasional, pengguna utama modul Pengiriman Mitra adalah *
 2. **Armada First:** Pemilihan Mitra tidak lagi menjadi *blocker* untuk memilih Armada/Sopir. Admin dapat mengetik Plat Nomor terlebih dahulu. Jika armada punya mitra default, sistem boleh meng-*auto-fill* Mitra Transaksi. Jika armada adalah Armada CB dan tidak punya mitra default, sistem tetap memilih armada itu lalu meminta admin memilih Mitra Transaksi secara eksplisit.
 3. **Sticky Date:** Tanggal transaksi dipertahankan setelah proses *submit* (tidak otomatis reset ke `today`) untuk mempercepat entri tumpukan nota dari hari sebelumnya.
 
-# ADDENDUM FASE 2 - Armada CB, Sewa Armada, dan Biaya Sopir (15 Juli 2026)
+# ADDENDUM FASE 2 - Armada CB, Sewa Armada, dan Dana Operasional Trip (15 Juli 2026)
 
-**Status implementasi:** P0, P1, dan P2 selesai diterapkan pada 15 Juli 2026 melalui migrasi `20260715105207_armada_cb_driver_costs.sql` dan halaman Laporan Armada CB.
+**Status implementasi:** P0, P1, dan P2 selesai diterapkan melalui migrasi fondasi `20260715105207_armada_cb_driver_costs.sql`, koreksi final `20260715123147_armada_cb_dana_operasional_trip_mitra.sql`, dan halaman Laporan Armada CB.
 
-Berdasarkan jawaban owner 15 Juli 2026, Armada CB adalah armada internal CB. Sopir CB dibayar flat per trip dan mendapat uang jalan/perongkosan. Armada CB tidak wajib terafiliasi dengan mitra mana pun.
+Berdasarkan jawaban owner 15 Juli 2026, Armada CB adalah armada internal CB dan tidak wajib terafiliasi dengan mitra mana pun. Sopir menerima satu Dana Operasional Trip yang sudah mencakup seluruh kebutuhan satu kali jalan.
 
 **Keputusan P0 yang wajib dikoreksi:**
 - `sopir.mitra_id` bersifat opsional. Untuk Armada CB, field ini boleh kosong.
 - `sopir.is_armada_cb = true` menjadi penanda utama bahwa plat/sopir tersebut adalah Armada CB.
 - Pengiriman Mitra tetap wajib memilih **Mitra Transaksi**, karena mitra transaksi adalah pihak yang punya muatan dan menerima kwitansi.
 - Sewa Armada CB adalah pemasukan/potongan ke mitra: `Berat Netto Pabrik x Tarif Sewa Armada/kg`.
-- Uang jalan/perongkosan dan upah sopir CB adalah biaya CB ke sopir, bukan pengurang sewa armada yang dipotong dari mitra.
+- Dana Operasional Trip adalah biaya CB, bukan pengurang sewa armada yang dipotong dari mitra.
 - Field/istilah lama seperti `pakai_sewa_armada_bl` boleh dipertahankan sementara untuk kompatibilitas, tetapi UI dan helper kalkulasi harus memakai istilah Armada CB.
 
 **Posisi pengembangan:**
 - **P0 koreksi fondasi:** benahi form, helper kalkulasi, field snapshot, dan kwitansi agar sewa Armada CB tidak tertukar dengan uang jalan.
-- **P1 add-on:** catat tagihan sopir CB dari setiap trip: upah flat per trip + uang jalan/perongkosan.
+- **P1 add-on:** catat tagihan Dana Operasional Trip berdasarkan Mitra Transaksi.
 - **P2 add-on:** laporan profit Armada CB per bulan/per truk, termasuk biaya operasional seperti ganti oli.
 
-**Workflow sopir yang disetujui sebagai arah desain:**
+**Workflow Dana Operasional Trip:**
 1. Admin input Pengiriman Mitra.
 2. Jika plat yang dipilih adalah Armada CB, sistem menghitung sewa Armada CB sebagai potongan/tagihan ke mitra.
-3. Sistem juga menyiapkan tagihan sopir CB: upah flat per trip + uang jalan.
-4. Kas tidak otomatis berkurang saat DO diinput. Admin menekan aksi **Bayar Tunai Sopir** untuk mencatat kas keluar.
-5. Laporan Armada CB membaca sewa masuk, biaya sopir, biaya operasional, dan margin.
+3. Sistem mengambil Dana Operasional Trip dari tarif Mitra Transaksi dan membekukannya sebagai snapshot.
+4. Kas tidak otomatis berkurang saat DO diinput. Admin menekan aksi **Bayar Dana Trip** untuk mencatat kas keluar.
+5. Laporan Armada CB membaca sewa masuk, Dana Operasional Trip, biaya operasional lain, dan margin.
 
 **Aturan snapshot kwitansi:**
 - Kwitansi yang sudah diterbitkan adalah dokumen finansial beku. Berat, tarif, sewa Armada CB, panjar, dan nominal dibayar harus dibaca dari snapshot saat penerbitan.
@@ -2124,4 +2125,31 @@ Berdasarkan jawaban owner 15 Juli 2026, Armada CB adalah armada internal CB. Sop
 - Sistem boleh menyimpan sewa menurut rumus terbaru dan selisih historis sebagai metadata audit, tetapi angka tersebut tidak menggantikan nominal yang pernah ditagihkan.
 - Kesalahan kwitansi diselesaikan melalui pembatalan dan penerbitan kwitansi baru, bukan mengedit item kwitansi lama.
 
-Implementasi P1 sudah tersedia, tetapi nominal upah sopir CB per trip dan uang jalan per trip belum dijawab owner. Nilai awal sistem harus tetap `Rp0` agar tidak membentuk tagihan dengan angka asumsi. Sebelum dipakai operasional, owner wajib mengisi kedua tarif di menu Armada, lalu menerapkan tarif tersebut ke trip lama yang belum dibayar melalui Laporan Armada CB.
+Enam tarif awal telah diisi berdasarkan konfirmasi owner. Mitra lain tetap `Rp0` dan tidak boleh dipakai untuk pengiriman Armada CB sebelum tarif sewa serta Dana Operasional Trip dilengkapi di menu Mitra.
+
+## KOREKSI FINAL - Dana Operasional Trip Armada CB (15 Juli 2026)
+
+Keterangan sebelumnya tentang pemisahan upah sopir dan uang jalan digantikan oleh keputusan berikut:
+
+- Owner memberikan satu nominal flat per trip kepada sopir Armada CB.
+- Nominal tersebut sudah mencakup solar, makan, uang jalan, dan bagian sopir.
+- Sistem tidak menghitung atau menampilkan “upah bersih sopir” karena pembagian dana dilakukan oleh sopir dan tidak diketahui owner.
+- Nama bisnis yang dipakai adalah **Dana Operasional Trip**.
+- Dana Operasional Trip ditentukan oleh **Mitra Transaksi** yang menyewa Armada CB, bukan oleh sopir atau truk.
+- Sewa masuk CB tetap dihitung `Berat Netto Pabrik x Tarif Sewa Mitra/kg`.
+- Margin armada dihitung `Sewa Masuk - Dana Operasional Trip - Biaya Operasional Lain`.
+- Saat pengiriman dibuat, tarif sewa dan Dana Operasional Trip disimpan sebagai snapshot agar perubahan tarif berikutnya tidak mengubah arsip lama.
+- Trip yang sudah dibayar tidak boleh diubah oleh proses sinkronisasi tarif.
+
+Tarif berlaku mulai 15 Juli 2026:
+
+| Mitra | Sewa/kg | Dana Operasional Trip |
+| --- | ---: | ---: |
+| SL | Rp150 | Rp800.000 |
+| BL | Rp150 | Rp750.000 |
+| SL/F | Rp150 | Rp750.000 |
+| SL/BS | Rp150 | Rp750.000 |
+| SL/MLD | Rp150 | Rp750.000 |
+| BL/ML | Rp180 | Rp900.000 |
+
+Field `upah_sopir_cb_snapshot`, `uang_jalan_sopir_cb_snapshot`, dan pengaturan global/override lama dipertahankan hanya untuk kompatibilitas data historis. Transaksi baru memakai `dana_operasional_trip_snapshot` sebagai sumber kebenaran.

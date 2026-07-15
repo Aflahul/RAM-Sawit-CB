@@ -11,6 +11,7 @@ import { Scale, Banknote, Box, Truck } from 'lucide-react';
 const kategoriLabel = {
   solar: 'Solar',
   gaji_sopir: 'Gaji Sopir',
+  dana_operasional_trip: 'Dana Operasional Trip Armada CB',
   kuli: 'Kuli',
   retribusi: 'Retribusi',
   perawatan: 'Perawatan',

@@ -155,7 +155,7 @@ export default function RiwayatPengirimanMitraPage() {
         berat_netto_pabrik_kg, potongan_pabrik_kg, berat_dibayar_kg,
         pakai_sewa_armada_bl, biaya_sewa_armada_per_kg, biaya_sewa_armada_total,
         tarif_sewa_angkut_per_kg_snapshot, biaya_sewa_armada_kotor,
-        upah_sopir_cb_snapshot, uang_jalan_sopir_cb_snapshot, total_biaya_sopir_cb_snapshot,
+        dana_operasional_trip_snapshot, upah_sopir_cb_snapshot, uang_jalan_sopir_cb_snapshot, total_biaya_sopir_cb_snapshot,
         tagihan_sopir_ledger_id, biaya_sopir_operasional_id, biaya_sopir_dibayar_at,
         status, created_at, updated_at, updated_by, alasan_edit, dibatalkan_at, dibatalkan_by, alasan_batal,
         sopir_default_id, sopir_default_nama, sopir_aktual_id, sopir_aktual_nama,
@@ -179,7 +179,7 @@ export default function RiwayatPengirimanMitraPage() {
       transaksiQuery,
       supabase
         .from('master_mitra')
-        .select('id, kode, alamat, nama, fee_per_kg, tarif_sewa_angkut_per_kg')
+        .select('id, kode, alamat, nama, fee_per_kg, tarif_sewa_angkut_per_kg, dana_operasional_trip')
         .eq('aktif', true)
         .order('kode'),
       supabase
@@ -192,7 +192,7 @@ export default function RiwayatPengirimanMitraPage() {
         .order('nama'),
       supabase
         .from('fee_owner_mitra_history')
-        .select('id, master_mitra_id, fee_per_kg, tarif_sewa_angkut_per_kg, berlaku_mulai, berlaku_sampai, aktif, alasan_perubahan')
+        .select('id, master_mitra_id, fee_per_kg, tarif_sewa_angkut_per_kg, dana_operasional_trip, berlaku_mulai, berlaku_sampai, aktif, alasan_perubahan')
         .eq('aktif', true)
         .order('berlaku_mulai', { ascending: false }),
     ]);
