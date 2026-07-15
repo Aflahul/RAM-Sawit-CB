@@ -195,7 +195,7 @@ export default function KwitansiMitraPage() {
           total_fee_owner, total_nilai_bersih, plat_nomor,
           berat_netto_pabrik_kg, potongan_pabrik_kg, berat_dibayar_kg,
           pakai_sewa_armada_bl, biaya_sewa_armada_total,
-          biaya_sewa_armada_kotor, nominal_perongkosan_snapshot,
+          biaya_sewa_armada_kotor, nominal_perongkosan_snapshot, tarif_sewa_angkut_per_kg_snapshot,
           sopir_default_nama, sopir_aktual_nama, sopir_diganti_dari_default, catatan_sopir,
           master_mitra ( id, kode, alamat, nama, fee_per_kg )
         `)
@@ -242,7 +242,7 @@ export default function KwitansiMitraPage() {
               harga_pabrik_per_kg, fee_owner_per_kg, harga_bersih_per_kg, total_fee_owner,
               berat_netto_pabrik_kg, potongan_pabrik_kg, berat_dibayar_kg,
               pakai_sewa_armada_bl, biaya_sewa_armada_total,
-              biaya_sewa_armada_kotor, nominal_perongkosan_snapshot,
+              biaya_sewa_armada_kotor, nominal_perongkosan_snapshot, tarif_sewa_angkut_per_kg_snapshot,
               updated_at,
               master_mitra ( id, kode, alamat, nama, fee_per_kg )
             )
@@ -731,16 +731,16 @@ export default function KwitansiMitraPage() {
                     </div>
                     {(group.totalSewaArmada || 0) > 0 && (() => {
                       const totalSewaKotor = group.rows.reduce((sum, row) => sum + (row.biaya_sewa_armada_kotor || 0), 0);
-                      const totalOngkos = group.rows.reduce((sum, row) => sum + (row.nominal_perongkosan || 0), 0);
-                      const tarifSewa = group.rows[0]?.tarif_sewa_angkut_per_kg || 0;
+                      const totalOngkos = group.rows.reduce((sum, row) => sum + (row.nominal_perongkosan_snapshot || 0), 0);
+                      const tarifSewa = group.rows[0]?.tarif_sewa_angkut_per_kg_snapshot || 0;
                       return (
                         <div>
                           <span>Sewa Armada CB</span>
                           <strong className="danger-text">- {formatRupiah(group.totalSewaArmada)}</strong>
-                          <div style={{ fontSize: 11, color: 'var(--text-tertiary)', marginTop: 4, lineHeight: 1.3 }}>
-                            Rincian: ({formatNumber(group.totalTonase)} kg x {formatRupiah(tarifSewa)})<br/>
+                          <span style={{ display: 'block', fontSize: 11, color: 'var(--text-tertiary)', marginTop: 4, lineHeight: 1.3, border: 'none', padding: 0, background: 'transparent' }}>
+                            {formatNumber(group.totalTonase)} kg x {formatRupiah(tarifSewa)}<br/>
                             - Perongkosan {formatRupiah(totalOngkos)}
-                          </div>
+                          </span>
                         </div>
                       );
                     })()}
@@ -776,14 +776,14 @@ export default function KwitansiMitraPage() {
                   </div>
                   {displayTotalSewaArmada > 0 && (() => {
                     const totalSewaKotor = kwitansiRows.reduce((sum, row) => sum + (row.biaya_sewa_armada_kotor || 0), 0);
-                    const totalOngkos = kwitansiRows.reduce((sum, row) => sum + (row.nominal_perongkosan || 0), 0);
+                    const totalOngkos = kwitansiRows.reduce((sum, row) => sum + (row.nominal_perongkosan_snapshot || 0), 0);
                     return (
                       <div>
                         <span>
                           Potongan Sewa Armada CB
-                          <div style={{ fontSize: 11, color: 'var(--text-tertiary)', marginTop: 2, fontWeight: 'normal' }}>
+                          <span style={{ display: 'block', fontSize: 11, color: 'var(--text-tertiary)', marginTop: 2, fontWeight: 'normal', border: 'none', padding: 0, background: 'transparent' }}>
                             Kotor {formatRupiah(totalSewaKotor)} - Ongkos {formatRupiah(totalOngkos)}
-                          </div>
+                          </span>
                         </span>
                         <strong className="table-mono danger-text">- {formatRupiah(displayTotalSewaArmada)}</strong>
                       </div>
