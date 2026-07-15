@@ -662,8 +662,8 @@ export default function KwitansiMitraPage() {
                       <div style={{ color: 'var(--text-tertiary)', fontSize: 12 }}>• {group.rows.length} trx, {formatNumber(group.totalTonase)} Kg</div>
                     </div>
                     <div className="kwitansi-group-subtotal" style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 'auto', textAlign: 'right' }}>
-                      <span style={{ fontSize: 12, display: 'inline', color: 'var(--text-tertiary)' }}>Subtotal:</span>
-                      <strong style={{ fontSize: 14, display: 'inline', marginTop: 0, color: 'var(--color-success)' }}>{formatRupiah(group.totalNilaiBersih - group.totalPanjar)}</strong>
+                      <span style={{ fontSize: 12, display: 'inline', color: 'var(--text-tertiary)' }}>Bayar ke mitra:</span>
+                      <strong style={{ fontSize: 14, display: 'inline', marginTop: 0, color: 'var(--color-success)' }}>{formatRupiah(group.totalNilaiBersih - group.totalPanjar - (group.totalSewaArmada || 0))}</strong>
                     </div>
                   </div>
 
@@ -746,26 +746,58 @@ export default function KwitansiMitraPage() {
                     <span>Total Nilai Bersih TBS</span>
                     <strong className="table-mono">{formatRupiah(displayTotalNilaiBersih)}</strong>
                   </div>
-                  {displayTotalSewaArmada > 0 && (() => {
-                    const totalOngkos = kwitansiRows.reduce((sum, row) => sum + (row.nominal_perongkosan_snapshot || 0), 0);
-                    const tarifSewa = kwitansiRows[0]?.tarif_sewa_angkut_per_kg_snapshot || 0;
-                    const totalBeratNetto = kwitansiRows.reduce((sum, row) => sum + toNumber(resolveBeratNettoPabrik(row) || row.berat_netto_pabrik_kg || row.tonase || 0), 0);
-                    return (
-                      <div>
-                        <span>
-                          Potongan Sewa Armada CB
-                          <span style={{ display: 'block', fontSize: 10, color: 'var(--text-tertiary)', marginTop: 2, fontWeight: 'normal', border: 'none', padding: 0, background: 'transparent' }}>
-                            ({formatNumber(totalBeratNetto)} kg x {formatRupiah(tarifSewa)}/kg) - Ongkos {formatRupiah(totalOngkos)}
-                          </span>
-                        </span>
-                        <strong className="table-mono danger-text">- {formatRupiah(displayTotalSewaArmada)}</strong>
-                      </div>
-                    );
-                  })()}
-                  <div>
-                    <span>Potongan Panjar Mitra</span>
-                    <strong className="table-mono danger-text">- {formatRupiah(displayTotalPanjar)}</strong>
-                  </div>
+                  {displayTotalSewaArmada > 0 && (
+                    kwitansiGroups.length > 1
+                      ? kwitansiGroups.filter(g => (g.totalSewaArmada || 0) > 0).map(g => {
+                          const groupOngkos = g.rows.reduce((s, r) => s + (r.nominal_perongkosan_snapshot || 0), 0);
+                          const groupTarif = g.rows[0]?.tarif_sewa_angkut_per_kg_snapshot || 0;
+                          const groupBeratNetto = g.rows.reduce((s, r) => s + toNumber(resolveBeratNettoPabrik(r) || r.berat_netto_pabrik_kg || r.tonase || 0), 0);
+                          return (
+                            <div key={g.mitraId}>
+                              <span>
+                                Potongan Sewa Armada CB
+                                <span style={{ fontSize: 10, color: 'var(--text-tertiary)', display: 'block', fontWeight: 400 }}>{g.label}</span>
+                                <span style={{ display: 'block', fontSize: 10, color: 'var(--text-tertiary)', marginTop: 2, fontWeight: 'normal', border: 'none', padding: 0, background: 'transparent' }}>
+                                  ({formatNumber(groupBeratNetto)} kg x {formatRupiah(groupTarif)}/kg) - Ongkos {formatRupiah(groupOngkos)}
+                                </span>
+                              </span>
+                              <strong className="table-mono danger-text">- {formatRupiah(g.totalSewaArmada || 0)}</strong>
+                            </div>
+                          );
+                        })
+                      : (() => {
+                          const totalOngkos = kwitansiRows.reduce((sum, row) => sum + (row.nominal_perongkosan_snapshot || 0), 0);
+                          const tarifSewa = kwitansiRows[0]?.tarif_sewa_angkut_per_kg_snapshot || 0;
+                          const totalBeratNetto = kwitansiRows.reduce((sum, row) => sum + toNumber(resolveBeratNettoPabrik(row) || row.berat_netto_pabrik_kg || row.tonase || 0), 0);
+                          return (
+                            <div>
+                              <span>
+                                Potongan Sewa Armada CB
+                                <span style={{ display: 'block', fontSize: 10, color: 'var(--text-tertiary)', marginTop: 2, fontWeight: 'normal', border: 'none', padding: 0, background: 'transparent' }}>
+                                  ({formatNumber(totalBeratNetto)} kg x {formatRupiah(tarifSewa)}/kg) - Ongkos {formatRupiah(totalOngkos)}
+                                </span>
+                              </span>
+                              <strong className="table-mono danger-text">- {formatRupiah(displayTotalSewaArmada)}</strong>
+                            </div>
+                          );
+                        })()
+                  )}
+                  {displayTotalPanjar > 0 && (
+                    kwitansiGroups.length > 1
+                      ? kwitansiGroups.filter(g => g.totalPanjar > 0).map(g => (
+                          <div key={g.mitraId}>
+                            <span>
+                              Potongan Panjar Mitra
+                              <span style={{ fontSize: 10, color: 'var(--text-tertiary)', display: 'block', fontWeight: 400 }}>{g.label}</span>
+                            </span>
+                            <strong className="table-mono danger-text">- {formatRupiah(g.totalPanjar)}</strong>
+                          </div>
+                        ))
+                      : <div>
+                          <span>Potongan Panjar Mitra</span>
+                          <strong className="table-mono danger-text">- {formatRupiah(displayTotalPanjar)}</strong>
+                        </div>
+                  )}
                   <div className="kwitansi-total-divider"></div>
                   <div className="kwitansi-final-total">
                     <span>Sisa Dibayar ke Mitra</span>
