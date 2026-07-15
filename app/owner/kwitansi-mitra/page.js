@@ -694,7 +694,7 @@ export default function KwitansiMitraPage() {
                               <div style={{ fontWeight: 600 }}>{row.sopir_aktual_nama || row.sopir_default_nama || '-'}</div>
                               <div className="table-mono" style={{ marginTop: 4, fontSize: 12, color: 'var(--text-tertiary)' }}>{row.plat_nomor || '-'}</div>
                               {row.sopir_diganti_dari_default && (
-                                <div style={{ fontSize: 12, color: 'var(--text-tertiary)', marginTop: 4 }}>
+                                <div style={{ fontSize: 10, fontStyle: 'italic', color: 'var(--text-tertiary)', marginTop: 2, lineHeight: 1.2 }}>
                                   Pengganti dari {row.sopir_default_nama || '-'}
                                   {row.catatan_sopir ? ` - ${row.catatan_sopir}` : ''}
                                 </div>
@@ -753,7 +753,7 @@ export default function KwitansiMitraPage() {
                       <div>
                         <span>
                           Potongan Sewa Armada CB
-                          <span style={{ display: 'block', fontSize: 11, color: 'var(--text-tertiary)', marginTop: 2, fontWeight: 'normal', border: 'none', padding: 0, background: 'transparent' }}>
+                          <span style={{ display: 'block', fontSize: 10, color: 'var(--text-tertiary)', marginTop: 2, fontWeight: 'normal', border: 'none', padding: 0, background: 'transparent' }}>
                             Kotor {formatRupiah(totalSewaKotor)} - Ongkos {formatRupiah(totalOngkos)}
                           </span>
                         </span>
