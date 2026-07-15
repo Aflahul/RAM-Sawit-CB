@@ -120,6 +120,7 @@ export default function LabaRugiPage() {
   const kategoriLabel = {
     solar: 'Solar / BBM',
     gaji_sopir: 'Gaji Sopir',
+    dana_operasional_trip: 'Dana Operasional Trip Armada CB',
     kuli: 'Kuli Bongkar',
     retribusi: 'Retribusi',
     perawatan: 'Perawatan',

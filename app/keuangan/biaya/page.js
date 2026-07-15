@@ -10,6 +10,7 @@ import { exportToExcel } from '@/lib/export';
 const KATEGORI = [
   { value: 'solar', label: '⛽ Solar / BBM' },
   { value: 'gaji_sopir', label: '👤 Gaji Sopir' },
+  { value: 'dana_operasional_trip', label: 'Dana Operasional Trip Armada CB' },
   { value: 'kuli', label: '💪 Kuli Bongkar' },
   { value: 'retribusi', label: '📋 Retribusi' },
   { value: 'perawatan', label: '🔧 Perawatan Kendaraan' },

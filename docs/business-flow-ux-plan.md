@@ -199,7 +199,7 @@ Gap utama: pencocokan stok lokal ke transaksi mitra internal, bukti pembayaran p
 8. Sistem membuat snapshot pembayaran, kas keluar, dan potongan panjar.
 9. Kwitansi dicetak/dikirim WhatsApp.
 
-Gap utama: settlement per DO berbasis pembayaran pabrik, selisih tonase mitra vs pabrik, biaya bantuan mitra, sewa Armada CB, biaya sopir CB, dan status revisi kwitansi yang lebih lengkap.
+Gap utama: settlement per DO berbasis pembayaran pabrik, selisih tonase mitra vs pabrik, biaya bantuan mitra, sewa Armada CB, Dana Operasional Trip, dan status revisi kwitansi yang lebih lengkap.
 
 ### 7.3 Alur C - Armada Internal sebagai Mitra
 
@@ -248,7 +248,7 @@ Alur target pencatatan laba:
 
 ### 7.4.1 Scope Urgent - Berat Netto, Potongan Pabrik, dan Armada CB
 
-Status: **Urgent / P0 untuk koreksi alur dan field utama**. Tracking upah sopir, uang jalan, dan laporan profit armada adalah **add-on P1/P2** di bawah payung yang sama.
+Status: **Urgent / P0 untuk koreksi alur dan field utama**. Tracking Dana Operasional Trip dan laporan profit armada adalah **add-on P1/P2** di bawah payung yang sama.
 
 Tujuan besarnya: Pengiriman Mitra harus menjadi satu pintu untuk mencatat muatan ke pabrik, menghitung hak mitra, memotong sewa Armada CB jika armada CB dipakai, lalu menjadi dasar kwitansi, kas, laba/rugi, dan laporan armada.
 
@@ -311,7 +311,7 @@ Keputusan data:
 - `sopir.is_armada_cb` menjadi penanda utama apakah plat/sopir adalah Armada CB.
 - Jangan menghidupkan kembali `armada_perusahaan` sebagai tabel aktif baru. Armada aktif tetap dikelola lewat `sopir`, `plat_nomor`, dan `is_armada_cb` sampai ada alasan kuat untuk membuat tabel baru yang bersih.
 - Nama `pakai_sewa_armada_bl` boleh dipertahankan sementara sebagai field legacy, tetapi istilah UI dan helper baru harus menyebut Armada CB.
-- `nominal_perongkosan` tidak boleh lagi dimaknai sebagai pengurang sewa armada. Untuk pengembangan berikutnya, uang jalan sopir harus dipisah menjadi biaya sopir CB, misalnya `uang_jalan_sopir_cb_snapshot`.
+- `nominal_perongkosan` tidak boleh lagi dimaknai sebagai pengurang sewa armada. Transaksi baru memakai `dana_operasional_trip_snapshot`; field upah/uang jalan lama hanya untuk kompatibilitas.
 - Backfill data lama: `berat_netto_pabrik_kg = tonase`, `potongan_pabrik_kg = 0`, `berat_dibayar_kg = tonase`, dan `biaya_sewa_armada_total = 0`.
 - Untuk kwitansi yang sudah dibayar, snapshot lama tidak dihitung ulang sembarangan. Jika butuh koreksi, gunakan kwitansi revisi atau transaksi baru.
 
@@ -325,7 +325,7 @@ Dampak halaman:
 | Laporan Mitra | Status sudah/belum dibayar tetap ada, tetapi angka berat harus jelas: netto vs berat dibayar. |
 | Pembayaran Pabrik | Pencocokan tetap memakai angka nota pabrik; data internal yang dipilih harus bisa menjumlahkan Berat Netto dan Berat Dibayar. |
 | Dashboard dan Laba/Rugi | Pendapatan owner memisahkan fee owner, kas masuk pabrik, pembayaran mitra, biaya operasional, dan sewa armada. |
-| Laporan Armada CB | Add-on P1/P2 untuk melihat trip, total muatan, sewa masuk, upah sopir, uang jalan, biaya operasional, dan margin. |
+| Laporan Armada CB | Add-on P1/P2 untuk melihat trip, total muatan, sewa masuk, Dana Operasional Trip, biaya operasional lain, dan margin. |
 
 Posisi pengembangan:
 
@@ -335,7 +335,7 @@ Posisi pengembangan:
 
 Pending konfirmasi:
 
-- Nominal upah sopir CB per trip dan uang jalan per trip belum diisi. Sistem boleh menyiapkan field, tetapi angka default harus dikonfirmasi sebelum dipakai operasional.
+- Enam tarif awal Dana Operasional Trip sudah dikonfirmasi. Mitra lain tetap `Rp0` sampai owner menetapkan tarifnya.
 
 ### 7.5 Tindak Lanjut Mitra yang Sudah Dibayar dan Diberi Kwitansi
 
@@ -601,7 +601,7 @@ Tambahkan:
 
 - Settlement per DO.
 - Selisih tonase mitra vs pabrik.
-- Sewa Armada CB, biaya sopir CB, dan riwayat tarif.
+- Sewa Armada CB, Dana Operasional Trip, dan riwayat tarif.
 - Biaya bantuan mitra.
 - Tarif armada history dan override approval.
 - Kwitansi final berdasarkan settlement.
@@ -617,6 +617,23 @@ Tambahkan:
 ### 11.1 Rencana Implementasi Scope Berat dan Sewa Armada
 
 Status 15 Juli 2026: langkah 1-6 untuk P0/P1/P2 Armada CB sudah diterapkan. Pengembangan berikutnya tetap berada di bawah payung settlement final, bukti timbang, dan monitoring exception.
+
+### 7.4.2 Koreksi Final - Dana Operasional Trip Armada CB
+
+Istilah “upah sopir + uang jalan” tidak dipakai untuk transaksi baru. Owner menyerahkan satu dana per trip yang sudah mencakup solar, makan, uang jalan, dan bagian sopir. Karena sistem tidak mengetahui pembagian internal dana tersebut, UI menyebutnya **Dana Operasional Trip**.
+
+Alur bisnis final:
+
+1. Admin memilih Sopir/Plat Armada CB.
+2. Admin memilih Mitra Transaksi yang menyewa armada.
+3. Sistem mengambil Tarif Sewa/kg dan Dana Operasional Trip milik mitra sesuai tanggal pengiriman.
+4. Sistem membekukan kedua tarif sebagai snapshot transaksi.
+5. Sistem menghitung Sewa Masuk dari `Berat Netto x Tarif Sewa/kg`.
+6. Sistem membuat tagihan Dana Operasional Trip tanpa langsung mengurangi kas.
+7. Admin keuangan menekan **Bayar Dana Trip** setelah uang benar-benar diberikan.
+8. Laporan armada menghitung `Sewa Masuk - Dana Operasional Trip - Biaya Operasional Lain`.
+
+Pengaturan tarif ditempatkan di halaman Mitra karena nilainya mengikuti pihak penyewa, sedangkan halaman Armada hanya mengelola plat, sopir tetap, dan status Armada CB.
 
 Urutan implementasi yang disarankan:
 

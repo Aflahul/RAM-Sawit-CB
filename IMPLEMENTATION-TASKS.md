@@ -803,7 +803,7 @@ Acceptance:
 - [x] Jadikan `sopir.is_armada_cb` sebagai penanda Armada CB. Jangan menghidupkan kembali `armada_perusahaan` sebagai tabel aktif untuk fitur baru.
 - [x] Koreksi penamaan/arti field: istilah UI dan helper memakai "Armada CB"; field legacy `pakai_sewa_armada_bl` dipertahankan sementara untuk kompatibilitas.
 - [x] Koreksi rumus sewa Armada CB: `sewa_armada_cb = berat_netto_pabrik_kg x tarif_sewa_armada_per_kg`. Sewa tidak dikurangi `nominal_perongkosan`.
-- [x] Pisahkan uang jalan/perongkosan dan upah sopir CB menjadi biaya/tagihan sopir, bukan pengurang sewa yang dipotong dari mitra.
+- [x] Catat Dana Operasional Trip sebagai biaya/tagihan CB terpisah, bukan pengurang sewa yang dipotong dari mitra.
 - [x] Hubungkan `biaya_operasional` ke Armada CB dan transaksi asal untuk biaya sopir/perawatan per truk.
 - [ ] Buat `tarif_armada` dengan tanggal berlaku.
 - [ ] Hitung biaya armada: `max(jarak_km x tonase_ton x tarif_per_km_per_ton, minimum_charge)`.
@@ -1032,34 +1032,34 @@ Berdasarkan audit UX (15 Juli 2026), realita operasional Admin Owner adalah **Hi
 
 ### P0 Koreksi - Armada CB, Sewa, dan Perongkosan (15 Juli 2026)
 
-Berdasarkan keputusan PRD terbaru, perongkosan/uang jalan adalah biaya CB ke sopir dan tidak boleh mengurangi sewa Armada CB yang dipotong dari mitra.
+Berdasarkan keputusan PRD terbaru, Dana Operasional Trip adalah biaya satu kali jalan Armada CB dan tidak boleh mengurangi sewa Armada CB yang dipotong dari mitra.
 
 Task P0:
 - [x] Stop memakai `nominal_perongkosan` sebagai pengurang `biaya_sewa_armada_total`.
 - [x] Pastikan sewa Armada CB yang dipotong dari mitra adalah nilai kotor: `berat_netto_pabrik_kg x tarif_sewa_armada_per_kg`.
 - [x] Update helper kalkulasi, form, kwitansi, laporan mitra, dan pendapatan owner agar membaca sewa Armada CB dengan makna yang sama.
 - [x] Tambahkan migration koreksi/backfill non-destruktif `20260715105207_armada_cb_driver_costs.sql`.
-- [x] Tambahkan field/snapshot biaya sopir CB: `upah_sopir_cb_snapshot`, `uang_jalan_sopir_cb_snapshot`, dan `total_biaya_sopir_cb_snapshot`.
+- [x] Pertahankan snapshot biaya sopir lama untuk kompatibilitas, lalu tambahkan `dana_operasional_trip_snapshot` sebagai sumber transaksi baru.
 - [x] Bekukan rincian sewa kwitansi dibayar melalui `20260715113428_freeze_kwitansi_sewa_snapshots.sql`; UI tidak lagi mencampur snapshot kwitansi dengan nominal transaksi live.
 - [x] Simpan tarif, sewa standar, selisih historis, dan metode perhitungan sebagai metadata audit item kwitansi tanpa mengubah nominal pembayaran atau Buku Kas lama.
 - [x] Cabut akses insert/update/delete langsung pada item kwitansi; koreksi wajib melalui pembatalan dan penerbitan ulang.
 - [x] Perbaiki RPC finansial lama (`min(uuid)` dan field audit panjar tidak valid) sampai `supabase db lint --linked --schema public --level error` lulus tanpa error.
 
-### P1 Add-on - Tagihan dan Pembayaran Sopir Armada CB
+### P1 Add-on - Tagihan dan Pembayaran Dana Operasional Trip
 
 Task P1:
-- [x] Tambahkan pengaturan global nominal upah sopir CB per trip dan uang jalan per trip, dengan override per unit.
-- [x] Saat pengiriman Armada CB disimpan, buat tagihan sopir CB di `hutang_ledger`.
-- [x] Kas tidak otomatis keluar saat DO diinput. Aksi **Bayar Tunai Sopir** mencatat biaya dan kas keluar secara atomik.
+- [x] Tambahkan Dana Operasional Trip per mitra beserta riwayat tanggal berlaku.
+- [x] Saat pengiriman Armada CB disimpan, buat tagihan Dana Operasional Trip di `hutang_ledger`.
+- [x] Kas tidak otomatis keluar saat DO diinput. Aksi **Bayar Dana Trip** mencatat biaya dan kas keluar secara atomik.
 - [x] Cegah pembayaran sopir double untuk transaksi yang sama dengan row lock, status transaksi, dan idempotency key kas.
-- [x] Tampilkan daftar tagihan sopir CB yang belum dibayar di `/owner/laporan-armada-cb`.
-- [ ] Konfigurasi operasional oleh owner: isi nominal Upah Sopir / Trip dan Uang Jalan / Trip di menu Armada. Nilai awal tetap `Rp0` sampai angka bisnis disetujui.
-- [ ] Setelah tarif diisi, jalankan **Terapkan Tarif Saat Ini** untuk periode trip lama yang belum dibayar, lalu cocokkan satu sampel tagihan dengan catatan manual.
+- [x] Tampilkan daftar Dana Operasional Trip yang belum dibayar di `/owner/laporan-armada-cb`.
+- [x] Isi enam tarif awal dari konfirmasi owner; mitra lain tetap `Rp0` sampai dikonfirmasi.
+- [x] Sediakan **Terapkan Tarif Mitra** hanya untuk trip lama yang belum dibayar.
 
 ### P2 Add-on - Laporan Profit Armada CB
 
 Task P2:
-- [x] Buat laporan per truk/per bulan: total trip, total muatan, sewa masuk, upah sopir, uang jalan, biaya operasional, dan margin.
+- [x] Buat laporan per truk/per bulan: total trip, total muatan, sewa masuk, Dana Operasional Trip, biaya operasional lain, dan margin.
 - [x] Tambahkan pilihan Armada CB pada biaya operasional manual seperti ganti oli.
 - [x] Batasi margin/profit Armada CB untuk owner/super admin; admin keuangan hanya melihat antrean pembayaran dan data operasional.
 
@@ -1068,7 +1068,26 @@ Task P2:
 - [x] Migration penambahan kolom `tarif_sewa_angkut_per_kg` dan `nominal_perongkosan` pada `master_mitra`, `fee_owner_mitra_history`, dan `transaksi_mitra` (`20260715075100_add_dynamic_sewa_armada.sql`).
 - [x] Koreksi perhitungan lama `(berat_netto * tarif_sewa_angkut) - nominal_perongkosan` karena tidak lagi sesuai PRD final.
 - [x] Update form Input Timbangan untuk membaca tarif sewa Armada CB tanpa menganggap perongkosan sebagai pengurang sewa.
-- [x] Update Kwitansi Mitra untuk menampilkan Sewa Armada CB sebagai potongan/tagihan ke mitra dan memindahkan uang jalan ke modul biaya/tagihan sopir.
+- [x] Update Kwitansi Mitra untuk menampilkan Sewa Armada CB sebagai potongan/tagihan ke mitra dan memindahkan Dana Operasional Trip ke modul biaya armada.
 - [x] Update halaman Pendapatan Owner Bruto agar sewa Armada CB tidak tertukar dengan biaya sopir.
 - [x] Update halaman Master Data Mitra untuk mengatur Tarif Sewa Armada CB; field Perongkosan lama disembunyikan dari UI.
+
+### P0 Koreksi Final - Dana Operasional Trip per Mitra (15 Juli 2026)
+
+- [x] Ganti istilah upah + uang jalan menjadi **Dana Operasional Trip** karena nominal owner sudah mencakup solar, makan, uang jalan, dan bagian sopir.
+- [x] Tambahkan tarif Dana Operasional Trip pada `master_mitra` dan riwayat tarif berdasarkan tanggal berlaku.
+- [x] Tambahkan `dana_operasional_trip_snapshot` pada `transaksi_mitra`.
+- [x] Jadikan Mitra Transaksi sebagai sumber tarif sewa/kg dan Dana Operasional Trip.
+- [x] Seed tarif `SL`, `BL`, `SL/F`, `SL/BS`, `SL/MLD`, dan `BL/ML` berdasarkan konfirmasi owner.
+- [x] Ubah tagihan, pembayaran kas, biaya operasional, dan laporan armada agar memakai Dana Operasional Trip.
+- [x] Hilangkan pengaturan upah/uang jalan global dan override per armada dari UI.
+- [x] Pertahankan field lama untuk kompatibilitas arsip dan jangan mengubah trip yang sudah dibayar.
+
+Acceptance:
+
+- [x] Form Pengiriman menampilkan sewa/kg dan satu Dana Operasional Trip sesuai Mitra Transaksi.
+- [x] Ganti mitra atau tanggal pada trip yang belum dibayar memperbarui snapshot berdasarkan riwayat tarif.
+- [x] Trip yang sudah dibayar tetap beku.
+- [x] Bayar Dana Trip membuat satu biaya operasional dan satu kas keluar tanpa pembayaran ganda.
+- [x] Laporan margin tidak menghitung Dana Operasional Trip dua kali.
 - [x] Tampilan Master Data Mitra disempurnakan (merge kolom Kode + Nama, Penanggung Jawab + No HP, Tipe di-hide).

@@ -29,6 +29,7 @@ const mitraSortAccessors = {
   alamat: row => row.alamat,
   fee: row => Number(row.fee_per_kg),
   sewa_angkut: row => Number(row.tarif_sewa_angkut_per_kg),
+  dana_trip: row => Number(row.dana_operasional_trip),
 };
 
 export default function MitraPage() {
@@ -51,6 +52,7 @@ export default function MitraPage() {
     tipe_mitra: MITRA_TYPES.EKSTERNAL,
     fee_per_kg: 0,
     tarif_sewa_angkut_per_kg: 0,
+    dana_operasional_trip: 0,
     fee_berlaku_mulai: getTodayISO(),
     fee_alasan: '',
   });
@@ -82,6 +84,7 @@ export default function MitraPage() {
       tipe_mitra: MITRA_TYPES.EKSTERNAL,
       fee_per_kg: 0,
       tarif_sewa_angkut_per_kg: 0,
+      dana_operasional_trip: 0,
       fee_berlaku_mulai: getTodayISO(),
       fee_alasan: '',
     });
@@ -104,6 +107,7 @@ export default function MitraPage() {
       tipe_mitra: item.tipe_mitra || MITRA_TYPES.EKSTERNAL,
       fee_per_kg: item.fee_per_kg || 0,
       tarif_sewa_angkut_per_kg: item.tarif_sewa_angkut_per_kg || 0,
+      dana_operasional_trip: item.dana_operasional_trip || 0,
       fee_berlaku_mulai: getTodayISO(),
       fee_alasan: '',
     });
@@ -126,6 +130,7 @@ export default function MitraPage() {
 
     const feePerKg = parseFloat(formMitra.fee_per_kg) || 0;
     const tarifSewaAngkut = parseFloat(formMitra.tarif_sewa_angkut_per_kg) || 0;
+    const danaOperasionalTrip = parseFloat(formMitra.dana_operasional_trip) || 0;
     
     const payload = {
       kode: formMitra.kode,
@@ -136,6 +141,7 @@ export default function MitraPage() {
       tipe_mitra: formMitra.tipe_mitra || MITRA_TYPES.EKSTERNAL,
       fee_per_kg: feePerKg,
       tarif_sewa_angkut_per_kg: tarifSewaAngkut,
+      dana_operasional_trip: danaOperasionalTrip,
     };
     let savedMitraId = editingId;
     let historyFailed = false;
@@ -164,6 +170,7 @@ export default function MitraPage() {
           master_mitra_id: savedMitraId,
           fee_per_kg: feePerKg,
           tarif_sewa_angkut_per_kg: tarifSewaAngkut,
+          dana_operasional_trip: danaOperasionalTrip,
           berlaku_mulai: formMitra.fee_berlaku_mulai || getTodayISO(),
           alasan_perubahan: formMitra.fee_alasan || 'Update Tarif dari Master Mitra',
           aktif: true,
@@ -225,6 +232,7 @@ export default function MitraPage() {
           { header: 'Alamat / Lokasi', key: 'alamat', width: 28 },
           { header: 'Fee Owner/Kg', key: 'fee_per_kg', type: 'currency', width: 16 },
           { header: 'Sewa Angkut', key: 'tarif_sewa_angkut_per_kg', type: 'currency', width: 16 },
+          { header: 'Dana Operasional / Trip', key: 'dana_operasional_trip', type: 'currency', width: 22 },
         ],
         rows: sortedMitras,
       }],
@@ -275,17 +283,18 @@ export default function MitraPage() {
               <SortableHeader label="Penanggung Jawab" sortKey="penanggung_jawab" sort={sort} onSort={handleSort} />
               <SortableHeader label="Fee Owner/Kg" sortKey="fee" sort={sort} onSort={handleSort} align="right" />
               <SortableHeader label="Sewa Angkut" sortKey="sewa_angkut" sort={sort} onSort={handleSort} align="right" />
+              <SortableHeader label="Dana Operasional / Trip" sortKey="dana_trip" sort={sort} onSort={handleSort} align="right" />
               <th style={{ textAlign: 'center' }}>Aksi</th>
             </tr>
           </thead>
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={5}>Memuat data...</td>
+                <td colSpan={6}>Memuat data...</td>
               </tr>
             ) : paginatedMitras.rows.length === 0 ? (
               <tr>
-                <td colSpan={5}>Data mitra tidak ditemukan.</td>
+                <td colSpan={6}>Data mitra tidak ditemukan.</td>
               </tr>
             ) : (
               paginatedMitras.rows.map(mitra => (
@@ -300,6 +309,7 @@ export default function MitraPage() {
                   </td>
                   <td className="table-mono" style={{ textAlign: 'right' }}>{formatRupiah(mitra.fee_per_kg)}</td>
                   <td className="table-mono" style={{ textAlign: 'right', color: 'var(--text-secondary)' }}>{mitra.tarif_sewa_angkut_per_kg > 0 ? formatRupiah(mitra.tarif_sewa_angkut_per_kg) : '-'}</td>
+                  <td className="table-mono" style={{ textAlign: 'right', color: 'var(--text-secondary)' }}>{mitra.dana_operasional_trip > 0 ? formatRupiah(mitra.dana_operasional_trip) : '-'}</td>
                   <td style={{ textAlign: 'center' }}>
                     <button className="btn btn-ghost btn-sm" onClick={() => openEdit(mitra)} aria-label={`Edit ${mitra.nama}`}>
                       <Pencil size={16} />
@@ -385,17 +395,24 @@ export default function MitraPage() {
                   <label className="form-label">Fee Owner (Rp/Kg)</label>
                   <input type="number" className="form-input" value={formMitra.fee_per_kg} onChange={e => setFormMitra({ ...formMitra, fee_per_kg: e.target.value })} />
                 </div>
-                <div className="form-group">
-                  <label className="form-label">Tarif Sewa Armada CB (Rp/Kg Netto)</label>
-                  <input type="number" className="form-input" value={formMitra.tarif_sewa_angkut_per_kg} onChange={e => setFormMitra({ ...formMitra, tarif_sewa_angkut_per_kg: e.target.value })} />
+                <div className="form-grid">
+                  <div className="form-group">
+                    <label className="form-label">Tarif Sewa Armada CB (Rp/Kg Netto)</label>
+                    <input type="number" min={0} className="form-input" value={formMitra.tarif_sewa_angkut_per_kg} onChange={e => setFormMitra({ ...formMitra, tarif_sewa_angkut_per_kg: e.target.value })} />
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label">Dana Operasional Armada CB / Trip</label>
+                    <input type="number" min={0} className="form-input" value={formMitra.dana_operasional_trip} onChange={e => setFormMitra({ ...formMitra, dana_operasional_trip: e.target.value })} />
+                    <div className="form-hint">Satu jumlah untuk solar, makan, uang jalan, dan bagian sopir.</div>
+                  </div>
                 </div>
                 <div className="form-grid">
                   <div className="form-group">
-                    <label className="form-label form-label-required">Fee Berlaku Mulai</label>
+                    <label className="form-label form-label-required">Tarif Berlaku Mulai</label>
                     <input type="date" className="form-input" required value={formMitra.fee_berlaku_mulai} onChange={e => setFormMitra({ ...formMitra, fee_berlaku_mulai: e.target.value })} />
                   </div>
                   <div className="form-group">
-                    <label className="form-label">Alasan Perubahan Fee</label>
+                    <label className="form-label">Alasan Perubahan Tarif</label>
                     <input className="form-input" value={formMitra.fee_alasan} onChange={e => setFormMitra({ ...formMitra, fee_alasan: e.target.value })} placeholder="Contoh: kesepakatan baru" />
                   </div>
                 </div>
