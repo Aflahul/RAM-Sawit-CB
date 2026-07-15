@@ -47,6 +47,7 @@ AGENTS.md
 CLAUDE.md
 .codex-logs/
 .stitch/
+.agents/
 
 # IDE / Editor
 .vscode/
