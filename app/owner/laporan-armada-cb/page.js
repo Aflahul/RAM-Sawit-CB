@@ -7,7 +7,7 @@ import { exportToExcel } from '@/lib/export';
 import { canManageFinance, canViewProfit, normalizeRole } from '@/lib/roles';
 import { supabase } from '@/lib/supabase';
 import { formatDateDisplay, formatRupiah, getTodayISO } from '@/lib/utils';
-import { Banknote, FileSpreadsheet, RefreshCw, Truck, Weight, WalletCards } from 'lucide-react';
+import { Banknote, Eye, EyeOff, FileSpreadsheet, RefreshCw, Truck, Weight, WalletCards } from 'lucide-react';
 
 const BULAN = [
   '', 'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
@@ -37,6 +37,7 @@ export default function LaporanArmadaCBPage() {
   const [bulan, setBulan] = useState(now.getMonth() + 1);
   const [tahun, setTahun] = useState(now.getFullYear());
   const [selectedArmada, setSelectedArmada] = useState('semua');
+  const [showTripDetails, setShowTripDetails] = useState(false);
   const [armadas, setArmadas] = useState([]);
   const [transactions, setTransactions] = useState([]);
   const [expenses, setExpenses] = useState([]);
@@ -219,6 +220,11 @@ export default function LaporanArmadaCBPage() {
     setTimeout(() => setToast(null), type === 'error' ? 5000 : 3000);
   }
 
+  function showArmadaTripDetails(armadaId) {
+    setSelectedArmada(armadaId);
+    setShowTripDetails(true);
+  }
+
   async function confirmPay() {
     if (!payTarget || paying) return;
     setPaying(true);
@@ -381,7 +387,7 @@ export default function LaporanArmadaCBPage() {
                   <td className="table-mono text-warning" style={{ textAlign: 'right' }}>{formatRupiah(row.danaBelumDibayar)}</td>
                   {canSeeMargin && <td className="table-mono" style={{ textAlign: 'right' }}>{formatRupiah(row.biayaLain)}</td>}
                   {canSeeMargin && <td className={`table-mono ${row.margin >= 0 ? 'text-success' : 'text-danger'}`} style={{ textAlign: 'right', fontWeight: 700 }}>{formatRupiah(row.margin)}</td>}
-                  {selectedArmada === 'semua' && <td style={{ textAlign: 'center' }}><button className="btn btn-outline btn-sm" onClick={() => setSelectedArmada(row.id)}>Lihat Detail</button></td>}
+                  {selectedArmada === 'semua' && <td style={{ textAlign: 'center' }}><button className="btn btn-outline btn-sm" onClick={() => showArmadaTripDetails(row.id)}><Eye size={15} /> Lihat Detail</button></td>}
                 </tr>
               ))}
             </tbody>
@@ -389,11 +395,20 @@ export default function LaporanArmadaCBPage() {
         </div>
       </div>
 
-      <div style={{ marginTop: 'var(--space-xl)', marginBottom: 'var(--space-md)' }}>
-        <h2 style={{ margin: 0, fontSize: 20 }}>Rincian Trip</h2>
-        <div className="text-tertiary text-sm" style={{ marginTop: 4 }}>Daftar pengiriman yang membentuk rekap di atas.</div>
+      <div style={{ marginTop: 'var(--space-xl)' }}>
+        <button className="btn btn-outline" onClick={() => setShowTripDetails(current => !current)} disabled={transactions.length === 0}>
+          {showTripDetails ? <EyeOff size={16} /> : <Eye size={16} />}
+          {showTripDetails ? 'Sembunyikan Rincian Trip' : 'Tampilkan Rincian Trip'}
+        </button>
       </div>
-      <div className="table-container">
+
+      {showTripDetails && (
+        <>
+          <div style={{ marginTop: 'var(--space-lg)', marginBottom: 'var(--space-md)' }}>
+            <h2 style={{ margin: 0, fontSize: 20 }}>Rincian Trip</h2>
+            <div className="text-tertiary text-sm" style={{ marginTop: 4 }}>Gunakan rincian ini hanya saat perlu memeriksa transaksi atau membayar Dana Trip.</div>
+          </div>
+          <div className="table-container">
         <table className="table">
           <thead>
             <tr>
@@ -425,7 +440,9 @@ export default function LaporanArmadaCBPage() {
             })}
           </tbody>
         </table>
-      </div>
+          </div>
+        </>
+      )}
 
       <ConfirmDialog
         open={!!payTarget}

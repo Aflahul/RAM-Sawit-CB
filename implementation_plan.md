@@ -51,6 +51,7 @@ P0 adalah koreksi fondasi karena memengaruhi angka kwitansi, pendapatan owner, d
 
 - Laporan per truk/per bulan: total trip, total muatan, sewa masuk, Dana Operasional Trip, biaya operasional lain, dan margin.
 - Saat memilih Semua Armada, tampilkan rekap per plat agar owner bisa membandingkan jumlah trip, total muatan, dan margin tanpa mengganti filter satu per satu.
+- Rincian trip disembunyikan secara default untuk menghindari tabel berulang; owner membukanya hanya saat perlu memeriksa transaksi atau membayar Dana Trip.
 
 ## Alur UX Target
 
