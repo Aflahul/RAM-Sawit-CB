@@ -1989,6 +1989,9 @@ Pada fase ini aplikasi bisa dianggap utuh dan matang, bukan hanya sistem operasi
 - Tambah modul pengaturan bisnis untuk fee, pembagian selisih tonase, tarif armada, limit kasbon, dan prioritas laporan.
 - Tambah riwayat fee mitra berdasarkan tanggal/jam berlaku.
 - Tambah alur pengiriman mitra per DO.
+- Pisahkan konsep **Armada CB** dari **Mitra Transaksi**: Armada CB adalah sopir/plat internal CB dan tidak wajib memiliki `mitra_id`; Mitra Transaksi adalah pihak yang punya muatan dan masuk kwitansi.
+- Form Pengiriman Mitra wajib bisa mencari plat/sopir Armada CB walaupun armada tersebut tidak punya mitra default.
+- Sewa Armada CB yang dipotong dari mitra dihitung dari Berat Netto Pabrik dan tidak boleh dikurangi uang jalan/perongkosan.
 - Tambah settlement mitra per DO.
 - Fee mitra nominal per kg.
 - Pembayaran mitra berdasarkan `tonase_dasar_settlement`.
@@ -2012,7 +2015,8 @@ Pada fase ini aplikasi bisa dianggap utuh dan matang, bukan hanya sistem operasi
 - Laporan per mitra.
 - Laporan pabrik per DO.
 - Potongan sortasi/grading dan biaya timbang.
-- Potongan armada perusahaan untuk mitra.
+- Tracking tagihan sopir Armada CB: upah flat per trip dan uang jalan/perongkosan sebagai biaya CB yang dibayar ke sopir.
+- Aksi bayar tunai sopir Armada CB yang mencatat kas keluar tanpa otomatis mengurangi kas saat DO diinput.
 - Riwayat tarif armada dan override tarif dengan alasan.
 - Bukti pembayaran mitra PDF/gambar untuk WhatsApp.
 - Laporan stok lokal.
@@ -2024,6 +2028,7 @@ Pada fase ini aplikasi bisa dianggap utuh dan matang, bukan hanya sistem operasi
 - Multi-lokasi timbang.
 - Ekspor Excel settlement mitra.
 - Dashboard owner dengan margin per sumber.
+- Laporan profit Armada CB per truk/bulan: total trip, total muatan, sewa masuk, upah sopir, uang jalan, biaya operasional, dan margin.
 - Template WhatsApp otomatis untuk bukti pembayaran.
 - Rekonsiliasi lanjutan selisih timbang mitra vs pabrik.
 
@@ -2063,8 +2068,9 @@ Versi final dianggap berhasil jika:
 - Sistem memakai fee mitra yang berlaku pada tanggal/jam pengiriman/DO.
 - Sistem membagi selisih tonase memakai persentase yang bisa diatur owner/super admin.
 - Sistem memberi peringatan anomali jika `tonase_dasar_settlement` lebih besar dari timbang mitra melewati toleransi.
-- Sistem memotong biaya armada perusahaan dari hak mitra jika armada perusahaan dipakai.
-- Sistem memakai tarif default per armada dan mencatat override tarif jika ada.
+- Sistem memotong sewa Armada CB dari hak mitra jika sopir/plat internal CB dipakai.
+- Sistem memakai tarif sewa Armada CB yang tersimpan sebagai snapshot transaksi dan mencatat override tarif jika ada.
+- Sistem mencatat upah sopir dan uang jalan Armada CB sebagai biaya CB terpisah, bukan sebagai pengurang sewa armada yang dipotong dari mitra.
 - Sistem bisa mencatat hutang/kasbon petani, mitra, sopir, karyawan, dan pihak lain tanpa double count.
 - Sistem bisa membatasi kasbon/panjar sesuai limit pihak dan meminta approval jika melewati batas.
 - Sistem mencatat seluruh uang aktual masuk/keluar di `kas_ledger`.
@@ -2083,20 +2089,39 @@ Berdasarkan tinjauan operasional, pengguna utama modul Pengiriman Mitra adalah *
 
 **Keputusan Pengembangan (P0 UX Refinement):**
 1. **Unified Interface:** Halaman "Input Timbangan" dan "Riwayat Pengiriman" disatukan menjadi satu halaman antarmuka bergaya *Data Grid* dengan *Quick Add Modal*. Tujuannya agar admin dapat melihat daftar transaksi hari ini untuk menghindari *double entry* sekaligus dapat menambah data baru tanpa pindah halaman.
-2. **Auto-Fill Mitra:** Pemilihan Mitra tidak lagi menjadi *blocker* (pengunci) untuk memilih Armada/Sopir. Admin dapat mengetik Plat Nomor armada terlebih dahulu, dan sistem akan meng-*auto-fill* Mitra berdasarkan afiliasi armada tersebut.
+2. **Armada First:** Pemilihan Mitra tidak lagi menjadi *blocker* untuk memilih Armada/Sopir. Admin dapat mengetik Plat Nomor terlebih dahulu. Jika armada punya mitra default, sistem boleh meng-*auto-fill* Mitra Transaksi. Jika armada adalah Armada CB dan tidak punya mitra default, sistem tetap memilih armada itu lalu meminta admin memilih Mitra Transaksi secara eksplisit.
 3. **Sticky Date:** Tanggal transaksi dipertahankan setelah proses *submit* (tidak otomatis reset ke `today`) untuk mempercepat entri tumpukan nota dari hari sebelumnya.
 
-# ADDENDUM FASE 2 - Pencatatan Perongkosan Armada (15 Juli 2026)
+# ADDENDUM FASE 2 - Armada CB, Sewa Armada, dan Biaya Sopir (15 Juli 2026)
 
-Berdasarkan audit alur kas dan pendapatan bruto, terdapat *gap* dalam alur **Buku Kas** terkait pencatatan **Sewa Angkut dan Perongkosan**.
+**Status implementasi:** P0, P1, dan P2 selesai diterapkan pada 15 Juli 2026 melalui migrasi `20260715105207_armada_cb_driver_costs.sql` dan halaman Laporan Armada CB.
 
-**Kondisi Saat Ini:**
-- Nilai `biaya_sewa_armada_total` yang disimpan di database adalah nilai bersih (Sewa Kotor - Perongkosan).
-- Pendapatan Bruto Owner dihitung berdasarkan (Total Fee Owner + Total Sewa Armada Bersih). Ini **SUDAH BENAR**, karena uang perongkosan bukan profit owner melainkan hak sopir/pekerja.
-- **Masalah:** Uang fisik Perongkosan yang diberikan *cash* ke sopir di timbangan **BELUM** tercatat sebagai Pengeluaran Kas (Kas Keluar) di Buku Kas. Hal ini dapat memicu selisih antara laci fisik kasir dan saldo di sistem web.
+Berdasarkan jawaban owner 15 Juli 2026, Armada CB adalah armada internal CB. Sopir CB dibayar flat per trip dan mendapat uang jalan/perongkosan. Armada CB tidak wajib terafiliasi dengan mitra mana pun.
 
-**Opsi Workflow yang Sedang Dipending (Menunggu Keputusan Tim Lapangan):**
-1. **Opsi A (Real-time di Timbangan - Paling disarankan jika dibayar harian):** Saat Admin menyimpan form Input Timbangan, sistem otomatis menembak jurnal *Kas Keluar* (Biaya Perongkosan) ke Buku Kas. Laci kasir sinkron *real-time*.
-2. **Opsi B (Cicilan Mingguan / Modul Penggajian Sopir):** Dibuatkan menu khusus "Bayar Perongkosan Sopir" (mirip Kwitansi Mitra). Admin mengumpulkan transaksi beberapa hari, lalu dibayar sekaligus memotong Buku Kas. Cocok jika sopir menerima uang secara mingguan.
+**Keputusan P0 yang wajib dikoreksi:**
+- `sopir.mitra_id` bersifat opsional. Untuk Armada CB, field ini boleh kosong.
+- `sopir.is_armada_cb = true` menjadi penanda utama bahwa plat/sopir tersebut adalah Armada CB.
+- Pengiriman Mitra tetap wajib memilih **Mitra Transaksi**, karena mitra transaksi adalah pihak yang punya muatan dan menerima kwitansi.
+- Sewa Armada CB adalah pemasukan/potongan ke mitra: `Berat Netto Pabrik x Tarif Sewa Armada/kg`.
+- Uang jalan/perongkosan dan upah sopir CB adalah biaya CB ke sopir, bukan pengurang sewa armada yang dipotong dari mitra.
+- Field/istilah lama seperti `pakai_sewa_armada_bl` boleh dipertahankan sementara untuk kompatibilitas, tetapi UI dan helper kalkulasi harus memakai istilah Armada CB.
 
-Keputusan akan diambil setelah diskusi lebih lanjut terkait kebiasaan pencairan uang jalan/ongkos muat oleh kasir timbangan di lapangan.
+**Posisi pengembangan:**
+- **P0 koreksi fondasi:** benahi form, helper kalkulasi, field snapshot, dan kwitansi agar sewa Armada CB tidak tertukar dengan uang jalan.
+- **P1 add-on:** catat tagihan sopir CB dari setiap trip: upah flat per trip + uang jalan/perongkosan.
+- **P2 add-on:** laporan profit Armada CB per bulan/per truk, termasuk biaya operasional seperti ganti oli.
+
+**Workflow sopir yang disetujui sebagai arah desain:**
+1. Admin input Pengiriman Mitra.
+2. Jika plat yang dipilih adalah Armada CB, sistem menghitung sewa Armada CB sebagai potongan/tagihan ke mitra.
+3. Sistem juga menyiapkan tagihan sopir CB: upah flat per trip + uang jalan.
+4. Kas tidak otomatis berkurang saat DO diinput. Admin menekan aksi **Bayar Tunai Sopir** untuk mencatat kas keluar.
+5. Laporan Armada CB membaca sewa masuk, biaya sopir, biaya operasional, dan margin.
+
+**Aturan snapshot kwitansi:**
+- Kwitansi yang sudah diterbitkan adalah dokumen finansial beku. Berat, tarif, sewa Armada CB, panjar, dan nominal dibayar harus dibaca dari snapshot saat penerbitan.
+- Perubahan atau backfill pada `transaksi_mitra` tidak boleh mengubah detail, total, maupun Buku Kas dari kwitansi yang sudah dibayar.
+- Sistem boleh menyimpan sewa menurut rumus terbaru dan selisih historis sebagai metadata audit, tetapi angka tersebut tidak menggantikan nominal yang pernah ditagihkan.
+- Kesalahan kwitansi diselesaikan melalui pembatalan dan penerbitan kwitansi baru, bukan mengedit item kwitansi lama.
+
+Implementasi P1 sudah tersedia, tetapi nominal upah sopir CB per trip dan uang jalan per trip belum dijawab owner. Nilai awal sistem harus tetap `Rp0` agar tidak membentuk tagihan dengan angka asumsi. Sebelum dipakai operasional, owner wajib mengisi kedua tarif di menu Armada, lalu menerapkan tarif tersebut ke trip lama yang belum dibayar melalui Laporan Armada CB.

@@ -704,6 +704,8 @@ Acceptance:
 - [x] Input mendukung pilihan armada/plat dan **sopir aktual** per DO, bukan hanya pemilihan nama sopir sebagai sumber utama.
 - [x] Implementasikan auto-fill: saat armada atau sopir default dipilih, **Plat Armada**, **Sopir Default**, dan **Afiliasi Mitra** otomatis terisi.
 - [x] Tambahkan pilihan **Mitra Transaksi** yang bisa dioverride dari default sopir/armada untuk kasus armada bersama SL/BL.
+- [x] Koreksi alur Armada CB: plat/sopir dengan `is_armada_cb = true` boleh tidak punya `mitra_id`, tetap bisa dipilih dari pencarian plat/sopir, lalu admin wajib memilih **Mitra Transaksi** secara terpisah.
+- [x] Query pilihan sopir/armada wajib mengambil `is_armada_cb` dan UI menampilkan badge "Armada CB" agar admin paham kenapa Mitra Transaksi tidak otomatis terisi.
 - [x] Tambahkan override sopir aktual jika sopir yang membawa armada berbeda dari default.
 - [x] Simpan snapshot sopir aktual dan plat kendaraan ke transaksi/pengiriman agar histori tidak berubah saat master diubah.
 - [x] Tambahkan riwayat transaksi mitra untuk edit koreksi dan pembatalan tanpa delete fisik.
@@ -798,7 +800,11 @@ Acceptance:
 - [x] Tambah migration non-destruktif untuk sopir aktual per pengiriman: `sopir_aktual_id`, snapshot nama/no HP, source master/manual, dan flag berbeda dari default.
 - [x] MVP: afiliasi default sopir/armada dibuat opsional dan tidak mengunci `mitra_id` transaksi.
 - [ ] Tambah/rapikan relasi default sopir-armada sebagai default/assignment, bukan kebenaran transaksi.
-- [ ] Buat/update `biaya_operasional` dengan `tipe_biaya`.
+- [x] Jadikan `sopir.is_armada_cb` sebagai penanda Armada CB. Jangan menghidupkan kembali `armada_perusahaan` sebagai tabel aktif untuk fitur baru.
+- [x] Koreksi penamaan/arti field: istilah UI dan helper memakai "Armada CB"; field legacy `pakai_sewa_armada_bl` dipertahankan sementara untuk kompatibilitas.
+- [x] Koreksi rumus sewa Armada CB: `sewa_armada_cb = berat_netto_pabrik_kg x tarif_sewa_armada_per_kg`. Sewa tidak dikurangi `nominal_perongkosan`.
+- [x] Pisahkan uang jalan/perongkosan dan upah sopir CB menjadi biaya/tagihan sopir, bukan pengurang sewa yang dipotong dari mitra.
+- [x] Hubungkan `biaya_operasional` ke Armada CB dan transaksi asal untuk biaya sopir/perawatan per truk.
 - [ ] Buat `tarif_armada` dengan tanggal berlaku.
 - [ ] Hitung biaya armada: `max(jarak_km x tonase_ton x tarif_per_km_per_ton, minimum_charge)`.
 - [ ] Override tarif wajib alasan dan audit log.
@@ -1016,28 +1022,53 @@ Mapping fase:
 
 Berdasarkan audit UX (15 Juli 2026), realita operasional Admin Owner adalah **High-Speed Batch Data Entry** dari nota fisik pabrik, bukan berinteraksi langsung dengan sopir di timbangan. Oleh karena itu, halaman riwayat dan form input harus disatukan agar lebih efisien.
 
-- [ ] Membuat komponen `components/ui/Modal.js` yang *reusable*.
-- [ ] Memindahkan form `app/admin/input-timbangan/page.js` ke dalam `components/transaksi/FormPengirimanModal.js`.
-- [ ] Mengubah urutan form agar ramah keyboard (Tab-friendly): Tanggal -> Sopir/Plat -> Mitra (Auto-fill) -> Berat Netto -> Potongan.
-- [ ] Memastikan tanggal transaksi bersifat *sticky* (tidak otomatis reset ke hari ini setelah simpan) untuk mempermudah entri nota kemarin.
-- [ ] Mengubah halaman `/admin/input-timbangan` menjadi Data Grid (menampilkan tabel riwayat transaksi) yang dilengkapi tombol "+ Tambah Pengiriman".
-- [ ] Menghapus halaman lama `/owner/riwayat-pengiriman-mitra` dan mengalihkan routing (sidebar) agar terpusat di `/admin/input-timbangan`.
+- [x] Membuat komponen `components/ui/Modal.js` yang *reusable*.
+- [x] Memindahkan form `app/admin/input-timbangan/page.js` ke dalam `components/transaksi/FormPengirimanModal.js`.
+- [x] Mengubah urutan form agar ramah keyboard (Tab-friendly): Tanggal -> Sopir/Plat -> Mitra Transaksi -> Berat Netto -> Potongan.
+- [x] Jika Sopir/Plat punya mitra default, auto-fill Mitra Transaksi. Jika Sopir/Plat adalah Armada CB tanpa mitra default, tampilkan badge "Armada CB" dan arahkan admin memilih Mitra Transaksi manual.
+- [x] Memastikan tanggal transaksi bersifat *sticky* (tidak otomatis reset ke hari ini setelah simpan) untuk mempermudah entri nota kemarin.
+- [x] Mengubah halaman `/admin/input-timbangan` menjadi Data Grid (menampilkan tabel riwayat transaksi) yang dilengkapi tombol "+ Tambah Pengiriman".
+- [x] Menghapus halaman lama `/owner/riwayat-pengiriman-mitra` dan mengalihkan routing (sidebar) agar terpusat di `/admin/input-timbangan`.
 
-### Agenda Baru - Pencatatan Kas Perongkosan Armada (15 Juli 2026)
+### P0 Koreksi - Armada CB, Sewa, dan Perongkosan (15 Juli 2026)
 
-Berdasarkan audit laporan kas dan pendapatan bruto, terdapat *gap* di mana fisik uang "Perongkosan" yang diserahkan tunai ke sopir tidak ter-jurnal sebagai Kas Keluar di sistem. Keputusan *workflow* menunggu konfirmasi tim lapangan (kasir timbangan).
+Berdasarkan keputusan PRD terbaru, perongkosan/uang jalan adalah biaya CB ke sopir dan tidak boleh mengurangi sewa Armada CB yang dipotong dari mitra.
 
-Task yang Menunggu Keputusan:
-- [ ] Menentukan opsi pencatatan: **Real-time Kas Keluar di form Input Timbangan** ATAU **Modul Khusus Pencairan Gaji/Perongkosan Mingguan**.
-- [ ] Membuat RPC atau *trigger* untuk memotong `kas_ledger` dengan nilai `nominal_perongkosan` secara otomatis sesuai opsi yang dipilih.
-- [ ] Memastikan pemotongan kas perongkosan ini tidak menduplikasi *record* jika menggunakan modul terpisah.
+Task P0:
+- [x] Stop memakai `nominal_perongkosan` sebagai pengurang `biaya_sewa_armada_total`.
+- [x] Pastikan sewa Armada CB yang dipotong dari mitra adalah nilai kotor: `berat_netto_pabrik_kg x tarif_sewa_armada_per_kg`.
+- [x] Update helper kalkulasi, form, kwitansi, laporan mitra, dan pendapatan owner agar membaca sewa Armada CB dengan makna yang sama.
+- [x] Tambahkan migration koreksi/backfill non-destruktif `20260715105207_armada_cb_driver_costs.sql`.
+- [x] Tambahkan field/snapshot biaya sopir CB: `upah_sopir_cb_snapshot`, `uang_jalan_sopir_cb_snapshot`, dan `total_biaya_sopir_cb_snapshot`.
+- [x] Bekukan rincian sewa kwitansi dibayar melalui `20260715113428_freeze_kwitansi_sewa_snapshots.sql`; UI tidak lagi mencampur snapshot kwitansi dengan nominal transaksi live.
+- [x] Simpan tarif, sewa standar, selisih historis, dan metode perhitungan sebagai metadata audit item kwitansi tanpa mengubah nominal pembayaran atau Buku Kas lama.
+- [x] Cabut akses insert/update/delete langsung pada item kwitansi; koreksi wajib melalui pembatalan dan penerbitan ulang.
+- [x] Perbaiki RPC finansial lama (`min(uuid)` dan field audit panjar tidak valid) sampai `supabase db lint --linked --schema public --level error` lulus tanpa error.
 
-### Implementasi Sewa Armada Dinamis & Perongkosan (Selesai - 15 Juli 2026)
+### P1 Add-on - Tagihan dan Pembayaran Sopir Armada CB
+
+Task P1:
+- [x] Tambahkan pengaturan global nominal upah sopir CB per trip dan uang jalan per trip, dengan override per unit.
+- [x] Saat pengiriman Armada CB disimpan, buat tagihan sopir CB di `hutang_ledger`.
+- [x] Kas tidak otomatis keluar saat DO diinput. Aksi **Bayar Tunai Sopir** mencatat biaya dan kas keluar secara atomik.
+- [x] Cegah pembayaran sopir double untuk transaksi yang sama dengan row lock, status transaksi, dan idempotency key kas.
+- [x] Tampilkan daftar tagihan sopir CB yang belum dibayar di `/owner/laporan-armada-cb`.
+- [ ] Konfigurasi operasional oleh owner: isi nominal Upah Sopir / Trip dan Uang Jalan / Trip di menu Armada. Nilai awal tetap `Rp0` sampai angka bisnis disetujui.
+- [ ] Setelah tarif diisi, jalankan **Terapkan Tarif Saat Ini** untuk periode trip lama yang belum dibayar, lalu cocokkan satu sampel tagihan dengan catatan manual.
+
+### P2 Add-on - Laporan Profit Armada CB
+
+Task P2:
+- [x] Buat laporan per truk/per bulan: total trip, total muatan, sewa masuk, upah sopir, uang jalan, biaya operasional, dan margin.
+- [x] Tambahkan pilihan Armada CB pada biaya operasional manual seperti ganti oli.
+- [x] Batasi margin/profit Armada CB untuk owner/super admin; admin keuangan hanya melihat antrean pembayaran dan data operasional.
+
+### Implementasi Sewa Armada Dinamis Sebelumnya (Perlu Koreksi P0 - 15 Juli 2026)
 
 - [x] Migration penambahan kolom `tarif_sewa_angkut_per_kg` dan `nominal_perongkosan` pada `master_mitra`, `fee_owner_mitra_history`, dan `transaksi_mitra` (`20260715075100_add_dynamic_sewa_armada.sql`).
-- [x] Perhitungan biaya akhir armada: `(berat_netto * tarif_sewa_angkut) - nominal_perongkosan`.
-- [x] Update form Input Timbangan untuk membaca tarif dinamis berdasarkan afiliasi mitra.
-- [x] Update Kwitansi Mitra untuk menampilkan rincian kolom Sewa Angkut dan Perongkosan.
-- [x] Update halaman Pendapatan Owner Bruto menggunakan perhitungan Sewa Armada Bersih.
-- [x] Update halaman Master Data Mitra untuk mengatur nilai Tarif Sewa Angkut dan Perongkosan.
+- [x] Koreksi perhitungan lama `(berat_netto * tarif_sewa_angkut) - nominal_perongkosan` karena tidak lagi sesuai PRD final.
+- [x] Update form Input Timbangan untuk membaca tarif sewa Armada CB tanpa menganggap perongkosan sebagai pengurang sewa.
+- [x] Update Kwitansi Mitra untuk menampilkan Sewa Armada CB sebagai potongan/tagihan ke mitra dan memindahkan uang jalan ke modul biaya/tagihan sopir.
+- [x] Update halaman Pendapatan Owner Bruto agar sewa Armada CB tidak tertukar dengan biaya sopir.
+- [x] Update halaman Master Data Mitra untuk mengatur Tarif Sewa Armada CB; field Perongkosan lama disembunyikan dari UI.
 - [x] Tampilan Master Data Mitra disempurnakan (merge kolom Kode + Nama, Penanggung Jawab + No HP, Tipe di-hide).

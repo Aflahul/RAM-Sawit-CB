@@ -1,12 +1,13 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
 import AppShell from '@/components/layout/AppShell';
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
 import SearchableCombobox from '@/components/ui/SearchableCombobox';
 import SortableHeader from '@/components/ui/SortableHeader';
 import TablePagination from '@/components/ui/TablePagination';
-import { FileSpreadsheet, Pencil, Search, Trash2, X } from 'lucide-react';
+import { FileSpreadsheet, Pencil, Save, Search, Trash2, X } from 'lucide-react';
 import {
   formatMitraLabel,
   getMitraSearchText,
@@ -16,7 +17,7 @@ import { paginateRows } from '@/lib/pagination-utils';
 import { getNextSort, sortRows } from '@/lib/sort-utils';
 import { exportStyledWorkbook } from '@/lib/spreadsheet-export';
 import { supabase } from '@/lib/supabase';
-import { formatDateTimeDisplay, getTodayISO } from '@/lib/utils';
+import { formatDateTimeDisplay, formatRupiah, getTodayISO } from '@/lib/utils';
 
 const TABLE_PAGE_SIZE = 20;
 
@@ -39,17 +40,25 @@ export default function ArmadaPage() {
   const [page, setPage] = useState(1);
   const [toast, setToast] = useState(null);
   const [deleteTarget, setDeleteTarget] = useState(null);
+  const [savingSettings, setSavingSettings] = useState(false);
+  const [driverSettings, setDriverSettings] = useState({
+    id: '',
+    upah_sopir_per_trip: 0,
+    uang_jalan_per_trip: 0,
+  });
   const [formArmada, setFormArmada] = useState({
     nama: '',
     no_hp: '',
     mitra_id: '',
     plat_nomor: '',
     is_armada_cb: false,
+    upah_sopir_per_trip_override: '',
+    uang_jalan_per_trip_override: '',
   });
 
   const loadData = useCallback(async () => {
     setLoading(true);
-    const [{ data: armadaData }, { data: mitraData }] = await Promise.all([
+    const [{ data: armadaData }, { data: mitraData }, { data: settingsData }] = await Promise.all([
       supabase
         .from('sopir')
         .select(`
@@ -63,10 +72,22 @@ export default function ArmadaPage() {
         .select('id, kode, nama, alamat, tipe_mitra')
         .eq('aktif', true)
         .order('kode'),
+      supabase
+        .from('pengaturan_bisnis')
+        .select('id, value_json')
+        .eq('key', 'armada_cb_biaya_sopir')
+        .eq('scope', 'global')
+        .eq('aktif', true)
+        .maybeSingle(),
     ]);
 
     setArmadas(armadaData || []);
     setMitras(mitraData || []);
+    setDriverSettings({
+      id: settingsData?.id || '',
+      upah_sopir_per_trip: Number(settingsData?.value_json?.upah_sopir_per_trip || 0),
+      uang_jalan_per_trip: Number(settingsData?.value_json?.uang_jalan_per_trip || 0),
+    });
     setLoading(false);
   }, []);
 
@@ -76,7 +97,15 @@ export default function ArmadaPage() {
   }, [loadData]);
 
   function resetForm() {
-    setFormArmada({ nama: '', no_hp: '', mitra_id: '', plat_nomor: '', is_armada_cb: false });
+    setFormArmada({
+      nama: '',
+      no_hp: '',
+      mitra_id: '',
+      plat_nomor: '',
+      is_armada_cb: false,
+      upah_sopir_per_trip_override: '',
+      uang_jalan_per_trip_override: '',
+    });
   }
 
   function openNew() {
@@ -93,6 +122,8 @@ export default function ArmadaPage() {
       mitra_id: item.mitra_id || '',
       plat_nomor: item.plat_nomor || '',
       is_armada_cb: Boolean(item.is_armada_cb),
+      upah_sopir_per_trip_override: item.upah_sopir_per_trip_override ?? '',
+      uang_jalan_per_trip_override: item.uang_jalan_per_trip_override ?? '',
     });
     setShowModal(true);
   }
@@ -117,6 +148,12 @@ export default function ArmadaPage() {
       mitra_id: formArmada.mitra_id || null,
       plat_nomor: formArmada.plat_nomor || null,
       is_armada_cb: Boolean(formArmada.is_armada_cb),
+      upah_sopir_per_trip_override: formArmada.is_armada_cb && formArmada.upah_sopir_per_trip_override !== ''
+        ? Number(formArmada.upah_sopir_per_trip_override)
+        : null,
+      uang_jalan_per_trip_override: formArmada.is_armada_cb && formArmada.uang_jalan_per_trip_override !== ''
+        ? Number(formArmada.uang_jalan_per_trip_override)
+        : null,
     };
 
     if (editingId) {
@@ -155,6 +192,39 @@ export default function ArmadaPage() {
     await loadData();
   }
 
+  async function handleSaveSettings(e) {
+    e.preventDefault();
+    setSavingSettings(true);
+
+    const valueJson = {
+      upah_sopir_per_trip: Math.max(0, Number(driverSettings.upah_sopir_per_trip) || 0),
+      uang_jalan_per_trip: Math.max(0, Number(driverSettings.uang_jalan_per_trip) || 0),
+    };
+    const request = driverSettings.id
+      ? supabase.from('pengaturan_bisnis').update({ value_json: valueJson }).eq('id', driverSettings.id)
+      : supabase.from('pengaturan_bisnis').insert({
+        key: 'armada_cb_biaya_sopir',
+        value_json: valueJson,
+        scope: 'global',
+        aktif: true,
+      }).select('id').single();
+    const { data, error } = await request;
+
+    setSavingSettings(false);
+    if (error) {
+      showToast(`Gagal menyimpan tarif sopir: ${error.message}`, 'error', 5000);
+      return;
+    }
+
+    setDriverSettings(current => ({ ...current, id: current.id || data?.id || '', ...valueJson }));
+    showToast('Tarif sopir Armada CB berhasil disimpan.', 'success', 3000);
+  }
+
+  function getEffectiveDriverCost(armada, field) {
+    const overrideField = `${field}_override`;
+    return Number(armada?.[overrideField] ?? driverSettings[field] ?? 0);
+  }
+
   const filteredArmadas = useMemo(() => {
     const keyword = search.trim().toLowerCase();
     if (!keyword) return armadas;
@@ -181,6 +251,9 @@ export default function ArmadaPage() {
           { header: 'Kode Mitra Default', value: row => row.master_mitra?.kode || '', width: 18 },
           { header: 'Nama Mitra Default', value: row => row.master_mitra?.nama || '', width: 24 },
           { header: 'Afiliasi Default', value: row => formatMitraLabel(row.master_mitra) || 'Tanpa default / armada bersama', width: 38 },
+          { header: 'Tipe Armada', value: row => row.is_armada_cb ? 'Armada CB' : 'Armada Mitra', width: 16 },
+          { header: 'Upah Sopir / Trip', value: row => row.is_armada_cb ? getEffectiveDriverCost(row, 'upah_sopir_per_trip') : 0, type: 'currency', width: 18 },
+          { header: 'Uang Jalan / Trip', value: row => row.is_armada_cb ? getEffectiveDriverCost(row, 'uang_jalan_per_trip') : 0, type: 'currency', width: 18 },
         ],
         rows: sortedArmadas,
       }],
@@ -188,7 +261,7 @@ export default function ArmadaPage() {
   }
 
   return (
-    <AppShell title="Armada" subtitle="Kelola sopir, plat default, dan afiliasi mitra">
+    <AppShell title="Armada" subtitle="Kelola plat, sopir tetap, dan tarif Armada CB">
       {toast && (
         <div className="toast-container">
           <div className={`toast toast-${toast.type}`}>
@@ -196,6 +269,41 @@ export default function ArmadaPage() {
           </div>
         </div>
       )}
+
+      <form className="card" onSubmit={handleSaveSettings} style={{ marginBottom: 'var(--space-lg)' }}>
+        <div className="card-header" style={{ alignItems: 'flex-start', gap: 16, flexWrap: 'wrap' }}>
+          <div>
+            <div className="card-title">Tarif Sopir Armada CB</div>
+            <div className="text-tertiary text-sm" style={{ marginTop: 4 }}>Berlaku untuk semua Armada CB yang tidak memiliki tarif khusus.</div>
+          </div>
+          <Link href="/owner/laporan-armada-cb" className="btn btn-outline btn-sm">Lihat Laporan Armada</Link>
+        </div>
+        <div className="form-grid" style={{ alignItems: 'end' }}>
+          <div className="form-group" style={{ marginBottom: 0 }}>
+            <label className="form-label">Upah Sopir per Trip</label>
+            <input
+              type="number"
+              min={0}
+              className="form-input form-input-mono"
+              value={driverSettings.upah_sopir_per_trip}
+              onChange={e => setDriverSettings({ ...driverSettings, upah_sopir_per_trip: e.target.value })}
+            />
+          </div>
+          <div className="form-group" style={{ marginBottom: 0 }}>
+            <label className="form-label">Uang Jalan per Trip</label>
+            <input
+              type="number"
+              min={0}
+              className="form-input form-input-mono"
+              value={driverSettings.uang_jalan_per_trip}
+              onChange={e => setDriverSettings({ ...driverSettings, uang_jalan_per_trip: e.target.value })}
+            />
+          </div>
+          <button className="btn btn-primary" type="submit" disabled={savingSettings}>
+            <Save size={16} /> {savingSettings ? 'Menyimpan...' : 'Simpan Tarif'}
+          </button>
+        </div>
+      </form>
 
       <div className="page-header">
         <div className="toolbar" style={{ flex: 1, marginBottom: 0 }}>
@@ -231,17 +339,18 @@ export default function ArmadaPage() {
               <SortableHeader label="Plat Default" sortKey="plat" sort={sort} onSort={handleSort} />
               <SortableHeader label="No. HP" sortKey="no_hp" sort={sort} onSort={handleSort} />
               <SortableHeader label="Mitra Default" sortKey="mitra" sort={sort} onSort={handleSort} />
+              <th>Biaya Sopir / Trip</th>
               <th style={{ textAlign: 'center' }}>Aksi</th>
             </tr>
           </thead>
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={5}>Memuat data...</td>
+                <td colSpan={6}>Memuat data...</td>
               </tr>
             ) : paginatedArmadas.rows.length === 0 ? (
               <tr>
-                <td colSpan={5}>Data armada tidak ditemukan.</td>
+                <td colSpan={6}>Data armada tidak ditemukan.</td>
               </tr>
             ) : (
               paginatedArmadas.rows.map(armada => (
@@ -251,9 +360,17 @@ export default function ArmadaPage() {
                   <td className="table-mono">{armada.no_hp || '-'}</td>
                   <td>
                     {armada.is_armada_cb && (
-                      <span className="badge badge-warning" style={{ marginRight: 8 }}>Internal CB</span>
+                      <span className="badge badge-success" style={{ marginRight: 8 }}>Armada CB</span>
                     )}
                     <span className="badge badge-blue">{armada.master_mitra ? formatMitraLabel(armada.master_mitra) : '-'}</span>
+                  </td>
+                  <td>
+                    {armada.is_armada_cb ? (
+                      <div style={{ fontSize: 12, lineHeight: 1.6 }}>
+                        <div>Upah: <strong>{formatRupiah(getEffectiveDriverCost(armada, 'upah_sopir_per_trip'))}</strong></div>
+                        <div>Jalan: <strong>{formatRupiah(getEffectiveDriverCost(armada, 'uang_jalan_per_trip'))}</strong></div>
+                      </div>
+                    ) : '-'}
                   </td>
                   <td style={{ textAlign: 'center' }}>
                     <button className="btn btn-ghost btn-sm" onClick={() => openEdit(armada)} aria-label={`Edit ${armada.nama}`}>
@@ -333,16 +450,47 @@ export default function ArmadaPage() {
                     <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 14 }}>
                       <input
                         type="checkbox"
-                        checked={formArmada.is_armada_cb}
-                        onChange={e => setFormArmada({ ...formArmada, is_armada_cb: e.target.checked })}
+                      checked={formArmada.is_armada_cb}
+                      onChange={e => setFormArmada({
+                        ...formArmada,
+                        is_armada_cb: e.target.checked,
+                        upah_sopir_per_trip_override: e.target.checked ? formArmada.upah_sopir_per_trip_override : '',
+                        uang_jalan_per_trip_override: e.target.checked ? formArmada.uang_jalan_per_trip_override : '',
+                      })}
                       />
-                      Ini adalah Armada Internal (CB)
+                      Ini adalah Armada CB
                     </label>
                     <div style={{ fontSize: 12, color: 'var(--text-tertiary)', marginTop: 4, marginLeft: 21 }}>
-                      Armada dengan centang ini akan otomatis memicu potongan Sewa Armada ke mitra yang bertransaksi.
+                      Armada CB otomatis dikenakan sewa pada Mitra Transaksi.
                     </div>
                   </div>
                 </div>
+                {formArmada.is_armada_cb && (
+                  <div className="form-grid">
+                    <div className="form-group">
+                      <label className="form-label">Upah Khusus per Trip</label>
+                      <input
+                        type="number"
+                        min={0}
+                        className="form-input form-input-mono"
+                        value={formArmada.upah_sopir_per_trip_override}
+                        onChange={e => setFormArmada({ ...formArmada, upah_sopir_per_trip_override: e.target.value })}
+                        placeholder={`Global: ${formatRupiah(driverSettings.upah_sopir_per_trip)}`}
+                      />
+                    </div>
+                    <div className="form-group">
+                      <label className="form-label">Uang Jalan Khusus per Trip</label>
+                      <input
+                        type="number"
+                        min={0}
+                        className="form-input form-input-mono"
+                        value={formArmada.uang_jalan_per_trip_override}
+                        onChange={e => setFormArmada({ ...formArmada, uang_jalan_per_trip_override: e.target.value })}
+                        placeholder={`Global: ${formatRupiah(driverSettings.uang_jalan_per_trip)}`}
+                      />
+                    </div>
+                  </div>
+                )}
               </div>
               <div className="modal-footer">
                 <button type="button" className="btn btn-outline" onClick={() => setShowModal(false)}>Batal</button>

@@ -28,6 +28,10 @@ export default function FormPengirimanModal({ open, onClose, onSuccess, initialD
   const [sopirs, setSopirs] = useState([]);
   const [mitras, setMitras] = useState([]);
   const [feeHistories, setFeeHistories] = useState([]);
+  const [driverRateSettings, setDriverRateSettings] = useState({
+    upah_sopir_per_trip: 0,
+    uang_jalan_per_trip: 0,
+  });
   const [latestHarga, setLatestHarga] = useState(0);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -60,16 +64,13 @@ export default function FormPengirimanModal({ open, onClose, onSuccess, initialD
     potongan_pabrik: '0',
     pakai_sewa_armada_cb: false,
     tarif_sewa_angkut: 0,
-    nominal_perongkosan: 0,
   });
 
   useEffect(() => {
     if (open) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setForm(f => ({ ...f, tanggal: initialDate || getTodayISO() }));
-      // eslint-disable-next-line react-hooks/set-state-in-effect
       setSuccessMsg('');
-      // eslint-disable-next-line react-hooks/set-state-in-effect
       setShowAdvanced(false);
     }
   }, [open, initialDate]);
@@ -82,18 +83,20 @@ export default function FormPengirimanModal({ open, onClose, onSuccess, initialD
       { data: mitraData },
       { data: hargaData },
       { data: feeHistoryData, error: feeHistoryError },
+      { data: driverRateData },
     ] = await Promise.all([
       supabase
         .from('sopir')
         .select(`
-          id, nama, no_hp, plat_nomor, mitra_id,
+          id, nama, no_hp, plat_nomor, mitra_id, is_armada_cb,
+          upah_sopir_per_trip_override, uang_jalan_per_trip_override,
           master_mitra ( id, kode, nama, alamat, fee_per_kg )
         `)
         .eq('aktif', true)
         .order('nama'),
       supabase
         .from('master_mitra')
-        .select('id, kode, nama, alamat, fee_per_kg, tarif_sewa_angkut_per_kg, nominal_perongkosan')
+        .select('id, kode, nama, alamat, fee_per_kg, tarif_sewa_angkut_per_kg')
         .eq('aktif', true)
         .order('kode'),
       supabase
@@ -103,14 +106,25 @@ export default function FormPengirimanModal({ open, onClose, onSuccess, initialD
         .limit(1),
       supabase
         .from('fee_owner_mitra_history')
-        .select('id, master_mitra_id, fee_per_kg, tarif_sewa_angkut_per_kg, nominal_perongkosan, berlaku_mulai, berlaku_sampai, aktif, alasan_perubahan')
+        .select('id, master_mitra_id, fee_per_kg, tarif_sewa_angkut_per_kg, berlaku_mulai, berlaku_sampai, aktif, alasan_perubahan')
         .eq('aktif', true)
         .order('berlaku_mulai', { ascending: false }),
+      supabase
+        .from('pengaturan_bisnis')
+        .select('value_json')
+        .eq('key', 'armada_cb_biaya_sopir')
+        .eq('scope', 'global')
+        .eq('aktif', true)
+        .maybeSingle(),
     ]);
 
     setSopirs(sopirData || []);
     setMitras(mitraData || []);
     setFeeHistories(feeHistoryError ? [] : feeHistoryData || []);
+    setDriverRateSettings({
+      upah_sopir_per_trip: Number(driverRateData?.value_json?.upah_sopir_per_trip || 0),
+      uang_jalan_per_trip: Number(driverRateData?.value_json?.uang_jalan_per_trip || 0),
+    });
 
     if (hargaData && hargaData.length > 0) {
       setLatestHarga(hargaData[0].harga_per_kg);
@@ -163,6 +177,25 @@ export default function FormPengirimanModal({ open, onClose, onSuccess, initialD
     && form.mitra_id
     && selectedDefaultSopir.mitra_id !== form.mitra_id
   );
+  const isSelectedArmadaCB = Boolean(selectedDefaultSopir?.is_armada_cb);
+  const driverCosts = useMemo(() => {
+    if (!isSelectedArmadaCB) {
+      return { upah: 0, uangJalan: 0, total: 0 };
+    }
+
+    const upah = Number(
+      selectedDefaultSopir?.upah_sopir_per_trip_override
+      ?? driverRateSettings.upah_sopir_per_trip
+      ?? 0
+    );
+    const uangJalan = Number(
+      selectedDefaultSopir?.uang_jalan_per_trip_override
+      ?? driverRateSettings.uang_jalan_per_trip
+      ?? 0
+    );
+
+    return { upah, uangJalan, total: upah + uangJalan };
+  }, [driverRateSettings, isSelectedArmadaCB, selectedDefaultSopir]);
 
   /** Kalkulasi real-time berdasarkan input form saat ini */
   const kalkulasi = useMemo(() => {
@@ -183,7 +216,6 @@ export default function FormPengirimanModal({ open, onClose, onSuccess, initialD
       isArmadaCB: pakaiSewaArmada, 
       beratNettoPabrikKg: beratNetto,
       tarifSewaAngkut: form.tarif_sewa_angkut,
-      nominalPerongkosan: form.nominal_perongkosan
     });
     const sewaArmada = {
       pakaiSewaArmada: isSewa.pakaiSewaArmada,
@@ -206,7 +238,7 @@ export default function FormPengirimanModal({ open, onClose, onSuccess, initialD
       totalBersihMitra,
       ...sewaArmada,
     };
-  }, [form.berat_netto, form.potongan_pabrik, form.mitra_fee, form.pakai_sewa_armada_cb, latestHarga]);
+  }, [form.berat_netto, form.potongan_pabrik, form.mitra_fee, form.pakai_sewa_armada_cb, form.tarif_sewa_angkut, latestHarga]);
 
   const beratNettoNum = kalkulasi.beratNetto;
   const potonganNum = kalkulasi.potongan;
@@ -236,7 +268,6 @@ export default function FormPengirimanModal({ open, onClose, onSuccess, initialD
       mitra_nama: formatMitraLabel(mitra),
       mitra_fee: feeSnapshot.fee,
       tarif_sewa_angkut: feeSnapshot.tarifSewaAngkut || 0,
-      nominal_perongkosan: feeSnapshot.nominalPerongkosan || 0,
       fee_owner_history_id: feeSnapshot.historyId,
     };
   }
@@ -274,7 +305,7 @@ export default function FormPengirimanModal({ open, onClose, onSuccess, initialD
         ...form,
         sopir_id: sopir.id,
         plat_nomor: sopir.plat_nomor || '-',
-        mitra_id: sopir.mitra_id || '',
+        mitra_id: nextMitraId,
         sopir_default_nama: sopir.nama,
         sopir_aktual_mode: SOPIR_AKTUAL_DEFAULT,
         sopir_aktual_id: sopir.id,
@@ -290,14 +321,6 @@ export default function FormPengirimanModal({ open, onClose, onSuccess, initialD
     if (!selectedId) {
       setForm(applyMitraSnapshot({
         ...form,
-        sopir_id: '',
-        plat_nomor: '',
-        sopir_default_nama: '',
-        sopir_aktual_mode: SOPIR_AKTUAL_DEFAULT,
-        sopir_aktual_id: '',
-        sopir_aktual_nama: '',
-        sopir_aktual_no_hp: '',
-        catatan_sopir: '',
         berat_netto: '',
         potongan_pabrik: '0',
       }, '', form.tanggal));
@@ -487,9 +510,14 @@ export default function FormPengirimanModal({ open, onClose, onSuccess, initialD
       // Sewa armada CB
       pakai_sewa_armada_bl:      form.pakai_sewa_armada_cb,
       tarif_sewa_angkut_per_kg_snapshot: form.pakai_sewa_armada_cb ? form.tarif_sewa_angkut : 0,
-      nominal_perongkosan_snapshot:      form.pakai_sewa_armada_cb ? form.nominal_perongkosan : 0,
+      nominal_perongkosan_snapshot:      0,
       biaya_sewa_armada_kotor:           form.pakai_sewa_armada_cb ? k.biayaSewaArmadaKotor : 0,
       biaya_sewa_armada_total:           form.pakai_sewa_armada_cb ? k.biayaSewaArmadaTotal : 0,
+
+      // Snapshot biaya sopir CB. Kas baru berkurang saat Bayar Tunai Sopir.
+      upah_sopir_cb_snapshot:             driverCosts.upah,
+      uang_jalan_sopir_cb_snapshot:       driverCosts.uangJalan,
+      total_biaya_sopir_cb_snapshot:      driverCosts.total,
     });
 
     if (error) {
@@ -624,6 +652,16 @@ export default function FormPengirimanModal({ open, onClose, onSuccess, initialD
                 loading={loading}
                 disabled={false}
               />
+              {selectedDefaultSopir && (
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 8, flexWrap: 'wrap' }}>
+                  <span className={`badge ${isSelectedArmadaCB ? 'badge-success' : 'badge-neutral'}`}>
+                    {isSelectedArmadaCB ? 'Armada CB' : 'Armada Mitra'}
+                  </span>
+                  {!selectedDefaultSopir.mitra_id && (
+                    <span className="text-tertiary text-xs">Tanpa mitra default</span>
+                  )}
+                </div>
+              )}
             </div>
           </div>
 
@@ -673,22 +711,16 @@ export default function FormPengirimanModal({ open, onClose, onSuccess, initialD
           </div>
         </div>
 
-        {/* Sewa Armada CB */}
-        <div className="form-group">
-          <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', marginBottom: 0 }}>
-            <input
-              type="checkbox"
-              checked={form.pakai_sewa_armada_cb}
-              onChange={e => setForm({ ...form, pakai_sewa_armada_cb: e.target.checked })}
-              disabled={!siapInput}
-              style={{ width: 18, height: 18 }}
-            />
-            <span style={{ fontSize: 15, fontWeight: 500 }}>
-              Pakai Armada CB (Dipotong Sewa Rp{form.tarif_sewa_angkut?.toLocaleString('id-ID')}/kg 
-              {form.nominal_perongkosan > 0 ? ` - perongkosan Rp${form.nominal_perongkosan?.toLocaleString('id-ID')}` : ''})
-            </span>
-          </label>
-        </div>
+        {isSelectedArmadaCB && (
+          <div className="alert alert-info" style={{ marginBottom: 0 }}>
+            <strong>Armada CB</strong>
+            <div className="text-sm" style={{ marginTop: 4 }}>
+              Sewa {formatRupiah(form.tarif_sewa_angkut)}/kg netto
+              {' | '}Upah sopir {formatRupiah(driverCosts.upah)}
+              {' | '}Uang jalan {formatRupiah(driverCosts.uangJalan)}
+            </div>
+          </div>
+        )}
 
         {/* Advanced Options Accordion */}
         <div style={{ border: '1px solid var(--border-default)', borderRadius: 8, overflow: 'hidden' }}>
@@ -836,8 +868,19 @@ export default function FormPengirimanModal({ open, onClose, onSuccess, initialD
                 <span style={{ fontWeight: 600, color: 'var(--color-danger)', textAlign: 'right' }}>
                   - {formatRupiah(kalkulasi.biayaSewaArmadaTotal)}
                   <div style={{ fontSize: 12, color: 'var(--text-tertiary)', fontWeight: 400 }}>
-                    ({formatRupiah(form.tarif_sewa_angkut)}/kg neto
-                    {form.nominal_perongkosan > 0 ? ` - perongkosan ${formatRupiah(form.nominal_perongkosan)}` : ''})
+                    ({formatRupiah(form.tarif_sewa_angkut)}/kg netto)
+                  </div>
+                </span>
+              </div>
+            )}
+
+            {isSelectedArmadaCB && (
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, marginBottom: 6 }}>
+                <span style={{ color: 'var(--text-tertiary)', fontSize: 14 }}>Tagihan Sopir CB:</span>
+                <span style={{ fontWeight: 600, textAlign: 'right' }}>
+                  {formatRupiah(driverCosts.total)}
+                  <div style={{ fontSize: 12, color: 'var(--text-tertiary)', fontWeight: 400 }}>
+                    Upah {formatRupiah(driverCosts.upah)} + uang jalan {formatRupiah(driverCosts.uangJalan)}
                   </div>
                 </span>
               </div>
