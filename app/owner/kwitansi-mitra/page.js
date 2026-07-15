@@ -749,12 +749,13 @@ export default function KwitansiMitraPage() {
                   {displayTotalSewaArmada > 0 && (() => {
                     const totalOngkos = kwitansiRows.reduce((sum, row) => sum + (row.nominal_perongkosan_snapshot || 0), 0);
                     const tarifSewa = kwitansiRows[0]?.tarif_sewa_angkut_per_kg_snapshot || 0;
+                    const totalBeratNetto = kwitansiRows.reduce((sum, row) => sum + toNumber(resolveBeratNettoPabrik(row) || row.berat_netto_pabrik_kg || row.tonase || 0), 0);
                     return (
                       <div>
                         <span>
                           Potongan Sewa Armada CB
                           <span style={{ display: 'block', fontSize: 10, color: 'var(--text-tertiary)', marginTop: 2, fontWeight: 'normal', border: 'none', padding: 0, background: 'transparent' }}>
-                            ({formatNumber(displayTotalTonase)} kg x {formatRupiah(tarifSewa)}/kg) - Ongkos {formatRupiah(totalOngkos)}
+                            ({formatNumber(totalBeratNetto)} kg x {formatRupiah(tarifSewa)}/kg) - Ongkos {formatRupiah(totalOngkos)}
                           </span>
                         </span>
                         <strong className="table-mono danger-text">- {formatRupiah(displayTotalSewaArmada)}</strong>
