@@ -5,7 +5,7 @@ import AppShell from '@/components/layout/AppShell';
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
 import SortableHeader from '@/components/ui/SortableHeader';
 import TablePagination from '@/components/ui/TablePagination';
-import { FileSpreadsheet, Pencil, Search, Trash2, X } from 'lucide-react';
+import { CheckCircle2, FileSpreadsheet, Pencil, Search, Trash2, X } from 'lucide-react';
 import {
   MITRA_TYPES,
   getMitraSearchText,
@@ -16,6 +16,7 @@ import { paginateRows } from '@/lib/pagination-utils';
 import { getNextSort, sortRows } from '@/lib/sort-utils';
 import { exportStyledWorkbook } from '@/lib/spreadsheet-export';
 import { supabase } from '@/lib/supabase';
+import { canApproveCorrections, normalizeRole } from '@/lib/roles';
 import { formatDateTimeDisplay, formatRupiah, getTodayISO } from '@/lib/utils';
 
 const TABLE_PAGE_SIZE = 20;
@@ -43,6 +44,7 @@ export default function MitraPage() {
   const [page, setPage] = useState(1);
   const [toast, setToast] = useState(null);
   const [deleteTarget, setDeleteTarget] = useState(null);
+  const [userRole, setUserRole] = useState('admin_operasional');
   const [formMitra, setFormMitra] = useState({
     kode: '',
     nama: '',
@@ -59,11 +61,20 @@ export default function MitraPage() {
 
   const loadData = useCallback(async () => {
     setLoading(true);
-    const { data } = await supabase
-      .from('master_mitra')
-      .select('*')
-      .eq('aktif', true)
-      .order('nama');
+    const [{ data }, { data: sessionData }] = await Promise.all([
+      supabase
+        .from('master_mitra')
+        .select('*')
+        .eq('aktif', true)
+        .order('nama'),
+      supabase.auth.getSession(),
+    ]);
+
+    const userId = sessionData?.session?.user?.id;
+    if (userId) {
+      const { data: userData } = await supabase.from('users').select('role').eq('id', userId).maybeSingle();
+      setUserRole(normalizeRole(userData?.role));
+    }
 
     setMitras(data || []);
     setLoading(false);
@@ -132,61 +143,30 @@ export default function MitraPage() {
     const tarifSewaAngkut = parseFloat(formMitra.tarif_sewa_angkut_per_kg) || 0;
     const danaOperasionalTrip = parseFloat(formMitra.dana_operasional_trip) || 0;
     
-    const payload = {
-      kode: formMitra.kode,
-      nama: formMitra.nama,
-      penanggung_jawab: formMitra.penanggung_jawab || null,
-      no_hp: formMitra.no_hp || null,
-      alamat: formMitra.alamat || null,
-      tipe_mitra: formMitra.tipe_mitra || MITRA_TYPES.EKSTERNAL,
-      fee_per_kg: feePerKg,
-      tarif_sewa_angkut_per_kg: tarifSewaAngkut,
-      dana_operasional_trip: danaOperasionalTrip,
-    };
-    let savedMitraId = editingId;
-    let historyFailed = false;
+    const { error } = await supabase.rpc('save_master_mitra', {
+      p_id: editingId || null,
+      p_kode: formMitra.kode,
+      p_nama: formMitra.nama,
+      p_penanggung_jawab: formMitra.penanggung_jawab || null,
+      p_no_hp: formMitra.no_hp || null,
+      p_alamat: formMitra.alamat || null,
+      p_tipe_mitra: formMitra.tipe_mitra || MITRA_TYPES.EKSTERNAL,
+      p_fee_per_kg: feePerKg,
+      p_tarif_sewa_angkut_per_kg: tarifSewaAngkut,
+      p_dana_operasional_trip: danaOperasionalTrip,
+      p_berlaku_mulai: formMitra.fee_berlaku_mulai || getTodayISO(),
+      p_alasan_perubahan: formMitra.fee_alasan || null,
+    });
 
-    if (editingId) {
-      const { error } = await supabase.from('master_mitra').update(payload).eq('id', editingId);
-      if (error) {
-        showToast(`Gagal menyimpan mitra: ${error.message}`, 'error', 5000);
-        setSaving(false);
-        return;
-      }
-    } else {
-      const { data, error } = await supabase.from('master_mitra').insert(payload).select('id').single();
-      if (error) {
-        showToast(`Gagal menyimpan mitra: ${error.message}`, 'error', 5000);
-        setSaving(false);
-        return;
-      }
-      savedMitraId = data?.id;
-    }
-
-    if (savedMitraId) {
-      const { error: historyError } = await supabase
-        .from('fee_owner_mitra_history')
-        .upsert({
-          master_mitra_id: savedMitraId,
-          fee_per_kg: feePerKg,
-          tarif_sewa_angkut_per_kg: tarifSewaAngkut,
-          dana_operasional_trip: danaOperasionalTrip,
-          berlaku_mulai: formMitra.fee_berlaku_mulai || getTodayISO(),
-          alasan_perubahan: formMitra.fee_alasan || 'Update Tarif dari Master Mitra',
-          aktif: true,
-        }, { onConflict: 'master_mitra_id,berlaku_mulai' });
-
-      if (historyError) {
-        historyFailed = true;
-        showToast(`Mitra tersimpan, tetapi riwayat Fee Owner gagal dicatat: ${historyError.message}`, 'error', 6000);
-      }
+    if (error) {
+      showToast(`Gagal menyimpan mitra: ${error.message}`, 'error', 6000);
+      setSaving(false);
+      return;
     }
 
     setSaving(false);
     setShowModal(false);
-    if (!historyFailed) {
-      showToast('Mitra berhasil disimpan.', 'success', 3000);
-    }
+    showToast(canApproveCorrections(userRole) ? 'Mitra dan riwayat tarif berhasil disimpan.' : 'Mitra tersimpan dan masuk daftar Perlu Verifikasi.', 'success', 4000);
     await loadData();
   }
 
@@ -201,6 +181,19 @@ export default function MitraPage() {
 
     setDeleteTarget(null);
     showToast('Mitra berhasil dinonaktifkan.', 'success', 3000);
+    await loadData();
+  }
+
+  async function handleVerify(item) {
+    const { error } = await supabase.rpc('verify_master_mitra', {
+      p_id: item.id,
+      p_catatan: 'Diperiksa dari Master Mitra',
+    });
+    if (error) {
+      showToast(`Gagal memverifikasi mitra: ${error.message}`, 'error', 5000);
+      return;
+    }
+    showToast('Mitra sudah terverifikasi.', 'success', 3000);
     await loadData();
   }
 
@@ -301,6 +294,7 @@ export default function MitraPage() {
                 <tr key={mitra.id}>
                   <td>
                     <div style={{ fontWeight: 600, fontSize: 14 }}>{mitra.kode || '-'}</div>
+                    {mitra.status_verifikasi === 'perlu_verifikasi' && <span className="badge badge-warning" style={{ marginTop: 5 }}>Perlu Verifikasi</span>}
                     <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{mitra.nama} • {mitra.alamat || '-'}</div>
                   </td>
                   <td>
@@ -311,12 +305,19 @@ export default function MitraPage() {
                   <td className="table-mono" style={{ textAlign: 'right', color: 'var(--text-secondary)' }}>{mitra.tarif_sewa_angkut_per_kg > 0 ? formatRupiah(mitra.tarif_sewa_angkut_per_kg) : '-'}</td>
                   <td className="table-mono" style={{ textAlign: 'right', color: 'var(--text-secondary)' }}>{mitra.dana_operasional_trip > 0 ? formatRupiah(mitra.dana_operasional_trip) : '-'}</td>
                   <td style={{ textAlign: 'center' }}>
+                    {canApproveCorrections(userRole) && mitra.status_verifikasi === 'perlu_verifikasi' && (
+                      <button className="btn btn-ghost btn-sm" onClick={() => handleVerify(mitra)} aria-label={`Verifikasi ${mitra.nama}`} title="Tandai sudah diperiksa">
+                        <CheckCircle2 size={16} />
+                      </button>
+                    )}
                     <button className="btn btn-ghost btn-sm" onClick={() => openEdit(mitra)} aria-label={`Edit ${mitra.nama}`}>
                       <Pencil size={16} />
                     </button>
-                    <button className="btn btn-ghost btn-sm" onClick={() => setDeleteTarget(mitra)} aria-label={`Nonaktifkan ${mitra.nama}`}>
-                      <Trash2 size={16} />
-                    </button>
+                    {canApproveCorrections(userRole) && (
+                      <button className="btn btn-ghost btn-sm" onClick={() => setDeleteTarget(mitra)} aria-label={`Nonaktifkan ${mitra.nama}`}>
+                        <Trash2 size={16} />
+                      </button>
+                    )}
                   </td>
                 </tr>
               ))
@@ -393,27 +394,28 @@ export default function MitraPage() {
                 </div>
                 <div className="form-group">
                   <label className="form-label">Fee Owner (Rp/Kg)</label>
-                  <input type="number" className="form-input" value={formMitra.fee_per_kg} onChange={e => setFormMitra({ ...formMitra, fee_per_kg: e.target.value })} />
+                  <input type="number" className="form-input" value={formMitra.fee_per_kg} onChange={e => setFormMitra({ ...formMitra, fee_per_kg: e.target.value })} disabled={!canApproveCorrections(userRole)} />
+                  {!canApproveCorrections(userRole) && <div className="form-hint">Tarif diperiksa dan diisi oleh Owner.</div>}
                 </div>
                 <div className="form-grid">
                   <div className="form-group">
                     <label className="form-label">Tarif Sewa Armada CB (Rp/Kg Netto)</label>
-                    <input type="number" min={0} className="form-input" value={formMitra.tarif_sewa_angkut_per_kg} onChange={e => setFormMitra({ ...formMitra, tarif_sewa_angkut_per_kg: e.target.value })} />
+                    <input type="number" min={0} className="form-input" value={formMitra.tarif_sewa_angkut_per_kg} onChange={e => setFormMitra({ ...formMitra, tarif_sewa_angkut_per_kg: e.target.value })} disabled={!canApproveCorrections(userRole)} />
                   </div>
                   <div className="form-group">
                     <label className="form-label">Dana Operasional Armada CB / Trip</label>
-                    <input type="number" min={0} className="form-input" value={formMitra.dana_operasional_trip} onChange={e => setFormMitra({ ...formMitra, dana_operasional_trip: e.target.value })} />
+                    <input type="number" min={0} className="form-input" value={formMitra.dana_operasional_trip} onChange={e => setFormMitra({ ...formMitra, dana_operasional_trip: e.target.value })} disabled={!canApproveCorrections(userRole)} />
                     <div className="form-hint">Satu jumlah untuk solar, makan, uang jalan, dan bagian sopir.</div>
                   </div>
                 </div>
                 <div className="form-grid">
                   <div className="form-group">
                     <label className="form-label form-label-required">Tarif Berlaku Mulai</label>
-                    <input type="date" className="form-input" required value={formMitra.fee_berlaku_mulai} onChange={e => setFormMitra({ ...formMitra, fee_berlaku_mulai: e.target.value })} />
+                    <input type="date" className="form-input" required value={formMitra.fee_berlaku_mulai} onChange={e => setFormMitra({ ...formMitra, fee_berlaku_mulai: e.target.value })} disabled={!canApproveCorrections(userRole)} />
                   </div>
                   <div className="form-group">
                     <label className="form-label">Alasan Perubahan Tarif</label>
-                    <input className="form-input" value={formMitra.fee_alasan} onChange={e => setFormMitra({ ...formMitra, fee_alasan: e.target.value })} placeholder="Contoh: kesepakatan baru" />
+                    <input className="form-input" value={formMitra.fee_alasan} onChange={e => setFormMitra({ ...formMitra, fee_alasan: e.target.value })} placeholder="Contoh: kesepakatan baru" disabled={!canApproveCorrections(userRole)} />
                   </div>
                 </div>
               </div>

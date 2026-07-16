@@ -383,3 +383,26 @@ Status audit: alur tersedia. Setelah Dana Trip dibayar, perubahan tanggal, armad
 - Histori tarif tidak overlap.
 - Dashboard pending sama dengan daftar kasus yang perlu tindakan.
 - Lint, build, DB lint, role test, dan rekonsiliasi kas lulus.
+
+## 10. Tindak Lanjut Implementasi - 16 Juli 2026
+
+Status setelah audit:
+
+- P0-A selesai: matriks tiga role, route guard, RLS/RPC terkontrol, audit actor, dan larangan direct write/delete sudah diterapkan.
+- P0-B selesai pada sisi sistem: transaksi dibayar dikunci; reversal kwitansi, kas manual, dan Dana Trip tersedia serta diuji rollback/idempotensi.
+- P0-C selesai: Netto/Dibayar dipisah, 8 header lama dibetulkan, Pendapatan Owner disamakan, harga historis dipertahankan, dan overlap fee menjadi `0`.
+- P0-D selesai: mutasi manual dapat dibalik Owner, bukti/keterangan diwajibkan sesuai alur, dan Buku Kas menampilkan saldo pembuka serta akhir.
+- P1 utama selesai: Laba/Rugi basis kas diganti menjadi Ringkasan Arus Kas, Panjar lama dan Laporan Harian diarahkan ke satu pintu yang benar, serta pagination ditambahkan pada Kas/Biaya.
+
+Verifikasi:
+
+- `npm run lint`: lulus.
+- `npm run build`: lulus, 28 route.
+- `supabase/tests/p0_financial_controls_rollback.sql`: lulus dan seluruh data uji ter-rollback.
+- Uji akun Admin nyata: akses operasional berhasil; direct write, reversal Owner, dan RPC anonim ditolak.
+- Rekonsiliasi remote: mismatch kwitansi `0`, overlap fee `0`, dan data quick-add uji tersisa `0`.
+
+Tindak lanjut manusia/data legacy:
+
+- Kwitansi `3570425f-5f54-447b-ae4f-10e23ed977b0` tetap `perlu_review` karena memuat transaksi lama yang dibatalkan dengan alasan **Dobel**. Owner harus memutuskan pembatalan pembayaran dan penerbitan ulang.
+- Tujuh master Sopir/Armada ambigu berada dalam antrean `perlu_verifikasi`. Data lama tidak digabung atau dihapus otomatis agar transaksi historis tetap dapat ditelusuri.

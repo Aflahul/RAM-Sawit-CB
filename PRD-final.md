@@ -31,9 +31,29 @@ Batasan yang sengaja belum disebut selesai:
 - Limit kasbon/panjar dan approval otomatis.
 - Backfill panjar mitra legacy lama ke ledger universal.
 - Settlement mitra advanced, pembagian selisih tonase, tarif armada, dan biaya bantuan.
-- Test manual semua role dengan akun nyata dan SOP backup/rollback production.
+- SOP backup production dan latihan pemulihan penuh. Uji role Admin dengan akun nyata serta smoke test rollback finansial sudah tersedia per 16 Juli 2026.
 
-Kesimpulan produk: web sudah dapat dipakai sebagai **Sistem Bisnis Minimal Fase 2** untuk kontrol kas dan hutang harian, sambil pengembangan Fase 3 berjalan. Web belum boleh diposisikan sebagai sistem penuh/final sampai settlement, limit, bukti transaksi, dan hardening role selesai.
+Kesimpulan produk: web sudah dapat dipakai sebagai **Sistem Bisnis Minimal Fase 2** untuk kontrol kas dan hutang harian, sambil pengembangan Fase 3 berjalan. Hardening role dan reversal P0 sudah diterapkan 16 Juli 2026, tetapi web belum boleh diposisikan sebagai sistem akuntansi penuh/final sampai settlement lanjutan, limit, lampiran bukti, persediaan, dan laba akrual selesai.
+
+# ADDENDUM KONTROL BISNIS P0 (Diimplementasikan - 16 Juli 2026)
+
+Keputusan produk:
+
+1. Pengguna aktif disederhanakan menjadi **Admin**, **Owner**, dan **Super Admin**. Role `admin_keuangan` dipertahankan untuk ekspansi staf, tetapi tidak perlu menjadi akun terpisah saat ini.
+2. Admin mencatat operasi dan pembayaran rutin. Owner/Super Admin menyetujui tarif, verifikasi master, pembatalan pembayaran, dan reversal.
+3. Master Sopir/Armada atau Mitra yang dibuat Admin langsung dapat dipakai pada transaksi saat itu, tetapi berstatus **Perlu Verifikasi** sampai diperiksa Owner.
+4. Transaksi yang sudah masuk kwitansi, pembayaran pabrik, atau Dana Trip tidak boleh diedit/batalkan melalui tombol biasa.
+5. Koreksi pembayaran tidak menghapus catatan lama. Sistem membuat transaksi pembalik, menyimpan alasan, waktu, pelaku, dan hubungan ke catatan asal.
+6. Kwitansi membedakan **Berat Netto** dari pabrik dan **Berat Dibayar** setelah potongan. Snapshot kwitansi yang sudah dibayar tidak mengikuti perubahan transaksi live.
+7. Halaman yang sebelumnya disebut Laba/Rugi basis kas diberi nama **Ringkasan Arus Kas**. Laba akuntansi membutuhkan pengembangan terpisah untuk persediaan, hutang periode, penyusutan, dan penutupan periode.
+
+Gerbang data:
+
+- Periode Fee Owner tidak boleh tumpang tindih.
+- Direct write ke master terverifikasi, item kwitansi, ledger, dan koreksi transaksi ditutup; aplikasi memakai RPC terkontrol.
+- Tidak ada role aplikasi yang boleh melakukan `DELETE`/`TRUNCATE` tabel bisnis dan finansial.
+- Kas menampilkan Saldo Pembuka, Kas Masuk, Kas Keluar, dan Saldo Akhir berdasarkan rekening serta periode.
+- Satu kasus legacy yang sudah ditandai **Perlu Review** harus diputuskan Owner; sistem tidak melakukan reversal uang secara otomatis tanpa keputusan manusia.
 
 Aturan Fee Owner MVP:
 

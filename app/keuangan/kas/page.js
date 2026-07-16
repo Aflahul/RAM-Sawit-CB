@@ -1,15 +1,23 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import AppShell from '@/components/layout/AppShell';
+import PromptDialog from '@/components/ui/PromptDialog';
+import TablePagination from '@/components/ui/TablePagination';
+import { canApproveCorrections, normalizeRole } from '@/lib/roles';
+import { paginateRows } from '@/lib/pagination-utils';
 import { supabase } from '@/lib/supabase';
 import { formatDateDisplay, formatRupiah, getTodayISO } from '@/lib/utils';
+import { RotateCcw } from 'lucide-react';
 
 const KAS_SOURCES = [
   { value: 'modal_awal', label: 'Modal Awal' },
   { value: 'koreksi', label: 'Koreksi' },
   { value: 'lainnya', label: 'Lainnya' },
 ];
+
+const PAGE_SIZE = 20;
+const QUERY_LIMIT = 500;
 
 function getSignedAmount(row) {
   const jumlah = Number(row.jumlah || 0);
@@ -42,9 +50,14 @@ export default function KasLedgerPage() {
   const [accounts, setAccounts] = useState([]);
   const [ledger, setLedger] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [userRole, setUserRole] = useState(null);
+  const [cashSummary, setCashSummary] = useState({ saldo_pembuka: 0, kas_masuk: 0, kas_keluar: 0, saldo_akhir: 0 });
   const [showModal, setShowModal] = useState(false);
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState(null);
+  const [reverseTarget, setReverseTarget] = useState(null);
+  const [reversing, setReversing] = useState(false);
+  const [page, setPage] = useState(1);
   const [filter, setFilter] = useState({ accountId: 'semua', dateFrom: '', dateTo: getTodayISO() });
   const [form, setForm] = useState({
     tanggal: getTodayISO(),
@@ -64,18 +77,23 @@ export default function KasLedgerPage() {
       .neq('status', 'dibatalkan')
       .order('tanggal', { ascending: false })
       .order('created_at', { ascending: false })
-      .limit(250);
+      .limit(QUERY_LIMIT);
 
     if (filter.accountId !== 'semua') ledgerQuery = ledgerQuery.eq('rekening_kas_id', filter.accountId);
     if (filter.dateFrom) ledgerQuery = ledgerQuery.gte('tanggal', filter.dateFrom);
     if (filter.dateTo) ledgerQuery = ledgerQuery.lte('tanggal', filter.dateTo);
 
-    const [{ data: accountData, error: accountError }, { data: ledgerData, error: ledgerError }] = await Promise.all([
+    const [{ data: accountData, error: accountError }, { data: ledgerData, error: ledgerError }, { data: summaryData, error: summaryError }] = await Promise.all([
       supabase.from('rekening_kas').select('*').eq('aktif', true).order('is_default', { ascending: false }).order('nama'),
       ledgerQuery,
+      supabase.rpc('get_kas_summary', {
+        p_rekening_kas_id: filter.accountId === 'semua' ? null : filter.accountId,
+        p_date_from: filter.dateFrom || null,
+        p_date_to: filter.dateTo || null,
+      }),
     ]);
 
-    const firstError = accountError || ledgerError;
+    const firstError = accountError || ledgerError || summaryError;
     if (firstError) {
       setToast({ type: 'error', message: firstError.message });
       setTimeout(() => setToast(null), 5000);
@@ -83,6 +101,7 @@ export default function KasLedgerPage() {
 
     setAccounts(accountData || []);
     setLedger(ledgerData || []);
+    setCashSummary(summaryData || { saldo_pembuka: 0, kas_masuk: 0, kas_keluar: 0, saldo_akhir: 0 });
     setLoading(false);
   }, [filter.accountId, filter.dateFrom, filter.dateTo]);
 
@@ -91,17 +110,18 @@ export default function KasLedgerPage() {
     loadData();
   }, [loadData]);
 
-  const summary = useMemo(() => {
-    const masuk = ledger
-      .filter((row) => getSignedAmount(row) > 0)
-      .reduce((sum, row) => sum + getSignedAmount(row), 0);
-    const keluar = ledger
-      .filter((row) => getSignedAmount(row) < 0)
-      .reduce((sum, row) => sum + Math.abs(getSignedAmount(row)), 0);
-    const saldoPeriode = ledger.reduce((sum, row) => sum + getSignedAmount(row), 0);
+  useEffect(() => {
+    async function loadRole() {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) return;
+      const { data } = await supabase.from('users').select('role').eq('id', session.user.id).maybeSingle();
+      setUserRole(normalizeRole(data?.role));
+    }
+    loadRole();
+  }, []);
 
-    return { masuk, keluar, saldoPeriode };
-  }, [ledger]);
+  const canReverse = canApproveCorrections(userRole);
+  const paginatedLedger = paginateRows(ledger, page, PAGE_SIZE);
 
   function openModal(tipe = 'masuk') {
     setForm({
@@ -118,7 +138,7 @@ export default function KasLedgerPage() {
   async function handleSave(e) {
     e.preventDefault();
     const jumlah = Number(form.jumlah);
-    if (!jumlah || jumlah <= 0) return;
+    if (!jumlah || jumlah <= 0 || !form.keterangan.trim()) return;
 
     setSaving(true);
     const { error } = await supabase.rpc('create_kas_mutasi', {
@@ -142,6 +162,27 @@ export default function KasLedgerPage() {
 
     setShowModal(false);
     setToast({ type: 'success', message: 'Mutasi kas berhasil dicatat.' });
+    setTimeout(() => setToast(null), 3000);
+    await loadData();
+  }
+
+  async function handleReverse(reason) {
+    if (!reverseTarget || reversing) return;
+    setReversing(true);
+    const { error } = await supabase.rpc('cancel_kas_mutasi_manual', {
+      p_kas_id: reverseTarget.id,
+      p_alasan: reason,
+    });
+    setReversing(false);
+
+    if (error) {
+      setToast({ type: 'error', message: `Gagal membalik mutasi: ${error.message}` });
+      setTimeout(() => setToast(null), 5000);
+      return;
+    }
+
+    setReverseTarget(null);
+    setToast({ type: 'success', message: 'Mutasi manual dibalik dan riwayat tetap tersimpan.' });
     setTimeout(() => setToast(null), 3000);
     await loadData();
   }
@@ -170,7 +211,7 @@ export default function KasLedgerPage() {
         <select
           className="form-input form-select"
           value={filter.accountId}
-          onChange={(e) => setFilter((current) => ({ ...current, accountId: e.target.value }))}
+          onChange={(e) => { setFilter((current) => ({ ...current, accountId: e.target.value })); setPage(1); }}
           style={{ maxWidth: 220 }}
         >
           <option value="semua">Semua Rekening</option>
@@ -180,32 +221,37 @@ export default function KasLedgerPage() {
           type="date"
           className="form-input"
           value={filter.dateFrom}
-          onChange={(e) => setFilter((current) => ({ ...current, dateFrom: e.target.value }))}
+          onChange={(e) => { setFilter((current) => ({ ...current, dateFrom: e.target.value })); setPage(1); }}
           style={{ maxWidth: 170 }}
         />
         <input
           type="date"
           className="form-input"
           value={filter.dateTo}
-          onChange={(e) => setFilter((current) => ({ ...current, dateTo: e.target.value }))}
+          onChange={(e) => { setFilter((current) => ({ ...current, dateTo: e.target.value })); setPage(1); }}
           style={{ maxWidth: 170 }}
         />
       </div>
 
       <div className="stats-grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', marginBottom: 'var(--space-lg)' }}>
         <div className="card">
+          <div className="card-header"><span className="card-title">Saldo Pembuka</span></div>
+          <div className="card-value">{formatRupiah(cashSummary.saldo_pembuka)}</div>
+          <div className="card-label">Sebelum periode</div>
+        </div>
+        <div className="card">
           <div className="card-header"><span className="card-title">Kas Masuk</span></div>
-          <div className="card-value text-success">{formatRupiah(summary.masuk)}</div>
+          <div className="card-value text-success">{formatRupiah(cashSummary.kas_masuk)}</div>
           <div className="card-label">Sesuai filter</div>
         </div>
         <div className="card">
           <div className="card-header"><span className="card-title">Kas Keluar</span></div>
-          <div className="card-value text-danger">{formatRupiah(summary.keluar)}</div>
+          <div className="card-value text-danger">{formatRupiah(cashSummary.kas_keluar)}</div>
           <div className="card-label">Sesuai filter</div>
         </div>
         <div className="card">
-          <div className="card-header"><span className="card-title">Net Periode</span></div>
-          <div className={`card-value ${summary.saldoPeriode >= 0 ? 'text-success' : 'text-danger'}`}>{formatRupiah(summary.saldoPeriode)}</div>
+          <div className="card-header"><span className="card-title">Saldo Akhir</span></div>
+          <div className={`card-value ${Number(cashSummary.saldo_akhir) >= 0 ? 'text-success' : 'text-danger'}`}>{formatRupiah(cashSummary.saldo_akhir)}</div>
           <div className="card-label">{ledger.length} mutasi</div>
         </div>
       </div>
@@ -220,15 +266,16 @@ export default function KasLedgerPage() {
               <th>Keterangan</th>
               <th style={{ textAlign: 'right' }}>Masuk</th>
               <th style={{ textAlign: 'right' }}>Keluar</th>
+              <th style={{ textAlign: 'center' }}>Aksi</th>
             </tr>
           </thead>
           <tbody>
             {loading ? (
-              <tr><td colSpan={6} style={{ textAlign: 'center', padding: 24 }}>Memuat ledger kas...</td></tr>
+              <tr><td colSpan={7} style={{ textAlign: 'center', padding: 24 }}>Memuat ledger kas...</td></tr>
             ) : ledger.length === 0 ? (
-              <tr><td colSpan={6} style={{ textAlign: 'center', padding: 24 }}>Belum ada mutasi kas</td></tr>
+              <tr><td colSpan={7} style={{ textAlign: 'center', padding: 24 }}>Belum ada mutasi kas</td></tr>
             ) : (
-              ledger.map((row) => {
+              paginatedLedger.rows.map((row) => {
                 const signed = getSignedAmount(row);
                 return (
                   <tr key={row.id}>
@@ -238,12 +285,33 @@ export default function KasLedgerPage() {
                     <td>{row.keterangan || '-'}</td>
                     <td className="table-mono text-success" style={{ textAlign: 'right' }}>{signed > 0 ? formatRupiah(signed) : ''}</td>
                     <td className="table-mono text-danger" style={{ textAlign: 'right' }}>{signed < 0 ? formatRupiah(Math.abs(signed)) : ''}</td>
+                    <td style={{ textAlign: 'center' }}>
+                      {canReverse && !row.source_table && !row.reversed_at && row.sumber !== 'reversal' && (
+                        <button className="btn btn-ghost btn-sm" title="Balikkan mutasi manual" onClick={() => setReverseTarget(row)}>
+                          <RotateCcw size={15} />
+                        </button>
+                      )}
+                      {row.reversed_at && <span className="badge badge-warning">Sudah dibalik</span>}
+                    </td>
                   </tr>
                 );
               })
             )}
           </tbody>
         </table>
+        <TablePagination
+          page={paginatedLedger.page}
+          totalPages={paginatedLedger.totalPages}
+          totalItems={ledger.length}
+          startIndex={paginatedLedger.startIndex}
+          endIndex={paginatedLedger.endIndex}
+          onPageChange={setPage}
+        />
+        {ledger.length >= QUERY_LIMIT && (
+          <div className="alert alert-warning" style={{ margin: 'var(--space-md)' }}>
+            Menampilkan maksimal {QUERY_LIMIT} mutasi terbaru. Persempit periode untuk melihat data lain.
+          </div>
+        )}
       </div>
 
       {showModal && (
@@ -287,8 +355,8 @@ export default function KasLedgerPage() {
                   <input type="number" className="form-input form-input-mono" min={1} value={form.jumlah} onChange={(e) => setForm({ ...form, jumlah: e.target.value })} required />
                 </div>
                 <div className="form-group">
-                  <label className="form-label">Keterangan</label>
-                  <input className="form-input" value={form.keterangan} onChange={(e) => setForm({ ...form, keterangan: e.target.value })} placeholder="Opsional" />
+                  <label className="form-label form-label-required">Nomor Bukti / Keterangan</label>
+                  <input className="form-input" required value={form.keterangan} onChange={(e) => setForm({ ...form, keterangan: e.target.value })} placeholder="Contoh: bukti transfer 123 atau koreksi saldo" />
                 </div>
               </div>
               <div className="modal-footer">
@@ -299,6 +367,18 @@ export default function KasLedgerPage() {
           </div>
         </div>
       )}
+
+      <PromptDialog
+        open={Boolean(reverseTarget)}
+        title="Balikkan Mutasi Kas Manual"
+        message="Sistem akan membuat transaksi dengan arah berlawanan. Catatan awal tidak dihapus."
+        label="Alasan pembalikan"
+        placeholder="Contoh: salah jumlah"
+        confirmText="Balikkan Mutasi"
+        loading={reversing}
+        onConfirm={handleReverse}
+        onCancel={() => !reversing && setReverseTarget(null)}
+      />
     </AppShell>
   );
 }

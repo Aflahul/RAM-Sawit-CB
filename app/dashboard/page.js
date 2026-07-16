@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import AppShell from '@/components/layout/AppShell';
-import { canManageFinance, canViewProfit, normalizeRole } from '@/lib/roles';
+import { canManageBusinessSettings, canManageFinance, canViewProfit, normalizeRole } from '@/lib/roles';
 import { supabase } from '@/lib/supabase';
 import { formatDateDisplay, formatNumber, formatRupiah, getTodayISO } from '@/lib/utils';
 import { resolveTotalFeeOwner } from '@/lib/transaksi-mitra-calculations';
@@ -189,6 +189,8 @@ const initialStats = {
   kwitansiBelumDibayar: 0,
   kwitansiBelumDibayarKg: 0,
   kwitansiPerluReview: 0,
+  mitraPerluVerifikasi: 0,
+  armadaPerluVerifikasi: 0,
 };
 
 export default function DashboardPage() {
@@ -208,6 +210,7 @@ export default function DashboardPage() {
 
   const canSeeFinance = canManageFinance(userRole);
   const canSeeProfit = canViewProfit(userRole);
+  const canEditBusinessSettings = canManageBusinessSettings(userRole);
 
   const loadDashboard = useCallback(async () => {
     setLoading(true);
@@ -240,9 +243,7 @@ export default function DashboardPage() {
       harga,
       trxMitraToday,
       hargaPabrikData,
-      transaksiMitraOpen,
-      paidMitraItems,
-      kwitansiReview,
+      workflowPending,
       kasToday,
     ] = await Promise.all([
       supabase
@@ -299,19 +300,7 @@ export default function DashboardPage() {
         .order('tanggal', { ascending: false })
         .limit(1)
         .maybeSingle(),
-      supabase
-        .from('transaksi_mitra')
-        .select('id, mitra_id, tonase')
-        .neq('status', 'dibatalkan')
-        .limit(1500),
-      supabase
-        .from('pembayaran_mitra_kwitansi_item')
-        .select('transaksi_mitra_id')
-        .limit(3000),
-      supabase
-        .from('pembayaran_mitra_kwitansi')
-        .select('id', { count: 'exact', head: true })
-        .eq('status', 'perlu_review'),
+      supabase.rpc('get_dashboard_pending_summary'),
       canQueryFinance
         ? supabase
           .from('kas_ledger')
@@ -331,9 +320,7 @@ export default function DashboardPage() {
       harga,
       trxMitraToday,
       hargaPabrikData,
-      transaksiMitraOpen,
-      paidMitraItems,
-      kwitansiReview,
+      workflowPending,
       kasToday,
     ].find((result) => result?.error);
 
@@ -372,14 +359,7 @@ export default function DashboardPage() {
       .filter((amount) => amount < 0)
       .reduce((sum, amount) => sum + Math.abs(amount), 0);
 
-    const paidIds = new Set((paidMitraItems.data || []).map((item) => item.transaksi_mitra_id));
-    const unpaidMitra = new Map();
-    let kwitansiBelumDibayarKg = 0;
-    (transaksiMitraOpen.data || []).forEach((item) => {
-      if (paidIds.has(item.id)) return;
-      kwitansiBelumDibayarKg += Number(item.tonase || 0);
-      if (item.mitra_id) unpaidMitra.set(item.mitra_id, true);
-    });
+    const pendingSummary = workflowPending.data || {};
 
     setStats({
       tbsMasukKg,
@@ -393,9 +373,11 @@ export default function DashboardPage() {
       kasKeluar,
       tbsMitraKg,
       jumlahMitraMengirim,
-      kwitansiBelumDibayar: unpaidMitra.size,
-      kwitansiBelumDibayarKg,
-      kwitansiPerluReview: kwitansiReview.count || 0,
+      kwitansiBelumDibayar: Number(pendingSummary.kwitansi_belum_dibayar || 0),
+      kwitansiBelumDibayarKg: Number(pendingSummary.kwitansi_belum_dibayar_kg || 0),
+      kwitansiPerluReview: Number(pendingSummary.kwitansi_perlu_review || 0),
+      mitraPerluVerifikasi: Number(pendingSummary.mitra_perlu_verifikasi || 0),
+      armadaPerluVerifikasi: Number(pendingSummary.armada_perlu_verifikasi || 0),
     });
 
     setRevenueSevenDays(days.map((date) => {
@@ -423,6 +405,7 @@ export default function DashboardPage() {
 
   async function simpanHargaPabrik(e) {
     e.preventDefault();
+    if (!canEditBusinessSettings) return;
     const nilai = Number(hargaPabrikEdit);
     if (!nilai || nilai <= 0) return;
 
@@ -537,6 +520,26 @@ export default function DashboardPage() {
       });
     }
 
+    if (stats.mitraPerluVerifikasi > 0) {
+      items.push({
+        title: 'Mitra Perlu Verifikasi',
+        value: stats.mitraPerluVerifikasi,
+        description: 'Periksa data mitra baru atau hasil koreksi Admin.',
+        href: '/owner/master-data',
+        tone: 'warning',
+      });
+    }
+
+    if (stats.armadaPerluVerifikasi > 0) {
+      items.push({
+        title: 'Sopir/Armada Perlu Verifikasi',
+        value: stats.armadaPerluVerifikasi,
+        description: 'Periksa plat, sopir tetap, afiliasi, dan status Armada CB.',
+        href: '/master/armada',
+        tone: 'warning',
+      });
+    }
+
     if (stats.jumlahPihakHutang > 0) {
       items.push({
         title: 'Sisa Hutang/Panjar',
@@ -581,7 +584,7 @@ export default function DashboardPage() {
             chartData={mitraVolumeSparkData}
             chartTone={hargaPabrik ? 'success' : 'warning'}
           >
-            {hargaPabrikEditing ? (
+            {canEditBusinessSettings && hargaPabrikEditing ? (
               <form onSubmit={simpanHargaPabrik} className="overview-edit-form">
                 <input
                   type="number"
@@ -600,11 +603,11 @@ export default function DashboardPage() {
                   Batal
                 </button>
               </form>
-            ) : (
+            ) : canEditBusinessSettings ? (
               <button className="btn btn-outline btn-sm" onClick={() => setHargaPabrikEditing(true)}>
                 {hargaPabrik ? 'Ubah' : 'Set Harga'}
               </button>
-            )}
+            ) : null}
           </OverviewCard>
 
           <OverviewCard

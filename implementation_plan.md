@@ -22,6 +22,23 @@ Temuan data remote yang menjadi release gate:
 - Ada 3 kelompok plat aktif duplikat setelah normalisasi dan 1 armada aktif tanpa plat.
 - Seluruh pembayaran mitra/pabrik yang diperiksa sudah memiliki pasangan Buku Kas dengan nominal yang sesuai.
 
+### Status Release Gate P0 - Diimplementasikan 16 Juli 2026
+
+- Enam migration P0 kontrol bisnis, snapshot, reversal, audit, dan hardening direct-write sudah aktif di Supabase remote.
+- Admin, Owner, dan Super Admin menjadi tiga role pengguna; `admin_keuangan` tetap tersedia sebagai role internal cadangan.
+- Admin dapat melakukan pencatatan rutin serta quick-add Sopir/Armada, tetapi master baru masuk antrean `perlu_verifikasi` dan Admin tidak dapat mengubah tarif atau melakukan reversal Owner.
+- Transaksi yang sudah masuk kwitansi, pembayaran pabrik, atau Dana Trip dikunci dari edit/batal biasa.
+- Pembatalan kwitansi, mutasi kas manual, dan Dana Trip membuat baris pembalik; histori lama tidak dihapus.
+- Kwitansi menyimpan dan menampilkan Berat Netto serta Berat Dibayar secara terpisah. Rekonsiliasi remote menunjukkan mismatch header-item `0`.
+- Histori fee sudah tidak tumpang tindih. Rekonsiliasi remote menunjukkan overlap `0`.
+- Laba/Rugi basis kas telah diganti nama menjadi **Ringkasan Arus Kas**; laporan laba akrual tetap pengembangan berikutnya.
+- Smoke test rollback dan uji akun Admin nyata sudah lulus. Lint serta production build aplikasi lulus.
+
+Tindakan bisnis yang masih terbuka:
+
+- Owner perlu memeriksa satu kwitansi `perlu_review` yang berisi transaksi lama berstatus batal, lalu memilih **Batalkan Pembayaran** dan menerbitkan ulang bila pembayarannya memang harus dikoreksi.
+- Tujuh master Sopir/Armada lama yang platnya duplikat/kosong harus diverifikasi Owner. Sistem tidak menggabungkan data historis secara otomatis.
+
 Status **selesai** di bawah ini hanya berlaku untuk scope Armada CB tanggal 15 Juli 2026. Status tersebut tidak menggantikan release gate audit lintas halaman di atas.
 
 ## Status Implementasi - Selesai 15 Juli 2026
@@ -141,7 +158,7 @@ Dana satu kali jalan dicatat sebagai Dana Operasional Trip pada P1.
 - Transaksi baru setelah kwitansi sebelumnya terbit tetap berstatus **Belum Dibayar** dan masuk kwitansi berikutnya; kondisi ini bukan kesalahan kwitansi lama.
 - Admin tidak boleh menghapus peringatan dengan checkbox bebas.
 - Jika snapshot benar dan data transaksi salah, koreksi harus melalui alur pembatalan/reversal pembayaran, lalu terbitkan kwitansi baru.
-- Alur reversal pembayaran mitra merupakan P0 finansial berikutnya karena wajib membalik kas keluar dan pelunasan panjar secara atomik serta menyimpan alasan dan audit log.
+- Alur reversal pembayaran mitra sudah tersedia untuk Owner dan membalik kas keluar serta pelunasan panjar secara atomik dengan alasan dan audit log.
 
 ### UI Pengiriman Mitra
 

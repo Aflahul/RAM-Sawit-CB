@@ -8,44 +8,57 @@ Referensi temuan dan alasan bisnis: `docs/page-flow-control-audit-2026-07-16.md`
 
 ### P0-A - Hak Akses dan Audit Trail
 
-- [ ] Terapkan tiga role aktif saat ini: **Admin**, **Owner**, dan **Super Admin**; pertahankan `admin_keuangan` sebagai role internal cadangan untuk ekspansi staf.
-- [ ] Buat matriks izin per aksi: Admin untuk pencatatan rutin, Owner untuk approval/reversal/pengaturan bisnis, dan Super Admin untuk administrasi teknis.
-- [ ] Ganti policy `Authenticated full access` pada `master_mitra` dan `transaksi_mitra` dengan matriks role yang eksplisit.
-- [ ] Cabut grant `DELETE`/`TRUNCATE` yang tidak dibutuhkan dari role aplikasi.
-- [ ] Batasi `write_audit_log` agar hanya menerima actor dari sesi login dan tidak dapat dipanggil `anon`.
-- [ ] Tambahkan route guard server untuk halaman owner, keuangan, master, dan laporan sensitif.
-- [ ] Pastikan Admin tetap dapat menambah Sopir/Armada dari form pengiriman melalui RPC/RLS terkontrol dengan status `perlu_verifikasi`.
-- [ ] Simpan `dibuat_oleh`, waktu pembuatan, dan status verifikasi pada master operasional baru; larang hard delete jika sudah dipakai transaksi.
+- [x] Terapkan tiga role aktif saat ini: **Admin**, **Owner**, dan **Super Admin**; pertahankan `admin_keuangan` sebagai role internal cadangan untuk ekspansi staf.
+- [x] Buat matriks izin per aksi: Admin untuk pencatatan rutin, Owner untuk approval/reversal/pengaturan bisnis, dan Super Admin untuk administrasi teknis.
+- [x] Ganti policy `Authenticated full access` pada `master_mitra` dan `transaksi_mitra` dengan matriks role/RPC yang eksplisit.
+- [x] Cabut grant `DELETE`/`TRUNCATE` yang tidak dibutuhkan dari role aplikasi.
+- [x] Batasi `write_audit_log` agar hanya menerima actor dari sesi login dan tidak dapat dipanggil `anon`/client biasa.
+- [x] Tambahkan route guard server untuk halaman owner, keuangan, master, dan laporan sensitif.
+- [x] Pastikan Admin tetap dapat menambah Sopir/Armada dari form pengiriman melalui RPC/RLS terkontrol dengan status `perlu_verifikasi`.
+- [x] Simpan `dibuat_oleh`, waktu pembuatan, dan status verifikasi pada master operasional baru; larang hard delete dari role aplikasi.
 
 ### P0-B - Koreksi Setelah Pembayaran
 
-- [ ] Larang edit/cancel langsung untuk transaksi yang sudah masuk kwitansi aktif atau Dana Trip yang sudah dibayar.
-- [ ] Buat RPC koreksi/reversal transaksi yang membalik kas, pembayaran, panjar, dan ledger secara atomik.
-- [ ] Tandai kwitansi `perlu_review` otomatis di database jika transaksi sumber berubah atau dibatalkan.
+- [x] Larang edit/cancel langsung untuk transaksi yang sudah masuk kwitansi aktif, pembayaran pabrik, atau Dana Trip yang sudah dibayar.
+- [x] Buat RPC koreksi/reversal terkontrol untuk transaksi, pembayaran mitra, kas manual, dan Dana Trip; setiap reversal berjalan atomik dan menyimpan audit.
+- [x] Tandai kwitansi `perlu_review` otomatis di database jika transaksi sumber berubah atau dibatalkan.
 - [ ] Selesaikan 1 transaksi batal yang masih berada dalam kwitansi aktif dan dibayar melalui prosedur koreksi terkontrol.
+  Keputusan Owner masih diperlukan untuk kwitansi `3570425f-5f54-447b-ae4f-10e23ed977b0`; sistem sudah memberi status `perlu_review` dan alasan tindakan.
 
 ### P0-C - Konsistensi Angka dan Istilah
 
-- [ ] Simpan dan tampilkan `total_berat_netto` serta `total_berat_dibayar` sebagai angka berbeda pada kwitansi.
-- [ ] Perbaiki 8 header kwitansi lama yang arti tonasenya tidak sama dengan rincian pembayaran.
-- [ ] Perbaiki laporan Pendapatan Owner: nilai Bruto per mitra harus mengikuti definisi kartu total dan sorting tonase memakai field yang benar.
-- [ ] Hindari pemakaian Harga Pabrik terbaru untuk mencocokkan pembayaran periode lama; gunakan harga nota/snapshot periode.
-- [ ] Cegah periode fee tumpang tindih dan rapikan 19 overlap pada 13 mitra.
+- [x] Simpan dan tampilkan `total_berat_netto` serta `total_berat_dibayar` sebagai angka berbeda pada kwitansi.
+- [x] Perbaiki 8 header kwitansi lama yang arti tonasenya tidak sama dengan rincian pembayaran.
+- [x] Perbaiki laporan Pendapatan Owner: nilai Bruto per mitra mengikuti Fee Owner + Sewa dan sorting tonase memakai Berat Dibayar.
+- [x] Hindari pemakaian Harga Pabrik terbaru untuk mencocokkan pembayaran periode lama; gunakan harga nota/snapshot periode.
+- [x] Cegah periode fee tumpang tindih dan rapikan 19 overlap pada 13 mitra. Verifikasi remote: overlap `0`.
 
 ### P0-D - Kontrol Kas
 
-- [ ] Tambahkan pembatalan/reversal untuk kas manual dengan alasan, actor, waktu, dan referensi asal.
-- [ ] Wajibkan atau jelaskan Nomor Bukti pada transaksi finansial sesuai metode pembayaran.
-- [ ] Tampilkan saldo awal, mutasi, dan saldo akhir; jangan menyebut net periode sebagai saldo.
-- [ ] Kunci koreksi Armada CB/sopir setelah Dana Trip dibayar atau arahkan ke alur koreksi.
+- [x] Tambahkan pembatalan/reversal untuk kas manual dengan alasan, actor, waktu, dan referensi asal.
+- [x] Wajibkan atau jelaskan Nomor Bukti/Keterangan pada mutasi manual dan pembayaran transfer pabrik.
+- [x] Tampilkan saldo pembuka, mutasi masuk/keluar, dan saldo akhir; jangan menyebut net periode sebagai saldo.
+- [x] Kunci koreksi Armada CB/sopir setelah Dana Trip dibayar dan sediakan pembatalan Dana Trip khusus Owner.
 
 ### P1 - Perapian Workflow dan UX
 
-- [ ] Ubah halaman Laba/Rugi saat ini menjadi **Ringkasan Arus Kas** sampai laporan laba/rugi akrual tersedia.
-- [ ] Jadikan Panjar Mitra lama read-only/redirect agar satu pintu tetap berada di Hutang & Panjar Semua Pihak.
-- [ ] Redirect atau beri status pengembangan pada Laporan Harian yang disembunyikan.
-- [ ] Tambahkan pagination dan indikator keterbatasan data pada halaman yang masih memakai limit tetap.
+- [x] Ubah halaman Laba/Rugi saat ini menjadi **Ringkasan Arus Kas** sampai laporan laba/rugi akrual tersedia.
+- [x] Redirect Panjar Mitra lama agar satu pintu tetap berada di Hutang & Panjar Semua Pihak.
+- [x] Redirect Laporan Harian yang disembunyikan ke Dashboard.
+- [x] Tambahkan pagination dan indikator batas 500 data pada Buku Kas dan Biaya Operasional.
 - [ ] Rapikan data plat duplikat, armada tanpa plat, dan transaksi tanpa relasi sopir.
+  Tujuh master ambigu sudah masuk antrean `perlu_verifikasi`; data transaksi lama tidak diubah otomatis agar histori tetap aman.
+
+### Catatan Implementasi P0 - 16 Juli 2026
+
+- [x] Remote migration aktif: `20260716003140_p0_business_control_release_gate.sql`.
+- [x] Remote migration aktif: `20260716003828_p0_financial_reversal_and_snapshot_consistency.sql`.
+- [x] Remote migration aktif: `20260716011022_remove_unused_financial_reversal_variable.sql`.
+- [x] Remote migration aktif: `20260716012759_expand_audit_action_control_values.sql`.
+- [x] Remote migration aktif: `20260716015352_close_direct_master_and_payment_item_writes.sql`.
+- [x] Remote migration aktif: `20260716015638_fix_admin_audit_actor_semantics.sql`.
+- [x] Smoke test rollback `supabase/tests/p0_financial_controls_rollback.sql` mencakup koreksi transaksi, reversal kwitansi, idempotensi, quick-add Admin, dan status verifikasi master.
+- [x] Uji akun nyata `admin@gmail.com` berhasil: login, baca master, dashboard, dan kas diizinkan; direct write, pembatalan kwitansi, serta RPC anonim ditolak.
 
 Release belum dinyatakan siap hanya berdasarkan selesainya fitur Armada CB; seluruh task P0 audit di atas adalah gerbang rilis finansial berikutnya.
 

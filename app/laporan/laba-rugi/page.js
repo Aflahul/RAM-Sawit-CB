@@ -38,61 +38,42 @@ export default function LabaRugiPage() {
       endDate = `${tahun}-12-31`;
     }
 
-    const [
-      { data: kasLedger, error: kasLedgerError },
-      { data: pembelian, error: pembelianError },
-      { data: biaya, error: biayaError },
-    ] = await Promise.all([
-      supabase
+    const { data: kasLedger, error: kasLedgerError } = await supabase
         .from('kas_ledger')
         .select('tipe, sumber, jumlah, status')
         .neq('status', 'dibatalkan')
         .gte('tanggal', startDate)
-        .lte('tanggal', endDate),
-      supabase
-        .from('transaksi_beli_tbs')
-        .select('total_harga, total_bayar_tunai')
-        .eq('status', 'aktif')
-        .gte('tanggal', startDate)
-        .lte('tanggal', endDate),
-      supabase
-        .from('biaya_operasional')
-        .select('kategori, jumlah')
-        .neq('status', 'dibatalkan')
-        .gte('tanggal', startDate)
-        .lte('tanggal', endDate),
-    ]);
+        .lte('tanggal', endDate);
 
-    const firstError = kasLedgerError || pembelianError || biayaError;
+    const firstError = kasLedgerError;
     if (firstError) {
       setToast({ type: 'error', message: firstError.message });
     }
 
     const kasRows = kasLedger || [];
-    const totalPendapatanKas = kasRows
-      .filter((row) => row.sumber === 'pembayaran_pabrik' && ['masuk', 'transfer_masuk'].includes(row.tipe))
+    const kasMasukRows = kasRows.filter((row) => ['masuk', 'transfer_masuk'].includes(row.tipe));
+    const kasKeluarRows = kasRows.filter((row) => ['keluar', 'transfer_keluar'].includes(row.tipe));
+    const totalPendapatanKas = kasMasukRows
       .reduce((sum, row) => sum + Number(row.jumlah || 0), 0);
-    const totalPembelianKas = kasRows
-      .filter((row) => row.sumber === 'pembelian_tbs' && ['keluar', 'transfer_keluar'].includes(row.tipe))
+    const totalPembelianKas = kasKeluarRows
+      .filter((row) => row.sumber === 'pembelian_tbs')
       .reduce((sum, row) => sum + Number(row.jumlah || 0), 0);
-    const totalPembayaranMitraKas = kasRows
-      .filter((row) => row.sumber === 'pembayaran_mitra' && ['keluar', 'transfer_keluar'].includes(row.tipe))
+    const totalPembayaranMitraKas = kasKeluarRows
+      .filter((row) => row.sumber === 'pembayaran_mitra')
       .reduce((sum, row) => sum + Number(row.jumlah || 0), 0);
 
-    const biayaPerKategori = {};
-    (biaya || []).forEach((row) => {
-      biayaPerKategori[row.kategori] = (biayaPerKategori[row.kategori] || 0) + Number(row.jumlah || 0);
+    const pengeluaranPerSumber = {};
+    kasKeluarRows.forEach((row) => {
+      pengeluaranPerSumber[row.sumber] = (pengeluaranPerSumber[row.sumber] || 0) + Number(row.jumlah || 0);
     });
-    const totalBiaya = (biaya || []).reduce((sum, row) => sum + Number(row.jumlah || 0), 0);
-
-    const totalPengeluaranKas = totalPembelianKas + totalPembayaranMitraKas + totalBiaya;
+    const totalPengeluaranKas = kasKeluarRows.reduce((sum, row) => sum + Number(row.jumlah || 0), 0);
     const labaKas = totalPendapatanKas - totalPengeluaranKas;
 
     setData({
       totalPendapatan: totalPendapatanKas,
       totalPembelian: totalPembelianKas,
-      biayaPerKategori,
-      totalBiaya,
+      biayaPerKategori: pengeluaranPerSumber,
+      totalBiaya: totalPengeluaranKas,
       totalPengeluaran: totalPengeluaranKas,
       labaBersih: labaKas,
       totalPendapatanKas,
@@ -100,8 +81,8 @@ export default function LabaRugiPage() {
       totalPembayaranMitraKas,
       totalPengeluaranKas,
       labaKas,
-      jumlahTxPendapatanKas: kasRows.filter((row) => row.sumber === 'pembayaran_pabrik').length,
-      jumlahTxPembelian: pembelian?.length || 0,
+      jumlahTxPendapatanKas: kasMasukRows.length,
+      jumlahTxPembelian: kasKeluarRows.length,
     });
 
     setLoading(false);
@@ -125,6 +106,14 @@ export default function LabaRugiPage() {
     retribusi: 'Retribusi',
     perawatan: 'Perawatan',
     lainnya: 'Lainnya',
+    pembayaran_pabrik: 'Pembayaran dari Pabrik',
+    pembayaran_mitra: 'Pembayaran Mitra',
+    pembelian_tbs: 'Pembelian TBS',
+    biaya_operasional: 'Biaya Operasional',
+    panjar_mitra: 'Panjar Mitra',
+    hutang_pencairan: 'Pencairan Hutang',
+    hutang_pelunasan: 'Pelunasan Hutang',
+    reversal: 'Pembalikan Transaksi',
   };
 
   const bulanNama = [
@@ -134,11 +123,11 @@ export default function LabaRugiPage() {
 
   if (userRole !== null && !canViewProfit(userRole)) {
     return (
-      <AppShell title="Laba / Rugi" subtitle="Akses terbatas">
+      <AppShell title="Ringkasan Arus Kas" subtitle="Akses terbatas">
         <div className="empty-state" style={{ marginTop: 'var(--space-3xl)' }}>
           <div className="empty-state-title">Akses Ditolak</div>
           <div className="empty-state-text">
-            Halaman Laba/Rugi hanya dapat diakses oleh Owner dan Super Admin.
+            Ringkasan Arus Kas hanya dapat diakses oleh Owner dan Super Admin.
           </div>
         </div>
       </AppShell>
@@ -147,7 +136,7 @@ export default function LabaRugiPage() {
 
   if (userRole === null) {
     return (
-      <AppShell title="Laba / Rugi">
+      <AppShell title="Ringkasan Arus Kas">
         <div style={{ textAlign: 'center', padding: 'var(--space-3xl)' }}>
           <div className="spinner spinner-lg" style={{ margin: '0 auto' }} />
         </div>
@@ -156,7 +145,7 @@ export default function LabaRugiPage() {
   }
 
   return (
-    <AppShell title="Laba / Rugi" subtitle="Laporan keuangan owner dan super admin">
+    <AppShell title="Ringkasan Arus Kas" subtitle="Uang masuk dan keluar yang sudah tercatat">
       {toast && (
         <div className="toast-container">
           <div className={`toast toast-${toast.type}`}>
@@ -182,7 +171,7 @@ export default function LabaRugiPage() {
             </select>
           )}
           <select className="form-input form-select" value={tahun} onChange={(e) => setTahun(Number(e.target.value))} style={{ width: 100 }}>
-            {[2024, 2025, 2026, 2027].map((item) => <option key={item} value={item}>{item}</option>)}
+            {Array.from({ length: 5 }, (_, index) => new Date().getFullYear() - 2 + index).map((item) => <option key={item} value={item}>{item}</option>)}
           </select>
           {data && (
             <button className="btn btn-outline btn-sm" onClick={() => {
@@ -202,38 +191,38 @@ export default function LabaRugiPage() {
       ) : !data ? null : (
         <>
           <div className="alert alert-info" style={{ marginBottom: 'var(--space-lg)' }}>
-            Laba Bersih Kas dihitung dari uang aktual di Buku Kas: pembayaran pabrik yang sudah diterima dikurangi pembayaran mitra, pembelian lokal, dan biaya operasional. Angka ini tidak diinput manual agar tidak bercampur dengan estimasi transaksi.
+            Ringkasan ini memakai uang aktual di Buku Kas. Angka surplus belum sama dengan laba akuntansi karena belum menghitung persediaan, hutang yang belum dibayar, dan penyusutan aset.
           </div>
 
           {data.jumlahTxPendapatanKas === 0 && (
             <div className="alert alert-warning" style={{ marginBottom: 'var(--space-lg)' }}>
-              Belum ada mutasi pembayaran pabrik pada periode ini. Laba/Rugi belum bisa menunjukkan laba final sampai uang masuk pabrik dicatat ke Buku Kas atau flow Pembayaran Pabrik.
+              Belum ada kas masuk pada periode ini. Catat pembayaran pabrik agar ringkasan arus kas dapat dipantau.
             </div>
           )}
 
           <div className="stats-grid" style={{ gridTemplateColumns: 'repeat(3, 1fr)' }}>
             <div className="card">
               <div className="card-header">
-                <span className="card-title">Pendapatan Kas</span>
+                <span className="card-title">Kas Masuk</span>
               </div>
               <div className="card-value" style={{ color: 'var(--color-success)' }}>{formatRupiah(data.totalPendapatanKas)}</div>
-              <div className="card-label">{data.jumlahTxPendapatanKas} mutasi pembayaran pabrik</div>
+              <div className="card-label">{data.jumlahTxPendapatanKas} mutasi masuk</div>
             </div>
             <div className="card">
               <div className="card-header">
-                <span className="card-title">Pengeluaran Kas</span>
+                <span className="card-title">Kas Keluar</span>
               </div>
               <div className="card-value" style={{ color: 'var(--color-danger)' }}>{formatRupiah(data.totalPengeluaranKas)}</div>
-              <div className="card-label">Bayar petani + mitra + biaya</div>
+              <div className="card-label">Semua mutasi keluar</div>
             </div>
             <div className="card" style={{ border: data.labaKas >= 0 ? '1px solid rgba(46,204,113,0.3)' : '1px solid rgba(231,76,60,0.3)' }}>
               <div className="card-header">
-                <span className="card-title">Laba Bersih Kas</span>
+                <span className="card-title">Surplus / Defisit Kas</span>
               </div>
               <div className="card-value" style={{ color: data.labaKas >= 0 ? 'var(--color-success)' : 'var(--color-danger)' }}>
                 {formatRupiah(data.labaKas)}
               </div>
-              <div className="card-label">Angka utama owner</div>
+              <div className="card-label">Kas masuk dikurangi kas keluar</div>
             </div>
           </div>
 
@@ -243,7 +232,7 @@ export default function LabaRugiPage() {
             </div>
             <div className="calc-result" style={{ marginBottom: 'var(--space-lg)' }}>
               <div className="calc-result-row">
-                <span className="calc-result-label">Pendapatan pabrik diterima</span>
+                <span className="calc-result-label">Total kas masuk</span>
                 <span className="calc-result-value text-success">{formatRupiah(data.totalPendapatanKas)}</span>
               </div>
               <div className="calc-result-row">
@@ -254,14 +243,14 @@ export default function LabaRugiPage() {
                 <span className="calc-result-label">Pembayaran mitra</span>
                 <span className="calc-result-value text-danger">{formatRupiah(data.totalPembayaranMitraKas)}</span>
               </div>
-              {Object.entries(data.biayaPerKategori).map(([kategori, jumlah]) => (
+              {Object.entries(data.biayaPerKategori).filter(([kategori]) => !['pembelian_tbs', 'pembayaran_mitra'].includes(kategori)).map(([kategori, jumlah]) => (
                 <div key={kategori} className="calc-result-row">
                   <span className="calc-result-label">{kategoriLabel[kategori] || kategori}</span>
                   <span className="calc-result-value text-danger">{formatRupiah(jumlah)}</span>
                 </div>
               ))}
               <div className="calc-result-row" style={{ fontWeight: 700, borderTop: '2px solid rgba(255,255,255,0.08)', paddingTop: 12 }}>
-                <span className="calc-result-label" style={{ fontWeight: 700 }}>Laba Bersih Kas</span>
+                <span className="calc-result-label" style={{ fontWeight: 700 }}>Surplus / Defisit Kas</span>
                 <span className={data.labaKas >= 0 ? 'calc-result-value text-success' : 'calc-result-value text-danger'}>
                   {formatRupiah(data.labaKas)}
                 </span>

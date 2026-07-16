@@ -128,6 +128,19 @@ function getKwitansiHref(row) {
   return `/owner/kwitansi-mitra?${params.toString()}`;
 }
 
+function getTransactionLockReason(row) {
+  if (row.payment_status === 'sudah_dibayar' || row.payment_status === 'perlu_review') {
+    return 'Sudah masuk kwitansi. Batalkan pembayaran kwitansi terlebih dahulu.';
+  }
+  if (row.pembayaran_pabrik_status) {
+    return 'Sudah dicocokkan dengan pembayaran pabrik. Batalkan pembayaran pabrik terlebih dahulu.';
+  }
+  if (row.biaya_sopir_dibayar_at) {
+    return 'Dana Operasional Trip sudah dibayar. Koreksi pembayaran Dana Trip terlebih dahulu.';
+  }
+  return '';
+}
+
 export default function RiwayatPengirimanMitraPage() {
   const [dateFrom, setDateFrom] = useState(getTodayISO);
   const [dateTo, setDateTo] = useState(getTodayISO);
@@ -214,9 +227,10 @@ export default function RiwayatPengirimanMitraPage() {
 
       if (rows.length > 0) {
         const trxIds = rows.map(row => row.id);
-        const { data: paymentItems, error: paymentError } = await supabase
-          .from('pembayaran_mitra_kwitansi_item')
-          .select(`
+        const [paymentResult, factoryPaymentResult] = await Promise.all([
+          supabase
+            .from('pembayaran_mitra_kwitansi_item')
+            .select(`
             transaksi_mitra_id,
             tonase_snapshot,
             berat_netto_snapshot,
@@ -228,16 +242,40 @@ export default function RiwayatPengirimanMitraPage() {
               kas_ledger_id, penerima_label, mode_pembayaran, review_reason,
               periode_dari, periode_sampai
             )
-          `)
-          .in('transaksi_mitra_id', trxIds);
+            `)
+            .in('transaksi_mitra_id', trxIds),
+          supabase
+            .from('pembayaran_pabrik_item')
+            .select(`
+              transaksi_mitra_id,
+              pembayaran:pembayaran_pabrik_batch ( id, status, tanggal_bayar )
+            `)
+            .in('transaksi_mitra_id', trxIds),
+        ]);
+
+        const paymentItems = paymentResult.data || [];
+        const paymentError = paymentResult.error;
+        const factoryPaymentItems = factoryPaymentResult.data || [];
 
         if (paymentError) {
           console.error('Gagal memuat status bayar riwayat mitra:', paymentError);
         }
+        if (factoryPaymentResult.error) {
+          console.error('Gagal memuat status pembayaran pabrik:', factoryPaymentResult.error);
+        }
 
-        const paymentMap = new Map((paymentItems || []).map((item) => {
+        const paymentMap = new Map(paymentItems.filter((item) => {
+          const payment = Array.isArray(item.pembayaran) ? item.pembayaran[0] : item.pembayaran;
+          return payment && payment.status !== 'dibatalkan';
+        }).map((item) => {
           const payment = Array.isArray(item.pembayaran) ? item.pembayaran[0] : item.pembayaran;
           return [item.transaksi_mitra_id, { ...item, pembayaran: payment }];
+        }));
+        const factoryPaymentMap = new Map(factoryPaymentItems.flatMap((item) => {
+          const factoryPayment = Array.isArray(item.pembayaran) ? item.pembayaran[0] : item.pembayaran;
+          return factoryPayment && factoryPayment.status !== 'dibatalkan'
+            ? [[item.transaksi_mitra_id, factoryPayment]]
+            : [];
         }));
 
         rows = rows.map((row) => {
@@ -265,6 +303,7 @@ export default function RiwayatPengirimanMitraPage() {
           return {
             ...row,
             payment,
+            pembayaran_pabrik_status: factoryPaymentMap.get(row.id)?.status || '',
             payment_review_reason: reviewReasons.join('. '),
             payment_status: payment?.status === 'perlu_review' || hasChangedAfterPayment || hasMissingCashLedger
               ? 'perlu_review'
@@ -502,26 +541,6 @@ export default function RiwayatPengirimanMitraPage() {
     });
   }
 
-  async function getCurrentUserId() {
-    const { data } = await supabase.auth.getUser();
-    return data?.user?.id || null;
-  }
-
-  async function writeAuditLog(action, beforeJson, afterJson, alasan) {
-    const { error } = await supabase.rpc('write_audit_log', {
-      p_entity_type: 'transaksi_mitra',
-      p_entity_id: beforeJson?.id || afterJson?.id,
-      p_action: action,
-      p_before_json: beforeJson || null,
-      p_after_json: afterJson || null,
-      p_alasan: alasan || null,
-    });
-
-    if (error) {
-      console.warn('Audit log riwayat pengiriman mitra gagal:', error.message);
-    }
-  }
-
   async function handleSaveEdit(event) {
     event.preventDefault();
     if (!editTarget || saving) return;
@@ -539,7 +558,6 @@ export default function RiwayatPengirimanMitraPage() {
     if (!editForm.alasan_edit.trim()) return showToast('Alasan edit wajib diisi.');
 
     setSaving(true);
-    const userId = await getCurrentUserId();
     const sopirDiganti = editForm.sopir_aktual_mode === SOPIR_AKTUAL_MANUAL
       || (editForm.sopir_aktual_mode === SOPIR_AKTUAL_MASTER && editForm.sopir_aktual_id !== editForm.sopir_default_id);
     const sopirAktualId = editForm.sopir_aktual_mode === SOPIR_AKTUAL_DEFAULT
@@ -582,15 +600,13 @@ export default function RiwayatPengirimanMitraPage() {
       tarif_sewa_angkut_per_kg_snapshot: editForm.pakai_sewa_armada_bl ? editForm.tarif_sewa_angkut_per_kg : 0,
       biaya_sewa_armada_kotor:  editForm.biaya_sewa_armada_total,
       biaya_sewa_armada_total:  editForm.biaya_sewa_armada_total,
-      updated_by: userId,
-      alasan_edit: editForm.alasan_edit.trim(),
     };
 
-    const { error } = await supabase
-      .from('transaksi_mitra')
-      .update(payload)
-      .eq('id', editTarget.id)
-      .neq('status', 'dibatalkan');
+    const { error } = await supabase.rpc('update_transaksi_mitra_controlled', {
+      p_transaksi_id: editTarget.id,
+      p_changes: payload,
+      p_alasan: editForm.alasan_edit.trim(),
+    });
 
     if (error) {
       showToast(`Gagal menyimpan edit: ${error.message}`);
@@ -598,7 +614,6 @@ export default function RiwayatPengirimanMitraPage() {
       return;
     }
 
-    await writeAuditLog('update', editTarget, { ...editTarget, ...payload }, payload.alasan_edit);
     setEditTarget(null);
     setEditForm(emptyEditForm);
     await loadData();
@@ -611,21 +626,10 @@ export default function RiwayatPengirimanMitraPage() {
     if (!cancelReason.trim()) return showToast('Alasan batal wajib diisi.');
 
     setSaving(true);
-    const userId = await getCurrentUserId();
-    const payload = {
-      status: 'dibatalkan',
-      dibatalkan_at: new Date().toISOString(),
-      dibatalkan_by: userId,
-      alasan_batal: cancelReason.trim(),
-      updated_by: userId,
-      alasan_edit: `Dibatalkan: ${cancelReason.trim()}`,
-    };
-
-    const { error } = await supabase
-      .from('transaksi_mitra')
-      .update(payload)
-      .eq('id', cancelTarget.id)
-      .neq('status', 'dibatalkan');
+    const { error } = await supabase.rpc('cancel_transaksi_mitra_controlled', {
+      p_transaksi_id: cancelTarget.id,
+      p_alasan: cancelReason.trim(),
+    });
 
     if (error) {
       showToast(`Gagal membatalkan transaksi: ${error.message}`);
@@ -633,7 +637,6 @@ export default function RiwayatPengirimanMitraPage() {
       return;
     }
 
-    await writeAuditLog('cancel', cancelTarget, { ...cancelTarget, ...payload }, cancelReason.trim());
     setCancelTarget(null);
     setCancelReason('');
     await loadData();
@@ -753,6 +756,7 @@ export default function RiwayatPengirimanMitraPage() {
             ) : (
               paginatedTransaksi.rows.map((row) => {
                 const paymentBadge = getPaymentBadge(row);
+                const lockReason = getTransactionLockReason(row);
 
                 return (
                 <tr key={row.id} style={row.status === 'dibatalkan' ? { opacity: 0.62 } : undefined}>
@@ -817,8 +821,8 @@ export default function RiwayatPengirimanMitraPage() {
                       <button
                         type="button"
                         className="btn btn-ghost btn-sm"
-                        title="Edit transaksi"
-                        disabled={row.status === 'dibatalkan'}
+                        title={lockReason || 'Edit transaksi'}
+                        disabled={row.status === 'dibatalkan' || Boolean(lockReason)}
                         onClick={() => openEdit(row)}
                       >
                         <Pencil size={16} />
@@ -826,8 +830,8 @@ export default function RiwayatPengirimanMitraPage() {
                       <button
                         type="button"
                         className="btn btn-ghost btn-sm"
-                        title="Batalkan transaksi"
-                        disabled={row.status === 'dibatalkan'}
+                        title={lockReason || 'Batalkan transaksi'}
+                        disabled={row.status === 'dibatalkan' || Boolean(lockReason)}
                         onClick={() => {
                           setCancelTarget(row);
                           setCancelReason('');

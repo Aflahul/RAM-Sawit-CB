@@ -6,7 +6,7 @@ import AppShell from '@/components/layout/AppShell';
 import PromptDialog from '@/components/ui/PromptDialog';
 import { canManageFinance, normalizeRole } from '@/lib/roles';
 import { supabase } from '@/lib/supabase';
-import { resolveHargaPabrikPerKg, toNumber } from '@/lib/transaksi-mitra-calculations';
+import { resolveBeratDibayar, resolveHargaPabrikPerKg, toNumber } from '@/lib/transaksi-mitra-calculations';
 import { formatDateDisplay, formatNumber, formatRupiah, formatWaktu, getTodayISO } from '@/lib/utils';
 import { AlertTriangle, BadgeDollarSign, CalendarDays, CheckCircle2, RotateCcw, Scale, Search } from 'lucide-react';
 
@@ -81,7 +81,8 @@ export default function PembayaranPabrikPage() {
     let trxQuery = supabase
       .from('transaksi_mitra')
       .select(`
-        id, mitra_id, tanggal, tonase, harga_harian, total_kotor, created_at,
+        id, mitra_id, tanggal, tonase, berat_netto_pabrik_kg, potongan_pabrik_kg, berat_dibayar_kg,
+        harga_harian, total_kotor, created_at,
         harga_pabrik_per_kg, total_nilai_bersih, total_fee_owner,
         sopir_aktual_nama, sopir_default_nama, plat_nomor, status, pembayaran_pabrik_status,
         master_mitra ( id, kode, nama, alamat, tipe_mitra, fee_per_kg )
@@ -169,27 +170,25 @@ export default function PembayaranPabrikPage() {
     transactions.filter((row) => selectedIds.includes(row.id))
   ), [selectedIds, transactions]);
 
-  const resolvePaymentHargaPerKg = useCallback((row) => (
-    hargaTwb > 0 ? hargaTwb : resolveHargaPabrikPerKg(row)
-  ), [hargaTwb]);
+  const resolvePaymentHargaPerKg = useCallback((row) => resolveHargaPabrikPerKg(row), []);
 
   const resolvePaymentTotal = useCallback((row) => (
-    Math.round(toNumber(row.tonase) * resolvePaymentHargaPerKg(row))
+    Math.round(resolveBeratDibayar(row) * resolvePaymentHargaPerKg(row))
   ), [resolvePaymentHargaPerKg]);
 
   const visibleSummary = useMemo(() => (
     visibleTransactions.reduce((summary, row) => ({
       count: summary.count + 1,
-      tonase: summary.tonase + toNumber(row.tonase),
+      tonase: summary.tonase + resolveBeratDibayar(row),
       nilai: summary.nilai + resolvePaymentTotal(row),
     }), { count: 0, tonase: 0, nilai: 0 })
   ), [resolvePaymentTotal, visibleTransactions]);
 
   const reconciliationSummary = useMemo(() => {
-    const totalTonaseSistem = selectedRows.reduce((sum, row) => sum + toNumber(row.tonase), 0);
+    const totalTonaseSistem = selectedRows.reduce((sum, row) => sum + resolveBeratDibayar(row), 0);
     const totalNilaiSistem = selectedRows.reduce((sum, row) => sum + resolvePaymentTotal(row), 0);
     const tonasePabrik = Number(form.tonase_pabrik || 0);
-    const hargaPabrik = Number(hargaTwb || 0);
+    const hargaPabrik = Number(form.harga_pabrik_per_kg || 0);
     const nominalDiterima = Number(form.nominal_diterima || 0);
     const nilaiPabrik = tonasePabrik * hargaPabrik;
 
@@ -203,7 +202,7 @@ export default function PembayaranPabrikPage() {
       selisihTonase: tonasePabrik - totalTonaseSistem,
       selisihKas: nilaiPabrik - nominalDiterima,
     };
-  }, [form.nominal_diterima, form.tonase_pabrik, hargaTwb, resolvePaymentTotal, selectedRows]);
+  }, [form.harga_pabrik_per_kg, form.nominal_diterima, form.tonase_pabrik, resolvePaymentTotal, selectedRows]);
 
   function setCalculatedNominal() {
     const calculated = Math.max(reconciliationSummary.nilaiPabrik, 0);
@@ -235,7 +234,7 @@ export default function PembayaranPabrikPage() {
     if (saving) return;
 
     const tonasePabrik = Number(form.tonase_pabrik || 0);
-    const hargaPabrik = Number(hargaTwb || 0);
+    const hargaPabrik = Number(form.harga_pabrik_per_kg || 0);
 
     if (!tonasePabrik || tonasePabrik <= 0) {
       setToast({ type: 'error', message: 'Tonase dari pabrik wajib lebih dari 0.' });
@@ -244,7 +243,7 @@ export default function PembayaranPabrikPage() {
     }
 
     if (!hargaPabrik || hargaPabrik <= 0) {
-      setToast({ type: 'error', message: 'Harga Pabrik / TWB belum diset di Dashboard.' });
+      setToast({ type: 'error', message: 'Harga per kg dari nota pabrik wajib diisi.' });
       setTimeout(() => setToast(null), 4000);
       return;
     }
@@ -252,6 +251,12 @@ export default function PembayaranPabrikPage() {
     const nominal = Number(form.nominal_diterima || 0);
     if (!nominal || nominal <= 0) {
       setToast({ type: 'error', message: 'Uang diterima dari pabrik wajib lebih dari 0.' });
+      setTimeout(() => setToast(null), 4000);
+      return;
+    }
+
+    if (form.metode_bayar === 'transfer' && !form.nomor_bukti.trim()) {
+      setToast({ type: 'error', message: 'Nomor bukti transfer wajib diisi.' });
       setTimeout(() => setToast(null), 4000);
       return;
     }
@@ -317,7 +322,7 @@ export default function PembayaranPabrikPage() {
       <AppShell title="Pembayaran Pabrik" subtitle="Akses terbatas">
         <div className="empty-state" style={{ marginTop: 'var(--space-3xl)' }}>
           <div className="empty-state-title">Akses Ditolak</div>
-          <div className="empty-state-text">Halaman ini hanya untuk Owner, Super Admin, dan Admin Keuangan.</div>
+          <div className="empty-state-text">Halaman ini hanya untuk Admin, Owner, dan Super Admin.</div>
         </div>
       </AppShell>
     );
@@ -476,9 +481,9 @@ export default function PembayaranPabrikPage() {
                 )}
               </div>
               <div className="form-group">
-                <label className="form-label form-label-required">Harga Pabrik / TWB</label>
-                <input type="number" min={1} step="1" className="form-input form-input-mono" value={form.harga_pabrik_per_kg} readOnly required />
-                <div className="form-hint">Mengikuti harga yang diset di Dashboard: {hargaTwb ? `${formatRupiah(hargaTwb)} / kg` : 'belum diset'}.</div>
+                <label className="form-label form-label-required">Harga per Kg dari Nota Pabrik</label>
+                <input type="number" min={1} step="1" className="form-input form-input-mono" value={form.harga_pabrik_per_kg} onChange={(event) => setForm({ ...form, harga_pabrik_per_kg: event.target.value })} required />
+                <div className="form-hint">Otomatis memakai harga Dashboard terbaru ({hargaTwb ? `${formatRupiah(hargaTwb)} / kg` : 'belum diset'}). Ubah hanya jika nota pembayaran memakai harga lain.</div>
               </div>
             </div>
             <div className="form-grid">
@@ -490,8 +495,8 @@ export default function PembayaranPabrikPage() {
                 </button>
               </div>
               <div className="form-group">
-                <label className="form-label">Nomor Bukti</label>
-                <input className="form-input" value={form.nomor_bukti} onChange={(event) => setForm({ ...form, nomor_bukti: event.target.value })} placeholder="No transfer, DO, atau catatan pabrik" />
+                <label className={`form-label ${form.metode_bayar === 'transfer' ? 'form-label-required' : ''}`}>Nomor Bukti</label>
+                <input className="form-input" required={form.metode_bayar === 'transfer'} value={form.nomor_bukti} onChange={(event) => setForm({ ...form, nomor_bukti: event.target.value })} placeholder="Nomor transfer atau bukti dari pabrik" />
               </div>
             </div>
             <div className="form-group">
@@ -501,9 +506,9 @@ export default function PembayaranPabrikPage() {
             <div className="alert alert-info" style={{ marginBottom: 'var(--space-md)' }}>
               Pilih data timbang di bawah hanya untuk mencocokkan. Jika belum siap, uang masuk tetap bisa dicatat dulu dari nota pabrik.
             </div>
-            {!hargaTwb && (
+            {!form.harga_pabrik_per_kg && (
               <div className="alert alert-warning" style={{ marginBottom: 'var(--space-md)' }}>
-                Harga Pabrik / TWB belum diset. Isi dulu dari Dashboard agar pembayaran pabrik memakai harga yang sama.
+                Harga Dashboard belum tersedia. Isi harga sesuai angka pada nota pembayaran pabrik.
               </div>
             )}
             <button className="btn btn-primary" disabled={saving}>
@@ -547,7 +552,7 @@ export default function PembayaranPabrikPage() {
         <div className="section-heading">
           <div>
             <h2>Cocokkan Dengan Catatan Kita</h2>
-            <p>Yang tampil mengikuti periode data timbang di atas. Harga memakai TWB Dashboard.</p>
+            <p>Yang tampil mengikuti periode data timbang. Berat dan harga memakai angka yang tersimpan saat pengiriman dicatat.</p>
           </div>
           <div className="flex gap-sm" style={{ flexWrap: 'wrap', justifyContent: 'flex-end' }}>
             <button className="btn btn-outline btn-sm" onClick={selectAllVisible} disabled={visibleTransactions.length === 0}>Pilih Semua</button>
@@ -558,7 +563,7 @@ export default function PembayaranPabrikPage() {
         <div className="reconciliation-strip">
           <span>{visibleSummary.count.toLocaleString('id-ID')} data tampil</span>
           <span>{formatNumber(visibleSummary.tonase)} kg catatan kita</span>
-          <span>{formatRupiah(visibleSummary.nilai)} nilai TWB</span>
+          <span>{formatRupiah(visibleSummary.nilai)} nilai catatan kita</span>
           <span>{selectedRows.length.toLocaleString('id-ID')} data dipilih</span>
           <span>{formatRupiah(reconciliationSummary.totalNilaiSistem)} nilai dipilih</span>
         </div>
@@ -573,8 +578,8 @@ export default function PembayaranPabrikPage() {
                 <th>Mitra</th>
                 <th>Sopir / Plat</th>
                 <th style={{ textAlign: 'right' }}>Tonase</th>
-                <th style={{ textAlign: 'right' }}>Harga TWB</th>
-                <th style={{ textAlign: 'right' }}>Nilai TWB Catatan Kita</th>
+                <th style={{ textAlign: 'right' }}>Harga Saat Dicatat</th>
+                <th style={{ textAlign: 'right' }}>Nilai Catatan Kita</th>
               </tr>
             </thead>
             <tbody>
@@ -585,7 +590,8 @@ export default function PembayaranPabrikPage() {
               ) : visibleTransactions.map((row) => {
                 const hargaTampilan = resolvePaymentHargaPerKg(row);
                 const hargaSaatInput = resolveHargaPabrikPerKg(row);
-                const hargaBerbeda = hargaTwb > 0 && hargaSaatInput > 0 && Math.round(hargaSaatInput) !== Math.round(hargaTampilan);
+                const hargaNota = Number(form.harga_pabrik_per_kg || 0);
+                const hargaBerbeda = hargaNota > 0 && hargaSaatInput > 0 && Math.round(hargaSaatInput) !== Math.round(hargaNota);
 
                 return (
                   <tr key={row.id} className={selectedIds.includes(row.id) ? 'row-selected' : ''}>
@@ -599,10 +605,10 @@ export default function PembayaranPabrikPage() {
                       <div>{row.sopir_aktual_nama || row.sopir_default_nama || '-'}</div>
                       <small className="text-tertiary table-mono">{row.plat_nomor || '-'}</small>
                     </td>
-                    <td className="table-mono" style={{ textAlign: 'right' }}>{formatNumber(row.tonase)} kg</td>
+                    <td className="table-mono" style={{ textAlign: 'right' }}>{formatNumber(resolveBeratDibayar(row))} kg</td>
                     <td className="table-mono" style={{ textAlign: 'right' }}>
                       <div>{formatRupiah(hargaTampilan)}</div>
-                      {hargaBerbeda && <small className="text-warning">Saat input: {formatRupiah(hargaSaatInput)}</small>}
+                      {hargaBerbeda && <small className="text-warning">Nota sekarang: {formatRupiah(hargaNota)}</small>}
                     </td>
                     <td className="table-mono" style={{ textAlign: 'right', fontWeight: 800 }}>{formatRupiah(resolvePaymentTotal(row))}</td>
                   </tr>

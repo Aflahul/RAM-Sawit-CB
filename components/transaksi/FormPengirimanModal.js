@@ -39,6 +39,8 @@ export default function FormPengirimanModal({ open, onClose, onSuccess, initialD
   const [formArmadaCepat, setFormArmadaCepat] = useState({
     nama: '',
     plat_nomor: '',
+    no_hp: '',
+    mitra_id: '',
     is_armada_cb: false,
   });
 
@@ -359,13 +361,25 @@ export default function FormPengirimanModal({ open, onClose, onSuccess, initialD
     }
     setSavingArmada(true);
 
-    const payload = {
-      nama: formArmadaCepat.nama.trim(),
-      plat_nomor: formArmadaCepat.plat_nomor.toUpperCase().trim(),
-      is_armada_cb: formArmadaCepat.is_armada_cb,
-    };
+    const normalizedName = formArmadaCepat.nama.trim().toLowerCase();
+    const normalizedPlat = formArmadaCepat.plat_nomor.replace(/[^a-z0-9]/gi, '').toUpperCase();
+    const duplicate = sopirs.find(item => String(item.nama || '').trim().toLowerCase() === normalizedName
+      && String(item.plat_nomor || '').replace(/[^a-z0-9]/gi, '').toUpperCase() === normalizedPlat);
 
-    const { data, error } = await supabase.from('sopir').insert(payload).select().single();
+    if (duplicate) {
+      showToast('Sopir dan plat tersebut sudah ada. Pilih dari daftar pencarian.');
+      setSavingArmada(false);
+      return;
+    }
+
+    const { data, error } = await supabase.rpc('save_sopir_armada', {
+      p_id: null,
+      p_nama: formArmadaCepat.nama.trim(),
+      p_no_hp: formArmadaCepat.no_hp || null,
+      p_mitra_id: formArmadaCepat.mitra_id || null,
+      p_plat_nomor: formArmadaCepat.plat_nomor,
+      p_is_armada_cb: formArmadaCepat.is_armada_cb,
+    });
 
     if (error) {
       showToast(`Gagal menyimpan armada: ${error.message}`);
@@ -373,23 +387,27 @@ export default function FormPengirimanModal({ open, onClose, onSuccess, initialD
       return;
     }
 
-    setSopirs(prev => [...prev, data]);
+    const savedArmada = Array.isArray(data) ? data[0] : data;
+    const savedMitra = mitras.find(item => item.id === savedArmada?.mitra_id) || null;
+    const selectableArmada = { ...savedArmada, master_mitra: savedMitra };
+    setSopirs(prev => [...prev, selectableArmada]);
     
-    setForm({
+    const nextMitraId = savedArmada.mitra_id || '';
+    setForm(applyMitraSnapshot({
       ...form,
-      sopir_id: data.id,
-      plat_nomor: data.plat_nomor || '-',
-      mitra_id: '',
-      sopir_default_nama: data.nama,
+      sopir_id: savedArmada.id,
+      plat_nomor: savedArmada.plat_nomor || '-',
+      mitra_id: nextMitraId,
+      sopir_default_nama: savedArmada.nama,
       sopir_aktual_mode: SOPIR_AKTUAL_DEFAULT,
-      sopir_aktual_id: data.id,
-      sopir_aktual_nama: data.nama,
-      sopir_aktual_no_hp: '',
+      sopir_aktual_id: savedArmada.id,
+      sopir_aktual_nama: savedArmada.nama,
+      sopir_aktual_no_hp: savedArmada.no_hp || '',
       catatan_sopir: '',
-      pakai_sewa_armada_cb: Boolean(data.is_armada_cb),
-    });
+      pakai_sewa_armada_cb: Boolean(savedArmada.is_armada_cb),
+    }, nextMitraId, form.tanggal));
 
-    setFormArmadaCepat({ nama: '', plat_nomor: '', is_armada_cb: false });
+    setFormArmadaCepat({ nama: '', plat_nomor: '', no_hp: '', mitra_id: '', is_armada_cb: false });
     setShowQuickAddArmada(false);
     setSavingArmada(false);
   }
@@ -564,7 +582,8 @@ export default function FormPengirimanModal({ open, onClose, onSuccess, initialD
       {showQuickAddArmada ? (
         <form onSubmit={handleSimpanArmadaCepat} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
           <div style={{ background: 'var(--bg-surface)', padding: 16, borderRadius: 8, border: '1px solid var(--border-default)' }}>
-            <h4 style={{ margin: '0 0 16px 0', fontSize: 16 }}>Tambah Armada Baru</h4>
+            <h4 style={{ margin: '0 0 6px 0', fontSize: 16 }}>Tambah Sopir/Armada</h4>
+            <p className="form-hint" style={{ marginBottom: 16 }}>Data langsung dapat dipakai dan akan masuk daftar Perlu Verifikasi Owner.</p>
             <div className="form-group">
               <label className="form-label form-label-required">Nama Sopir / Unit</label>
               <input
@@ -574,6 +593,29 @@ export default function FormPengirimanModal({ open, onClose, onSuccess, initialD
                 onChange={e => setFormArmadaCepat({ ...formArmadaCepat, nama: e.target.value })}
                 placeholder="Contoh: Budi"
               />
+            </div>
+            <div className="form-grid">
+              <div className="form-group">
+                <label className="form-label">No. HP / WA</label>
+                <input
+                  className="form-input"
+                  value={formArmadaCepat.no_hp}
+                  onChange={e => setFormArmadaCepat({ ...formArmadaCepat, no_hp: e.target.value })}
+                  placeholder="Opsional"
+                />
+              </div>
+              <div className="form-group">
+                <label className="form-label">Mitra Default</label>
+                <SearchableCombobox
+                  value={formArmadaCepat.mitra_id}
+                  options={mitras}
+                  onChange={mitraId => setFormArmadaCepat({ ...formArmadaCepat, mitra_id: mitraId })}
+                  getOptionLabel={formatMitraLabel}
+                  getSearchText={getMitraSearchText}
+                  placeholder="Tanpa default"
+                  emptyLabel="Mitra tidak ditemukan"
+                />
+              </div>
             </div>
             <div className="form-group">
               <label className="form-label form-label-required">Plat Nomor</label>
@@ -598,7 +640,7 @@ export default function FormPengirimanModal({ open, onClose, onSuccess, initialD
             <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end', marginTop: 16 }}>
               <button type="button" className="btn btn-outline" onClick={() => setShowQuickAddArmada(false)}>Batal</button>
               <button type="submit" className="btn btn-primary" disabled={savingArmada}>
-                {savingArmada ? 'Menyimpan...' : 'Simpan Armada'}
+                {savingArmada ? 'Menyimpan...' : 'Simpan & Gunakan'}
               </button>
             </div>
           </div>
@@ -622,7 +664,7 @@ export default function FormPengirimanModal({ open, onClose, onSuccess, initialD
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
                 <label className="form-label form-label-required" style={{ marginBottom: 0 }}>Sopir / Armada</label>
                 <button type="button" className="btn btn-ghost btn-sm" onClick={() => setShowQuickAddArmada(true)} style={{ padding: '0 8px', height: 24, fontSize: 12 }}>
-                  + Armada Baru
+                  + Sopir/Armada Baru
                 </button>
               </div>
               <SearchableCombobox
@@ -633,7 +675,7 @@ export default function FormPengirimanModal({ open, onClose, onSuccess, initialD
                 getOptionDescription={formatSopirArmadaDescription}
                 getSearchText={getSopirArmadaSearchText}
                 placeholder="Cari plat nomor atau sopir..."
-                emptyLabel="Tidak ditemukan. Klik '+ Armada Baru' di atas."
+                emptyLabel="Tidak ditemukan. Klik '+ Sopir/Armada Baru' di atas."
                 loading={loading}
                 disabled={false}
               />

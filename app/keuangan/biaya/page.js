@@ -3,9 +3,14 @@
 import { useCallback, useEffect, useState } from 'react';
 import AppShell from '@/components/layout/AppShell';
 import PromptDialog from '@/components/ui/PromptDialog';
+import TablePagination from '@/components/ui/TablePagination';
+import { paginateRows } from '@/lib/pagination-utils';
 import { supabase } from '@/lib/supabase';
 import { formatDateDisplay, formatRupiah, getTodayISO } from '@/lib/utils';
 import { exportToExcel } from '@/lib/export';
+
+const PAGE_SIZE = 20;
+const QUERY_LIMIT = 500;
 
 const KATEGORI = [
   { value: 'solar', label: '⛽ Solar / BBM' },
@@ -28,6 +33,7 @@ export default function BiayaPage() {
   const [toast, setToast] = useState(null);
   const [cancelTarget, setCancelTarget] = useState(null);
   const [canceling, setCanceling] = useState(false);
+  const [page, setPage] = useState(1);
 
   const [form, setForm] = useState({
     tanggal: getTodayISO(), kategori: 'solar', jumlah: '', keterangan: '', armada_sopir_id: '',
@@ -46,7 +52,7 @@ export default function BiayaPage() {
     }
 
     const [{ data }, { data: armadaData }] = await Promise.all([
-      query.limit(100),
+      query.limit(QUERY_LIMIT),
       supabase
         .from('sopir')
         .select('id, nama, plat_nomor')
@@ -119,6 +125,7 @@ export default function BiayaPage() {
 
   const filtered = filterKategori === 'semua' ? list : list.filter(b => b.kategori === filterKategori);
   const totalFiltered = filtered.reduce((s, b) => s + (b.jumlah || 0), 0);
+  const paginated = paginateRows(filtered, page, PAGE_SIZE);
 
   const kategoriLabel = (k) => KATEGORI.find(c => c.value === k)?.label || k;
 
@@ -154,10 +161,10 @@ export default function BiayaPage() {
       <div className="toolbar">
         <div className="form-group" style={{ marginBottom: 0 }}>
           <input type="date" className="form-input" value={filterTanggal}
-            onChange={e => setFilterTanggal(e.target.value)} />
+            onChange={e => { setFilterTanggal(e.target.value); setPage(1); }} />
         </div>
         <select className="form-input form-select" value={filterKategori}
-          onChange={e => setFilterKategori(e.target.value)} style={{ maxWidth: 220 }}>
+          onChange={e => { setFilterKategori(e.target.value); setPage(1); }} style={{ maxWidth: 220 }}>
           <option value="semua">Semua Kategori</option>
           {KATEGORI.map(k => <option key={k.value} value={k.value}>{k.label}</option>)}
         </select>
@@ -184,7 +191,7 @@ export default function BiayaPage() {
               <tr><th>Kategori</th><th>Armada CB</th><th>Keterangan</th><th style={{ textAlign: 'right' }}>Jumlah</th><th></th></tr>
             </thead>
             <tbody>
-              {filtered.map(b => (
+              {paginated.rows.map(b => (
                 <tr key={b.id}>
                   <td><span className="badge badge-neutral">{kategoriLabel(b.kategori)}</span></td>
                   <td>{(() => {
@@ -202,6 +209,19 @@ export default function BiayaPage() {
               ))}
             </tbody>
           </table>
+          <TablePagination
+            page={paginated.page}
+            totalPages={paginated.totalPages}
+            totalItems={filtered.length}
+            startIndex={paginated.startIndex}
+            endIndex={paginated.endIndex}
+            onPageChange={setPage}
+          />
+          {list.length >= QUERY_LIMIT && (
+            <div className="alert alert-warning" style={{ margin: 'var(--space-md)' }}>
+              Menampilkan maksimal {QUERY_LIMIT} biaya terbaru pada tanggal ini. Gunakan filter tanggal untuk melihat data lain.
+            </div>
+          )}
         </div>
       )}
 

@@ -7,7 +7,7 @@ import ConfirmDialog from '@/components/ui/ConfirmDialog';
 import SearchableCombobox from '@/components/ui/SearchableCombobox';
 import SortableHeader from '@/components/ui/SortableHeader';
 import TablePagination from '@/components/ui/TablePagination';
-import { FileSpreadsheet, Pencil, Search, Trash2, X } from 'lucide-react';
+import { CheckCircle2, FileSpreadsheet, Pencil, Search, Trash2, X } from 'lucide-react';
 import {
   formatMitraLabel,
   getMitraSearchText,
@@ -17,6 +17,7 @@ import { paginateRows } from '@/lib/pagination-utils';
 import { getNextSort, sortRows } from '@/lib/sort-utils';
 import { exportStyledWorkbook } from '@/lib/spreadsheet-export';
 import { supabase } from '@/lib/supabase';
+import { canApproveCorrections, normalizeRole } from '@/lib/roles';
 import { formatDateTimeDisplay, getTodayISO } from '@/lib/utils';
 
 const TABLE_PAGE_SIZE = 20;
@@ -40,6 +41,7 @@ export default function ArmadaPage() {
   const [page, setPage] = useState(1);
   const [toast, setToast] = useState(null);
   const [deleteTarget, setDeleteTarget] = useState(null);
+  const [userRole, setUserRole] = useState('admin_operasional');
   const [formArmada, setFormArmada] = useState({
     nama: '',
     no_hp: '',
@@ -50,7 +52,7 @@ export default function ArmadaPage() {
 
   const loadData = useCallback(async () => {
     setLoading(true);
-    const [{ data: armadaData }, { data: mitraData }] = await Promise.all([
+    const [{ data: armadaData }, { data: mitraData }, { data: sessionData }] = await Promise.all([
       supabase
         .from('sopir')
         .select(`
@@ -64,7 +66,14 @@ export default function ArmadaPage() {
         .select('id, kode, nama, alamat, tipe_mitra')
         .eq('aktif', true)
         .order('kode'),
+      supabase.auth.getSession(),
     ]);
+
+    const userId = sessionData?.session?.user?.id;
+    if (userId) {
+      const { data: userData } = await supabase.from('users').select('role').eq('id', userId).maybeSingle();
+      setUserRole(normalizeRole(userData?.role));
+    }
 
     setArmadas(armadaData || []);
     setMitras(mitraData || []);
@@ -118,33 +127,35 @@ export default function ArmadaPage() {
     e.preventDefault();
     setSaving(true);
 
-    const payload = {
-      nama: formArmada.nama,
-      no_hp: formArmada.no_hp || null,
-      mitra_id: formArmada.mitra_id || null,
-      plat_nomor: formArmada.plat_nomor || null,
-      is_armada_cb: Boolean(formArmada.is_armada_cb),
-    };
+    const normalizedPlat = formArmada.plat_nomor.replace(/[^a-z0-9]/gi, '').toUpperCase();
+    const normalizedName = formArmada.nama.trim().toLowerCase();
+    const possibleDuplicate = armadas.find(item => item.id !== editingId
+      && String(item.plat_nomor || '').replace(/[^a-z0-9]/gi, '').toUpperCase() === normalizedPlat
+      && String(item.nama || '').trim().toLowerCase() === normalizedName);
 
-    if (editingId) {
-      const { error } = await supabase.from('sopir').update(payload).eq('id', editingId);
-      if (error) {
-        showToast(`Gagal menyimpan armada: ${error.message}`, 'error', 5000);
-        setSaving(false);
-        return;
-      }
-    } else {
-      const { error } = await supabase.from('sopir').insert(payload);
-      if (error) {
-        showToast(`Gagal menyimpan armada: ${error.message}`, 'error', 5000);
-        setSaving(false);
-        return;
-      }
+    if (possibleDuplicate && !editingId) {
+      showToast(`${possibleDuplicate.nama} dengan plat yang sama sudah ada. Gunakan tombol Edit pada data tersebut.`, 'error', 6500);
+      setSaving(false);
+      return;
+    }
+
+    const { error } = await supabase.rpc('save_sopir_armada', {
+      p_id: editingId || null,
+      p_nama: formArmada.nama,
+      p_no_hp: formArmada.no_hp || null,
+      p_mitra_id: formArmada.mitra_id || null,
+      p_plat_nomor: formArmada.plat_nomor,
+      p_is_armada_cb: Boolean(formArmada.is_armada_cb),
+    });
+    if (error) {
+      showToast(`Gagal menyimpan Sopir/Armada: ${error.message}`, 'error', 5000);
+      setSaving(false);
+      return;
     }
 
     setSaving(false);
     setShowModal(false);
-    showToast('Armada berhasil disimpan.', 'success', 3000);
+    showToast(canApproveCorrections(userRole) ? 'Sopir/Armada berhasil disimpan.' : 'Sopir/Armada tersimpan dan masuk daftar Perlu Verifikasi.', 'success', 4000);
     await loadData();
   }
 
@@ -159,6 +170,16 @@ export default function ArmadaPage() {
 
     setDeleteTarget(null);
     showToast('Armada berhasil dinonaktifkan.', 'success', 3000);
+    await loadData();
+  }
+
+  async function handleVerify(item) {
+    const { error } = await supabase.rpc('verify_sopir_armada', { p_id: item.id, p_catatan: 'Diperiksa dari Master Armada' });
+    if (error) {
+      showToast(`Gagal memverifikasi: ${error.message}`, 'error', 5000);
+      return;
+    }
+    showToast('Sopir/Armada sudah terverifikasi.', 'success', 3000);
     await loadData();
   }
 
@@ -241,7 +262,7 @@ export default function ArmadaPage() {
             <FileSpreadsheet size={16} />
             Export Excel
           </button>
-          <button className="btn btn-primary" onClick={openNew}>+ Tambah Armada</button>
+          <button className="btn btn-primary" onClick={openNew}>+ Tambah Sopir/Armada</button>
         </div>
       </div>
 
@@ -269,7 +290,10 @@ export default function ArmadaPage() {
             ) : (
               paginatedArmadas.rows.map(armada => (
                 <tr key={armada.id}>
-                  <td style={{ fontWeight: 600 }}>{armada.nama}</td>
+                  <td style={{ fontWeight: 600 }}>
+                    <div>{armada.nama}</div>
+                    {armada.status_verifikasi === 'perlu_verifikasi' && <span className="badge badge-warning" style={{ marginTop: 5 }}>Perlu Verifikasi</span>}
+                  </td>
                   <td className="table-mono">{armada.plat_nomor || '-'}</td>
                   <td className="table-mono">{armada.no_hp || '-'}</td>
                   <td>
@@ -282,12 +306,19 @@ export default function ArmadaPage() {
                     {armada.is_armada_cb ? 'Berdasarkan Mitra Transaksi' : '-'}
                   </td>
                   <td style={{ textAlign: 'center' }}>
+                    {canApproveCorrections(userRole) && armada.status_verifikasi === 'perlu_verifikasi' && (
+                      <button className="btn btn-ghost btn-sm" onClick={() => handleVerify(armada)} aria-label={`Verifikasi ${armada.nama}`} title="Tandai sudah diperiksa">
+                        <CheckCircle2 size={16} />
+                      </button>
+                    )}
                     <button className="btn btn-ghost btn-sm" onClick={() => openEdit(armada)} aria-label={`Edit ${armada.nama}`}>
                       <Pencil size={16} />
                     </button>
-                    <button className="btn btn-ghost btn-sm" onClick={() => setDeleteTarget(armada)} aria-label={`Nonaktifkan ${armada.nama}`}>
-                      <Trash2 size={16} />
-                    </button>
+                    {canApproveCorrections(userRole) && (
+                      <button className="btn btn-ghost btn-sm" onClick={() => setDeleteTarget(armada)} aria-label={`Nonaktifkan ${armada.nama}`}>
+                        <Trash2 size={16} />
+                      </button>
+                    )}
                   </td>
                 </tr>
               ))
@@ -308,7 +339,7 @@ export default function ArmadaPage() {
         <div className="modal-overlay" onClick={() => setShowModal(false)}>
           <div className="modal" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
-              <h3 className="modal-title">{editingId ? 'Edit' : 'Tambah'} Armada</h3>
+              <h3 className="modal-title">{editingId ? 'Edit' : 'Tambah'} Sopir/Armada</h3>
               <button className="modal-close" onClick={() => setShowModal(false)} aria-label="Tutup">
                 <X size={18} />
               </button>

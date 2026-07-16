@@ -224,10 +224,10 @@ export default function PendapatanOwnerPage() {
       mitra: row => row.label,
       tipe: row => getMitraTypeLabel(row.tipeMitra),
       transaksi: row => row.jumlahTransaksi,
-      tonase: row => row.tonase,
+      tonase: row => row.beratDibayar,
       nilai_pabrik: row => row.nilaiPabrik,
       nilai_bersih: row => row.nilaiBersihMitra,
-      pendapatan: row => row.pendapatanOwner,
+      pendapatan: row => row.pendapatanOwner + row.sewaArmada,
     });
   }, [ringkasanMitra, summarySort]);
 
@@ -246,7 +246,7 @@ export default function PendapatanOwnerPage() {
       harga_pabrik: row => resolveHargaPabrikPerKg(row),
       hasil_kotor_pabrik: row => resolveTotalKotorPabrik(row),
       fee: row => resolveFeePerKg(row),
-      pendapatan: row => resolveTotalFeeOwner(row),
+      pendapatan: row => resolveTotalFeeOwner(row) + resolveBiayaSewaArmada(row),
     });
   }, [detailSort, filteredTransaksi]);
 
@@ -525,7 +525,7 @@ export default function PendapatanOwnerPage() {
                       <SortableHeader label="Tonase" sortKey="tonase" sort={summarySort} onSort={handleSummarySort} align="right" />
                       <SortableHeader label="Hasil Pabrik" sortKey="nilai_pabrik" sort={summarySort} onSort={handleSummarySort} align="right" />
                       <SortableHeader label="Nilai Bersih" sortKey="nilai_bersih" sort={summarySort} onSort={handleSummarySort} align="right" />
-                      <SortableHeader label="Bruto" sortKey="pendapatan" sort={summarySort} onSort={handleSummarySort} align="right" />
+                      <SortableHeader label="Fee + Sewa" sortKey="pendapatan" sort={summarySort} onSort={handleSummarySort} align="right" />
                     </tr>
                   </thead>
                   <tbody>
@@ -551,11 +551,11 @@ export default function PendapatanOwnerPage() {
                           </span>
                         </td>
                         <td className="table-mono" style={{ textAlign: 'right' }}>{row.jumlahTransaksi}</td>
-                        <td className="table-mono" style={{ textAlign: 'right' }}>{formatNumber(row.tonase)} Kg</td>
+                        <td className="table-mono" style={{ textAlign: 'right' }}>{formatNumber(row.beratDibayar)} Kg</td>
                         <td className="table-mono" style={{ textAlign: 'right' }}>{formatRupiah(row.nilaiPabrik)}</td>
                         <td className="table-mono" style={{ textAlign: 'right' }}>{formatRupiah(row.nilaiBersihMitra)}</td>
                         <td className="table-mono" style={{ textAlign: 'right', fontWeight: 800, color: 'var(--color-success)' }}>
-                          {formatRupiah(row.pendapatanOwner)}
+                          {formatRupiah(row.pendapatanOwner + row.sewaArmada)}
                         </td>
                       </tr>
                     ))}
@@ -586,7 +586,7 @@ export default function PendapatanOwnerPage() {
                       <SortableHeader label="Harga" sortKey="harga_pabrik" sort={detailSort} onSort={handleDetailSort} align="right" />
                       <SortableHeader label="Hasil Pabrik" sortKey="hasil_kotor_pabrik" sort={detailSort} onSort={handleDetailSort} align="right" />
                       <SortableHeader label="Fee/Kg" sortKey="fee" sort={detailSort} onSort={handleDetailSort} align="right" />
-                      <SortableHeader label="Bruto" sortKey="pendapatan" sort={detailSort} onSort={handleDetailSort} align="right" />
+                      <SortableHeader label="Fee + Sewa" sortKey="pendapatan" sort={detailSort} onSort={handleDetailSort} align="right" />
                     </tr>
                   </thead>
                   <tbody>
@@ -630,7 +630,7 @@ export default function PendapatanOwnerPage() {
                             {hasFeeSnapshot(row) ? formatRupiah(feePerKg) : <span className="badge badge-warning">Perlu koreksi</span>}
                           </td>
                           <td className="table-mono" style={{ textAlign: 'right', fontWeight: 800, color: hasFeeSnapshot(row) ? 'var(--color-success)' : 'var(--text-tertiary)' }}>
-                            {formatRupiah(totalFeeOwner)}
+                            {formatRupiah(totalFeeOwner + resolveBiayaSewaArmada(row))}
                           </td>
                         </tr>
                       );

@@ -3,11 +3,12 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import AppShell from '@/components/layout/AppShell';
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
+import PromptDialog from '@/components/ui/PromptDialog';
 import { exportToExcel } from '@/lib/export';
-import { canManageFinance, canViewProfit, normalizeRole } from '@/lib/roles';
+import { canApproveCorrections, canManageFinance, canViewProfit, normalizeRole } from '@/lib/roles';
 import { supabase } from '@/lib/supabase';
 import { formatDateDisplay, formatRupiah, getTodayISO } from '@/lib/utils';
-import { Banknote, Eye, EyeOff, FileSpreadsheet, RefreshCw, Truck, Weight, WalletCards } from 'lucide-react';
+import { Banknote, Eye, EyeOff, FileSpreadsheet, RefreshCw, RotateCcw, Truck, Weight, WalletCards } from 'lucide-react';
 
 const BULAN = [
   '', 'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
@@ -44,6 +45,8 @@ export default function LaporanArmadaCBPage() {
   const [loading, setLoading] = useState(true);
   const [paying, setPaying] = useState(false);
   const [payTarget, setPayTarget] = useState(null);
+  const [cancelPayTarget, setCancelPayTarget] = useState(null);
+  const [cancelingPay, setCancelingPay] = useState(false);
   const [syncConfirm, setSyncConfirm] = useState(false);
   const [syncingRates, setSyncingRates] = useState(false);
   const [toast, setToast] = useState(null);
@@ -155,6 +158,7 @@ export default function LaporanArmadaCBPage() {
   }, [expenses, transactions]);
 
   const canPay = canManageFinance(userRole);
+  const canCancelPay = canApproveCorrections(userRole);
   const canSeeMargin = canViewProfit(userRole);
 
   const armadaSummaries = useMemo(() => {
@@ -242,6 +246,25 @@ export default function LaporanArmadaCBPage() {
 
     setPayTarget(null);
     showToast('Dana Operasional Trip tercatat di Buku Kas dan Biaya Operasional.');
+    await loadData();
+  }
+
+  async function confirmCancelPay(reason) {
+    if (!cancelPayTarget || cancelingPay) return;
+    setCancelingPay(true);
+    const { error } = await supabase.rpc('cancel_pembayaran_dana_trip', {
+      p_transaksi_id: cancelPayTarget.id,
+      p_alasan: reason,
+    });
+    setCancelingPay(false);
+
+    if (error) {
+      showToast(`Gagal membatalkan Dana Trip: ${error.message}`, 'error');
+      return;
+    }
+
+    setCancelPayTarget(null);
+    showToast('Pembayaran Dana Trip dibalik dan kas sudah dikembalikan.');
     await loadData();
   }
 
@@ -434,7 +457,14 @@ export default function LaporanArmadaCBPage() {
                   <td className="table-mono text-success" style={{ textAlign: 'right' }}>{formatRupiah(row.biaya_sewa_armada_kotor ?? row.biaya_sewa_armada_total)}</td>
                   <td className="table-mono" style={{ textAlign: 'right' }}>{formatRupiah(driverCost)}<div className="text-tertiary text-xs">satu kali jalan</div></td>
                   <td><span className={`badge ${paid ? 'badge-success' : driverCost > 0 ? 'badge-warning' : 'badge-neutral'}`}>{paid ? 'Sudah Dibayar' : driverCost > 0 ? 'Belum Dibayar' : 'Tarif Kosong'}</span></td>
-                  <td>{canPay && !paid && driverCost > 0 && <button className="btn btn-primary btn-sm" onClick={() => setPayTarget(row)}>Bayar Dana Trip</button>}</td>
+                  <td>
+                    {canPay && !paid && driverCost > 0 && <button className="btn btn-primary btn-sm" onClick={() => setPayTarget(row)}>Bayar Dana Trip</button>}
+                    {canCancelPay && paid && (
+                      <button className="btn btn-ghost btn-sm" onClick={() => setCancelPayTarget(row)} title="Batalkan pembayaran Dana Trip">
+                        <RotateCcw size={14} /> Batal Bayar
+                      </button>
+                    )}
+                  </td>
                 </tr>
               );
             })}
@@ -453,6 +483,17 @@ export default function LaporanArmadaCBPage() {
         variant="warning"
         onConfirm={confirmPay}
         onCancel={() => !paying && setPayTarget(null)}
+      />
+      <PromptDialog
+        open={Boolean(cancelPayTarget)}
+        title="Batalkan Pembayaran Dana Trip"
+        message={cancelPayTarget ? `Kas keluar Dana Trip ${cancelPayTarget.plat_nomor || '-'} tanggal ${formatDateDisplay(cancelPayTarget.tanggal)} akan dibuatkan transaksi balik.` : ''}
+        label="Alasan pembatalan"
+        placeholder="Contoh: pembayaran dicatat dua kali"
+        confirmText="Batalkan Pembayaran"
+        loading={cancelingPay}
+        onConfirm={confirmCancelPay}
+        onCancel={() => !cancelingPay && setCancelPayTarget(null)}
       />
       <ConfirmDialog
         open={syncConfirm}

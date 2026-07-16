@@ -55,8 +55,8 @@ const menuSections = [
       { href: '/owner/laporan-armada-cb', icon: <Truck size={20} />, label: 'Laporan Armada CB', armadaReport: true },
       { href: '/laporan/petani', icon: <Users size={20} />, label: 'Laporan Petani', badge: 'comingsoon' },
       { href: '/laporan/stok', icon: <Box size={20} />, label: 'Stok Lokal', badge: 'comingsoon' },
-      { href: '/owner/pendapatan-owner', icon: <BadgeDollarSign size={20} />, label: 'Pendapatan Owner Bruto', profitOnly: true },
-      { href: '/laporan/laba-rugi', icon: <TrendingUp size={20} />, label: 'Laba / Rugi', profitOnly: true },
+      { href: '/owner/pendapatan-owner', icon: <BadgeDollarSign size={20} />, label: 'Pendapatan Owner', profitOnly: true },
+      { href: '/laporan/laba-rugi', icon: <TrendingUp size={20} />, label: 'Ringkasan Arus Kas', profitOnly: true },
     ],
   },
   {

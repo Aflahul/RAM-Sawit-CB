@@ -34,5 +34,5 @@ export function createClient(request) {
     },
   });
 
-  return { supabase, response };
+  return { supabase, getResponse: () => response };
 }
