@@ -52,6 +52,13 @@ Karena satu Admin mengerjakan operasional dan pencatatan keuangan, kontrol pengg
 - Semua aksi uang dan koreksi menyimpan actor, waktu, alasan, dan referensi transaksi.
 - Dashboard Owner menampilkan antrian **Perlu Persetujuan/Perlu Cek** agar kontrol tidak bergantung pada pesan lisan.
 
+Keputusan akses laporan dan master:
+
+- Admin memakai kelompok menu **Rekap Operasional** untuk memantau muatan, trip, status pembayaran, dan antrian yang perlu dicek.
+- Nilai sewa Armada CB, biaya lain, margin, Pendapatan Owner, dan Ringkasan Arus Kas hanya tampil untuk Owner/Super Admin.
+- Admin boleh menambah atau mengoreksi identitas Mitra, Armada, dan Pabrik agar pekerjaan lapangan tidak berhenti. Data tersebut ditandai **Perlu Verifikasi**.
+- Owner/Super Admin menjadi satu-satunya pihak yang dapat memverifikasi, menonaktifkan master, dan mengubah Harga TBS Lokal atau tarif bisnis.
+
 Temuan role saat ini:
 
 - Sidebar sudah menyembunyikan beberapa menu finansial, tetapi route dan data tidak selalu mengikuti pembatasan yang sama.

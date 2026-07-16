@@ -173,7 +173,10 @@ export default function MitraPage() {
   async function handleDelete() {
     if (!deleteTarget) return;
 
-    const { error } = await supabase.from('master_mitra').update({ aktif: false }).eq('id', deleteTarget.id);
+    const { error } = await supabase.rpc('set_master_mitra_active', {
+      p_id: deleteTarget.id,
+      p_active: false,
+    });
     if (error) {
       showToast(`Gagal menonaktifkan mitra: ${error.message}`, 'error', 5000);
       return;

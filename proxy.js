@@ -2,7 +2,7 @@ import { createClient } from '@/utils/supabase/middleware';
 import { NextResponse } from 'next/server';
 
 const PROFIT_PATHS = ['/owner/pendapatan-owner', '/laporan/laba-rugi'];
-const BUSINESS_SETTINGS_PATHS = ['/owner/pengaturan-web'];
+const BUSINESS_SETTINGS_PATHS = ['/owner/pengaturan-web', '/master/harga'];
 const FINANCE_PATHS = [
   '/owner/kwitansi-mitra',
   '/owner/pembayaran-pabrik',

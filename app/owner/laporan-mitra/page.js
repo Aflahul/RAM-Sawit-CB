@@ -9,6 +9,7 @@ import TablePagination from '@/components/ui/TablePagination';
 import { formatMitraLabel, getMitraSearchText } from '@/lib/display-labels';
 import { paginateRows } from '@/lib/pagination-utils';
 import { getNextSort, sortRows } from '@/lib/sort-utils';
+import { isOperationalAdmin, normalizeRole } from '@/lib/roles';
 import { exportStyledWorkbook } from '@/lib/spreadsheet-export';
 import { supabase } from '@/lib/supabase';
 import {
@@ -48,6 +49,7 @@ export default function LaporanMitraPage() {
   const [errorMsg, setErrorMsg] = useState('');
   const [sort, setSort] = useState({ key: 'waktu', direction: 'desc' });
   const [page, setPage] = useState(1);
+  const [userRole, setUserRole] = useState(null);
 
   const loadMitras = useCallback(async () => {
     const { data, error } = await supabase
@@ -74,10 +76,9 @@ export default function LaporanMitraPage() {
       .select(`
         id, mitra_id, tanggal, tonase, harga_harian, total_kotor,
         created_at,
-        harga_pabrik_per_kg, fee_owner_per_kg, harga_bersih_per_kg,
-        total_fee_owner, total_nilai_bersih, plat_nomor,
+        harga_pabrik_per_kg, harga_bersih_per_kg,
+        total_nilai_bersih, plat_nomor,
         berat_netto_pabrik_kg, potongan_pabrik_kg, berat_dibayar_kg,
-        pakai_sewa_armada_bl, biaya_sewa_armada_total,
         sopir_default_nama, sopir_aktual_nama, sopir_diganti_dari_default, catatan_sopir,
         master_mitra ( id, kode, alamat, nama, fee_per_kg )
       `)
@@ -155,6 +156,17 @@ export default function LaporanMitraPage() {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     loadMitras();
   }, [loadMitras]);
+
+  useEffect(() => {
+    async function loadRole() {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) return;
+      const { data } = await supabase.from('users').select('role').eq('id', session.user.id).maybeSingle();
+      setUserRole(normalizeRole(data?.role));
+    }
+
+    loadRole();
+  }, []);
 
   useEffect(() => {
     if (dateFrom && dateTo) {
@@ -257,7 +269,6 @@ export default function LaporanMitraPage() {
   const totalBeratDibayar = filteredTransaksi.reduce((sum, t) => sum + resolveBeratDibayar(t), 0);
   const totalKotorPabrik = filteredTransaksi.reduce((sum, t) => sum + resolveTotalKotorPabrik(t), 0);
   const totalNilaiBersih = filteredTransaksi.reduce((sum, t) => sum + resolveTotalNilaiBersihMitra(t), 0);
-  const totalSewaArmada = filteredTransaksi.reduce((sum, t) => sum + Number(t.biaya_sewa_armada_total ?? 0), 0);
   const displayPeriode = formatDateRangeDisplay(dateFrom, dateTo);
   const shouldGroupByMitra = viewMode === 'kelompok';
   const paymentFilterLabel = {
@@ -437,7 +448,10 @@ export default function LaporanMitraPage() {
   }
 
   return (
-    <AppShell title="Laporan Mitra" subtitle="Laporan harian seluruh pengiriman mitra">
+    <AppShell
+      title={isOperationalAdmin(userRole) ? 'Rekap Operasional Mitra' : 'Laporan Mitra'}
+      subtitle="Rekap harian seluruh pengiriman mitra"
+    >
       <div className="page-header no-print">
         <div>
           <p className="page-description">Rekap seluruh transaksi penerimaan TWB dari armada mitra</p>

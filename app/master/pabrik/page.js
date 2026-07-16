@@ -3,8 +3,9 @@
 import { useCallback, useEffect, useState } from 'react';
 import AppShell from '@/components/layout/AppShell';
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
+import { canApproveCorrections, normalizeRole } from '@/lib/roles';
 import { supabase } from '@/lib/supabase';
-import { Factory, Pencil, Trash2, X } from 'lucide-react';
+import { CheckCircle2, Factory, Pencil, Trash2, X } from 'lucide-react';
 
 export default function PabrikPage() {
   const [list, setList] = useState([]);
@@ -14,6 +15,7 @@ export default function PabrikPage() {
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState(null);
   const [deleteTarget, setDeleteTarget] = useState(null);
+  const [userRole, setUserRole] = useState('admin_operasional');
   const [form, setForm] = useState({ nama: '', alamat: '', no_hp: '' });
 
   const showToast = useCallback((message, type = 'error', timeout = 4000) => {
@@ -23,11 +25,20 @@ export default function PabrikPage() {
 
   const loadData = useCallback(async () => {
     setLoading(true);
-    const { data, error } = await supabase
-      .from('pabrik')
-      .select('*')
-      .eq('aktif', true)
-      .order('nama');
+    const [{ data, error }, { data: sessionData }] = await Promise.all([
+      supabase
+        .from('pabrik')
+        .select('*')
+        .eq('aktif', true)
+        .order('nama'),
+      supabase.auth.getSession(),
+    ]);
+
+    const userId = sessionData?.session?.user?.id;
+    if (userId) {
+      const { data: userData } = await supabase.from('users').select('role').eq('id', userId).maybeSingle();
+      setUserRole(normalizeRole(userData?.role));
+    }
 
     if (error) {
       showToast(`Gagal memuat pabrik: ${error.message}`, 'error', 5000);
@@ -58,14 +69,12 @@ export default function PabrikPage() {
     event.preventDefault();
     setSaving(true);
 
-    const payload = {
-      nama: form.nama,
-      alamat: form.alamat || null,
-      no_hp: form.no_hp || null,
-    };
-    const result = editingId
-      ? await supabase.from('pabrik').update(payload).eq('id', editingId)
-      : await supabase.from('pabrik').insert(payload);
+    const result = await supabase.rpc('save_pabrik_master', {
+      p_id: editingId || null,
+      p_nama: form.nama,
+      p_alamat: form.alamat || null,
+      p_no_hp: form.no_hp || null,
+    });
 
     setSaving(false);
 
@@ -75,17 +84,23 @@ export default function PabrikPage() {
     }
 
     setShowModal(false);
-    showToast('Pabrik berhasil disimpan.', 'success', 3000);
+    showToast(
+      canApproveCorrections(userRole)
+        ? 'Pabrik berhasil disimpan.'
+        : 'Pabrik tersimpan dan masuk daftar Perlu Verifikasi.',
+      'success',
+      4000,
+    );
     await loadData();
   }
 
   async function handleDelete() {
     if (!deleteTarget) return;
 
-    const { error } = await supabase
-      .from('pabrik')
-      .update({ aktif: false })
-      .eq('id', deleteTarget.id);
+    const { error } = await supabase.rpc('set_pabrik_master_active', {
+      p_id: deleteTarget.id,
+      p_active: false,
+    });
 
     if (error) {
       showToast(`Gagal menonaktifkan pabrik: ${error.message}`, 'error', 5000);
@@ -94,6 +109,21 @@ export default function PabrikPage() {
 
     setDeleteTarget(null);
     showToast('Pabrik berhasil dinonaktifkan.', 'success', 3000);
+    await loadData();
+  }
+
+  async function handleVerify(pabrik) {
+    const { error } = await supabase.rpc('verify_pabrik_master', {
+      p_id: pabrik.id,
+      p_catatan: 'Diperiksa dari Master Pabrik',
+    });
+
+    if (error) {
+      showToast(`Gagal memverifikasi pabrik: ${error.message}`, 'error', 5000);
+      return;
+    }
+
+    showToast('Pabrik sudah diverifikasi.', 'success', 3000);
     await loadData();
   }
 
@@ -110,6 +140,12 @@ export default function PabrikPage() {
       <div className="page-header" style={{ justifyContent: 'flex-end' }}>
         <button className="btn btn-primary" onClick={openNew}>+ Tambah Pabrik</button>
       </div>
+
+      {!canApproveCorrections(userRole) && (
+        <div className="alert alert-info" style={{ marginBottom: 'var(--space-lg)' }}>
+          Pabrik yang ditambah atau diubah Admin tetap dapat dipakai, tetapi akan ditandai Perlu Verifikasi sampai diperiksa Owner.
+        </div>
+      )}
 
       {loading ? (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -135,16 +171,28 @@ export default function PabrikPage() {
             <tbody>
               {list.map((pabrik) => (
                 <tr key={pabrik.id}>
-                  <td style={{ fontWeight: 600 }}>{pabrik.nama}</td>
+                  <td style={{ fontWeight: 600 }}>
+                    <div>{pabrik.nama}</div>
+                    {pabrik.status_verifikasi === 'perlu_verifikasi' && (
+                      <span className="badge badge-warning" style={{ marginTop: 5 }}>Perlu Verifikasi</span>
+                    )}
+                  </td>
                   <td>{pabrik.alamat || '-'}</td>
                   <td className="table-mono">{pabrik.no_hp || '-'}</td>
                   <td style={{ textAlign: 'center' }}>
+                    {canApproveCorrections(userRole) && pabrik.status_verifikasi === 'perlu_verifikasi' && (
+                      <button className="btn btn-ghost btn-sm" onClick={() => handleVerify(pabrik)} aria-label={`Verifikasi ${pabrik.nama}`} title="Tandai sudah diperiksa">
+                        <CheckCircle2 size={16} />
+                      </button>
+                    )}
                     <button className="btn btn-ghost btn-sm" onClick={() => openEdit(pabrik)} aria-label={`Edit ${pabrik.nama}`}>
                       <Pencil size={16} />
                     </button>
-                    <button className="btn btn-ghost btn-sm" onClick={() => setDeleteTarget(pabrik)} aria-label={`Nonaktifkan ${pabrik.nama}`}>
-                      <Trash2 size={16} />
-                    </button>
+                    {canApproveCorrections(userRole) && (
+                      <button className="btn btn-ghost btn-sm" onClick={() => setDeleteTarget(pabrik)} aria-label={`Nonaktifkan ${pabrik.nama}`}>
+                        <Trash2 size={16} />
+                      </button>
+                    )}
                   </td>
                 </tr>
               ))}

@@ -27,12 +27,16 @@ Temuan data remote yang menjadi release gate:
 - Enam migration P0 kontrol bisnis, snapshot, reversal, audit, dan hardening direct-write sudah aktif di Supabase remote.
 - Admin, Owner, dan Super Admin menjadi tiga role pengguna; `admin_keuangan` tetap tersedia sebagai role internal cadangan.
 - Admin dapat melakukan pencatatan rutin serta quick-add Sopir/Armada, tetapi master baru masuk antrean `perlu_verifikasi` dan Admin tidak dapat mengubah tarif atau melakukan reversal Owner.
+- Menu laporan Admin menggunakan nama **Rekap Operasional**. Admin dapat melihat muatan, trip, status pembayaran, filter, cetak, dan ekspor operasional tanpa melihat sewa masuk, biaya lain, margin, atau laporan profit Owner.
+- Admin dapat menambah atau mengoreksi identitas Mitra, Armada, dan Pabrik. Perubahan Admin masuk antrean `perlu_verifikasi`; hanya Owner/Super Admin yang memverifikasi atau menonaktifkan master.
+- Harga TBS Lokal dan pengaturan bisnis hanya dapat dibuka serta diubah oleh Owner/Super Admin.
 - Transaksi yang sudah masuk kwitansi, pembayaran pabrik, atau Dana Trip dikunci dari edit/batal biasa.
 - Pembatalan kwitansi, mutasi kas manual, dan Dana Trip membuat baris pembalik; histori lama tidak dihapus.
 - Kwitansi menyimpan dan menampilkan Berat Netto serta Berat Dibayar secara terpisah. Rekonsiliasi remote menunjukkan mismatch header-item `0`.
 - Histori fee sudah tidak tumpang tindih. Rekonsiliasi remote menunjukkan overlap `0`.
 - Laba/Rugi basis kas telah diganti nama menjadi **Ringkasan Arus Kas**; laporan laba akrual tetap pengembangan berikutnya.
 - Smoke test rollback dan uji akun Admin nyata sudah lulus. Lint serta production build aplikasi lulus.
+- Kontrol laporan dan Master Data berbasis role aktif melalui migration `20260716050000_role_aware_reports_and_master_data.sql`.
 
 Tindakan bisnis yang masih terbuka:
 

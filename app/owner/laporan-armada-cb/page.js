@@ -66,23 +66,22 @@ export default function LaporanArmadaCBPage() {
   const loadData = useCallback(async () => {
     setLoading(true);
 
+    const canLoadStrategicValues = canViewProfit(userRole);
+    const transactionFields = [
+      'id', 'tanggal', 'created_at', 'sopir_id', 'mitra_id', 'plat_nomor',
+      'sopir_default_nama', 'sopir_aktual_nama',
+      'berat_netto_pabrik_kg', 'tonase',
+      ...(canLoadStrategicValues ? ['biaya_sewa_armada_total', 'biaya_sewa_armada_kotor'] : []),
+      'menggunakan_armada_cb_snapshot', 'kenakan_sewa_armada_cb',
+      'catat_dana_operasional_trip', 'armada_cb_perlu_review',
+      'dana_operasional_trip_snapshot', 'total_biaya_sopir_cb_snapshot',
+      'biaya_sopir_dibayar_at', 'status',
+      'master_mitra ( id, kode, nama, alamat )',
+    ].join(', ');
+
     let transactionQuery = supabase
       .from('transaksi_mitra')
-      .select(`
-        id, tanggal, created_at, sopir_id, mitra_id, plat_nomor,
-        sopir_default_nama, sopir_aktual_nama,
-        berat_netto_pabrik_kg, tonase,
-        biaya_sewa_armada_total, biaya_sewa_armada_kotor,
-        menggunakan_armada_cb_snapshot, kenakan_sewa_armada_cb,
-        catat_dana_operasional_trip, alasan_tanpa_sewa_armada_cb,
-        alasan_tanpa_dana_operasional_trip, armada_cb_perlu_review,
-        alasan_review_armada_cb,
-        dana_operasional_trip_snapshot,
-        upah_sopir_cb_snapshot, uang_jalan_sopir_cb_snapshot,
-        total_biaya_sopir_cb_snapshot, tagihan_sopir_ledger_id,
-        biaya_sopir_operasional_id, biaya_sopir_dibayar_at,
-        status, master_mitra ( id, kode, nama, alamat )
-      `)
+      .select(transactionFields)
       .eq('menggunakan_armada_cb_snapshot', true)
       .eq('status', 'aktif')
       .gte('tanggal', period.from)
@@ -90,17 +89,20 @@ export default function LaporanArmadaCBPage() {
       .order('tanggal', { ascending: false })
       .order('created_at', { ascending: false });
 
-    let expenseQuery = supabase
-      .from('biaya_operasional')
-      .select('id, tanggal, kategori, jumlah, keterangan, armada_sopir_id, transaksi_mitra_id, status')
-      .neq('status', 'dibatalkan')
-      .not('armada_sopir_id', 'is', null)
-      .gte('tanggal', period.from)
-      .lte('tanggal', period.to);
+    let expenseQuery = null;
+    if (canLoadStrategicValues) {
+      expenseQuery = supabase
+        .from('biaya_operasional')
+        .select('id, tanggal, kategori, jumlah, keterangan, armada_sopir_id, transaksi_mitra_id, status')
+        .neq('status', 'dibatalkan')
+        .not('armada_sopir_id', 'is', null)
+        .gte('tanggal', period.from)
+        .lte('tanggal', period.to);
+    }
 
     if (selectedArmada !== 'semua') {
       transactionQuery = transactionQuery.eq('sopir_id', selectedArmada);
-      expenseQuery = expenseQuery.eq('armada_sopir_id', selectedArmada);
+      if (expenseQuery) expenseQuery = expenseQuery.eq('armada_sopir_id', selectedArmada);
     }
 
     const [
@@ -115,7 +117,7 @@ export default function LaporanArmadaCBPage() {
         .eq('is_armada_cb', true)
         .order('plat_nomor'),
       transactionQuery,
-      expenseQuery,
+      expenseQuery || Promise.resolve({ data: [], error: null }),
     ]);
 
     const error = armadaError || transactionError || expenseError;
@@ -127,7 +129,7 @@ export default function LaporanArmadaCBPage() {
     setTransactions(transactionData || []);
     setExpenses(expenseData || []);
     setLoading(false);
-  }, [period.from, period.to, selectedArmada]);
+  }, [period.from, period.to, selectedArmada, userRole]);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -312,31 +314,33 @@ export default function LaporanArmadaCBPage() {
   }
 
   function exportReport() {
-    exportToExcel(transactions.map(row => ({
+    const rows = transactions.map(row => ({
       tanggal: row.tanggal,
       plat_nomor: row.plat_nomor,
       sopir: row.sopir_aktual_nama || row.sopir_default_nama,
       mitra: row.master_mitra?.kode || row.master_mitra?.nama || '-',
       berat_netto: toNumber(row.berat_netto_pabrik_kg ?? row.tonase),
-      sewa_armada: toNumber(row.biaya_sewa_armada_kotor ?? row.biaya_sewa_armada_total),
+      ...(canSeeMargin ? {
+        sewa_armada: toNumber(row.biaya_sewa_armada_kotor ?? row.biaya_sewa_armada_total),
+      } : {}),
       dana_operasional_trip: resolveDanaOperasionalTrip(row),
       status_bayar: row.biaya_sopir_dibayar_at ? 'Sudah Dibayar' : 'Belum Dibayar',
-      perlakuan_sewa: row.kenakan_sewa_armada_cb ? 'Dipotong dari mitra' : 'Tanpa potongan sewa',
       perlakuan_dana_trip: row.catat_dana_operasional_trip ? 'Dicatat' : 'Tidak dicatat',
       perlu_review: row.armada_cb_perlu_review ? 'Ya' : 'Tidak',
-    })), [
+    }));
+    const columns = [
       { key: 'tanggal', label: 'Tanggal' },
       { key: 'plat_nomor', label: 'Plat' },
       { key: 'sopir', label: 'Sopir' },
       { key: 'mitra', label: 'Mitra Transaksi' },
       { key: 'berat_netto', label: 'Berat Netto (kg)' },
-      { key: 'sewa_armada', label: 'Sewa Armada (Rp)' },
+      ...(canSeeMargin ? [{ key: 'sewa_armada', label: 'Sewa Armada (Rp)' }] : []),
       { key: 'dana_operasional_trip', label: 'Dana Operasional Trip (Rp)' },
       { key: 'status_bayar', label: 'Status Pembayaran Dana Trip' },
-      { key: 'perlakuan_sewa', label: 'Perlakuan Sewa' },
       { key: 'perlakuan_dana_trip', label: 'Perlakuan Dana Trip' },
       { key: 'perlu_review', label: 'Perlu Dicek' },
-    ], `Laporan_Armada_CB_${tahun}_${String(bulan).padStart(2, '0')}`, 'Armada CB');
+    ];
+    exportToExcel(rows, columns, `Laporan_Armada_CB_${tahun}_${String(bulan).padStart(2, '0')}`, 'Armada CB');
   }
 
   if (userRole !== null && !canManageFinance(userRole) && !canViewProfit(userRole)) {
@@ -356,7 +360,10 @@ export default function LaporanArmadaCBPage() {
   }
 
   return (
-    <AppShell title="Laporan Armada CB" subtitle="Muatan, trip, pendapatan sewa, dan biaya per armada">
+    <AppShell
+      title={canSeeMargin ? 'Laporan Armada CB' : 'Rekap Operasional Armada CB'}
+      subtitle={canSeeMargin ? 'Muatan, trip, pendapatan sewa, dan biaya per armada' : 'Muatan, trip, dan status Dana Trip per armada'}
+    >
       {toast && (
         <div className="toast-container"><div className={`toast toast-${toast.type}`}><span>{toast.message}</span></div></div>
       )}
@@ -389,7 +396,7 @@ export default function LaporanArmadaCBPage() {
       <div className="stats-grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))' }}>
         <div className="card"><div className="card-header"><span className="card-title">Trip</span><Truck size={20} /></div><div className="card-value">{summary.totalTrip}</div><div className="card-label">pengiriman Armada CB</div></div>
         <div className="card"><div className="card-header"><span className="card-title">Muatan</span><Weight size={20} /></div><div className="card-value">{summary.totalMuatan.toLocaleString('id-ID')} kg</div><div className="card-label">berat netto pabrik</div></div>
-        <div className="card"><div className="card-header"><span className="card-title">Sewa Masuk</span><WalletCards size={20} /></div><div className="card-value text-success">{formatRupiah(summary.totalSewa)}</div><div className="card-label">dibebankan ke mitra</div></div>
+        {canSeeMargin && <div className="card"><div className="card-header"><span className="card-title">Sewa Masuk</span><WalletCards size={20} /></div><div className="card-value text-success">{formatRupiah(summary.totalSewa)}</div><div className="card-label">dibebankan ke mitra</div></div>}
         <div className="card"><div className="card-header"><span className="card-title">Dana Trip Belum Dibayar</span><Banknote size={20} /></div><div className="card-value text-warning">{formatRupiah(summary.totalBelumDibayar)}</div><div className="card-label">dana satu kali jalan</div></div>
         {canSeeMargin && (
           <div className="card"><div className="card-header"><span className="card-title">Margin Armada</span></div><div className={`card-value ${summary.margin >= 0 ? 'text-success' : 'text-danger'}`}>{formatRupiah(summary.margin)}</div><div className="card-label">sewa - dana trip - biaya lain</div></div>
@@ -430,7 +437,7 @@ export default function LaporanArmadaCBPage() {
                 <th>Armada / Sopir</th>
                 <th style={{ textAlign: 'right' }}>Trip</th>
                 <th style={{ textAlign: 'right' }}>Muatan</th>
-                <th style={{ textAlign: 'right' }}>Sewa Masuk</th>
+                {canSeeMargin && <th style={{ textAlign: 'right' }}>Sewa Masuk</th>}
                 <th style={{ textAlign: 'right' }}>Dana Trip</th>
                 <th style={{ textAlign: 'right' }}>Belum Dibayar</th>
                 {canSeeMargin && <th style={{ textAlign: 'right' }}>Biaya Lain</th>}
@@ -440,9 +447,9 @@ export default function LaporanArmadaCBPage() {
             </thead>
             <tbody>
               {loading ? (
-                <tr><td colSpan={canSeeMargin ? (selectedArmada === 'semua' ? 9 : 8) : (selectedArmada === 'semua' ? 7 : 6)}>Memuat rekap armada...</td></tr>
+                <tr><td colSpan={5 + (canSeeMargin ? 3 : 0) + (selectedArmada === 'semua' ? 1 : 0)}>Memuat rekap armada...</td></tr>
               ) : armadaSummaries.length === 0 ? (
-                <tr><td colSpan={canSeeMargin ? (selectedArmada === 'semua' ? 9 : 8) : (selectedArmada === 'semua' ? 7 : 6)}>Belum ada Armada CB aktif.</td></tr>
+                <tr><td colSpan={5 + (canSeeMargin ? 3 : 0) + (selectedArmada === 'semua' ? 1 : 0)}>Belum ada Armada CB aktif.</td></tr>
               ) : armadaSummaries.map(row => (
                 <tr key={row.id}>
                   <td><strong className="table-mono">{row.platNomor}</strong><div className="text-tertiary text-xs">{row.sopir}</div></td>
@@ -456,7 +463,7 @@ export default function LaporanArmadaCBPage() {
                     )}
                   </td>
                   <td className="table-mono" style={{ textAlign: 'right' }}>{row.muatan.toLocaleString('id-ID')} kg</td>
-                  <td className="table-mono text-success" style={{ textAlign: 'right' }}>{formatRupiah(row.sewa)}</td>
+                  {canSeeMargin && <td className="table-mono text-success" style={{ textAlign: 'right' }}>{formatRupiah(row.sewa)}</td>}
                   <td className="table-mono" style={{ textAlign: 'right' }}>{formatRupiah(row.danaTrip)}</td>
                   <td className="table-mono text-warning" style={{ textAlign: 'right' }}>{formatRupiah(row.danaBelumDibayar)}</td>
                   {canSeeMargin && <td className="table-mono" style={{ textAlign: 'right' }}>{formatRupiah(row.biayaLain)}</td>}
@@ -487,15 +494,15 @@ export default function LaporanArmadaCBPage() {
           <thead>
             <tr>
               <th>Tanggal</th><th>Armada / Sopir</th><th>Mitra</th>
-              <th style={{ textAlign: 'right' }}>Muatan</th><th style={{ textAlign: 'right' }}>Sewa</th>
+              <th style={{ textAlign: 'right' }}>Muatan</th>{canSeeMargin && <th style={{ textAlign: 'right' }}>Sewa</th>}
               <th style={{ textAlign: 'right' }}>Dana Operasional Trip</th><th>Status Bayar</th><th>Aksi</th>
             </tr>
           </thead>
           <tbody>
             {loading ? (
-              <tr><td colSpan={8}>Memuat laporan...</td></tr>
+              <tr><td colSpan={canSeeMargin ? 8 : 7}>Memuat laporan...</td></tr>
             ) : transactions.length === 0 ? (
-              <tr><td colSpan={8}>Belum ada trip Armada CB pada periode ini.</td></tr>
+              <tr><td colSpan={canSeeMargin ? 8 : 7}>Belum ada trip Armada CB pada periode ini.</td></tr>
             ) : transactions.map(row => {
               const driverCost = resolveDanaOperasionalTrip(row);
               const paid = Boolean(row.biaya_sopir_dibayar_at);
@@ -505,10 +512,10 @@ export default function LaporanArmadaCBPage() {
                   <td><strong className="table-mono">{row.plat_nomor || '-'}</strong><div className="text-tertiary text-xs">{row.sopir_aktual_nama || row.sopir_default_nama || '-'}</div></td>
                   <td>{row.master_mitra?.kode || row.master_mitra?.nama || '-'}</td>
                   <td className="table-mono" style={{ textAlign: 'right' }}>{toNumber(row.berat_netto_pabrik_kg ?? row.tonase).toLocaleString('id-ID')} kg</td>
-                  <td className="table-mono text-success" style={{ textAlign: 'right' }}>
+                  {canSeeMargin && <td className="table-mono text-success" style={{ textAlign: 'right' }}>
                     {formatRupiah(row.biaya_sewa_armada_kotor ?? row.biaya_sewa_armada_total)}
                     {!row.kenakan_sewa_armada_cb && <div className="text-tertiary text-xs">tanpa potongan sewa</div>}
-                  </td>
+                  </td>}
                   <td className="table-mono" style={{ textAlign: 'right' }}>
                     {formatRupiah(driverCost)}
                     <div className="text-tertiary text-xs">{row.catat_dana_operasional_trip ? 'satu kali jalan' : 'tidak dicatat'}</div>

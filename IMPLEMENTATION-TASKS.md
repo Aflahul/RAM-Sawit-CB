@@ -16,6 +16,10 @@ Referensi temuan dan alasan bisnis: `docs/page-flow-control-audit-2026-07-16.md`
 - [x] Tambahkan route guard server untuk halaman owner, keuangan, master, dan laporan sensitif.
 - [x] Pastikan Admin tetap dapat menambah Sopir/Armada dari form pengiriman melalui RPC/RLS terkontrol dengan status `perlu_verifikasi`.
 - [x] Simpan `dibuat_oleh`, waktu pembuatan, dan status verifikasi pada master operasional baru; larang hard delete dari role aplikasi.
+- [x] Jadikan laporan Admin sebagai **Rekap Operasional**; sembunyikan sewa masuk, biaya lain, margin, dan kolom ekspornya dari Admin.
+- [x] Batasi Harga TBS Lokal untuk Owner/Super Admin melalui sidebar, route guard, RPC, policy, dan grant tabel.
+- [x] Terapkan alur `Perlu Verifikasi` pada Master Pabrik; Admin dapat mengusulkan data, sedangkan verifikasi dan penonaktifan hanya dilakukan Owner/Super Admin.
+- [x] Pindahkan penonaktifan Mitra, Armada, dan Pabrik ke RPC Owner agar konsisten dengan larangan direct write.
 
 ### P0-B - Koreksi Setelah Pembayaran
 
@@ -57,6 +61,7 @@ Referensi temuan dan alasan bisnis: `docs/page-flow-control-audit-2026-07-16.md`
 - [x] Remote migration aktif: `20260716012759_expand_audit_action_control_values.sql`.
 - [x] Remote migration aktif: `20260716015352_close_direct_master_and_payment_item_writes.sql`.
 - [x] Remote migration aktif: `20260716015638_fix_admin_audit_actor_semantics.sql`.
+- [x] Remote migration aktif: `20260716050000_role_aware_reports_and_master_data.sql` untuk akses laporan berbasis role, verifikasi Pabrik, RPC penonaktifan master, dan pembatasan Harga TBS Lokal.
 - [x] Smoke test rollback `supabase/tests/p0_financial_controls_rollback.sql` mencakup koreksi transaksi, reversal kwitansi, idempotensi, quick-add Admin, dan status verifikasi master.
 - [x] Uji akun nyata `admin@gmail.com` berhasil: login, baca master, dashboard, dan kas diizinkan; direct write, pembatalan kwitansi, serta RPC anonim ditolak.
 

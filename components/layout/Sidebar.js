@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import BrandMark from '@/components/branding/BrandMark';
 import { useBrandingSettings } from '@/lib/use-branding-settings';
-import { canManageBusinessSettings, canManageFinance, canViewProfit, getRoleLabel, normalizeRole } from '@/lib/roles';
+import { canManageBusinessSettings, canManageFinance, canViewProfit, getRoleLabel, isOperationalAdmin, normalizeRole } from '@/lib/roles';
 import {
   LayoutDashboard, Truck, ReceiptText, Database, Store,
   Wallet, Calculator, FileText, Users, Box, TrendingUp, MapPin, Tag, ClipboardList, BadgeDollarSign, Settings, ChevronDown
@@ -45,7 +45,7 @@ const menuSections = [
       { href: '/master/armada', icon: <Truck size={20} />, label: 'Armada' },
       { href: '/master/petani', icon: <Users size={20} />, label: 'Petani Lokal', badge: 'comingsoon' },
       { href: '/master/pabrik', icon: <MapPin size={20} />, label: 'Pabrik Tujuan' },
-      { href: '/master/harga', icon: <Tag size={20} />, label: 'Harga TBS Lokal' },
+      { href: '/master/harga', icon: <Tag size={20} />, label: 'Harga TBS Lokal', settingsOnly: true },
     ],
   },
   {
@@ -100,7 +100,15 @@ export default function Sidebar({ isOpen, onClose, user }) {
     menuSections
       .map((section) => ({
         ...section,
-        items: section.items.filter((item) => canSeeMenuItem(item, userRole)),
+        title: section.title === 'Laporan' && isOperationalAdmin(userRole) ? 'Rekap Operasional' : section.title,
+        items: section.items
+          .filter((item) => canSeeMenuItem(item, userRole))
+          .map((item) => {
+            if (!isOperationalAdmin(userRole)) return item;
+            if (item.href === '/owner/laporan-mitra') return { ...item, label: 'Rekap Mitra' };
+            if (item.href === '/owner/laporan-armada-cb') return { ...item, label: 'Rekap Armada CB' };
+            return item;
+          }),
       }))
       .filter((section) => section.items.length > 0)
   ), [userRole]);

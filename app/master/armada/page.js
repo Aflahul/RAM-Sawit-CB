@@ -162,7 +162,10 @@ export default function ArmadaPage() {
   async function handleDelete() {
     if (!deleteTarget) return;
 
-    const { error } = await supabase.from('sopir').update({ aktif: false }).eq('id', deleteTarget.id);
+    const { error } = await supabase.rpc('set_sopir_armada_active', {
+      p_id: deleteTarget.id,
+      p_active: false,
+    });
     if (error) {
       showToast(`Gagal menonaktifkan armada: ${error.message}`, 'error', 5000);
       return;
