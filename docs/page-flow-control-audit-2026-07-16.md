@@ -182,19 +182,21 @@ Status audit: alur tersedia. Setelah Dana Trip dibayar, perubahan tanggal, armad
 - P1: **Net Periode** bukan saldo rekening; belum ada saldo awal dan saldo akhir.
 - P2: belum ada export dan drill-down sumber.
 
-### 4.7 Hutang & Panjar Semua Pihak - `/keuangan/hutang`
+### 4.7 Pinjaman & Panjar - `/keuangan/hutang`
 
-- Data: pihak, kontak, sisa kewajiban, batas, dan ledger debit/kredit.
-- **Catat Hutang & Panjar/Tambah**: membuat debit; panjar mitra memakai RPC khusus.
-- **Bayar**: membuat kredit/pelunasan dan mutasi kas.
-- **Batalkan**: RPC reversal ledger/kas.
-- **Tetap Simpan**: override batas setelah konfirmasi.
-- **Export Excel**: export saldo pihak.
-- Baik: satu pintu lintas petani, mitra, sopir, karyawan, dan pihak lain sudah sesuai arah bisnis.
-- P1: tanggal selalu hari ini dan read-only.
-- P1: rekening kas tidak dapat dipilih.
-- P1: istilah Debit/Kredit perlu diterjemahkan menjadi **Uang Diberikan** dan **Uang Dikembalikan/Dipotong**.
-- P0 security: data ledger dapat dibaca semua authenticated walaupun menu hanya tampil untuk role keuangan.
+- Posisi bisnis: halaman mencatat uang CB yang diberikan lebih dahulu dan masih harus dikembalikan/dipotong. Halaman ini bukan daftar utang CB kepada pemasok.
+- **Panjar Mitra**: dikembalikan melalui potongan Kwitansi Pembayaran TBS.
+- **Kasbon Karyawan**: dikembalikan tunai/transfer atau dipotong dari gaji.
+- **Kasbon Sopir**: dikembalikan tunai/transfer atau dipotong dari upah. Dana Trip tidak boleh masuk sebagai kasbon.
+- **Pinjaman Pihak Lain**: wajib memiliki nama, keperluan, cara pengembalian, dan target tanggal bila tersedia.
+- Alur baru: Admin membuat pengajuan -> Owner menyetujui/menolak -> Admin menyerahkan uang -> kas keluar dan pinjaman baru dicatat -> pengembalian/potongan mengurangi sisa pinjaman.
+- Owner/Super Admin yang membuat pengajuan dapat menyetujuinya otomatis, tetapi kas tetap belum bergerak sampai aksi **Serahkan**.
+- Dokumen keluar adalah **Bukti Pemberian Panjar/Kasbon**; dokumen uang kembali adalah **Bukti Pengembalian Uang**. Keduanya berbeda dari **Kwitansi Pembayaran TBS Mitra**.
+- Koreksi dokumen dan pengembalian memakai reversal oleh Owner/Super Admin; tidak ada penghapusan histori.
+- Ledger lama tetap dibaca untuk menjaga histori. Nilai negatif ditampilkan sebagai peringatan rekonsiliasi dan tidak lagi disembunyikan sebagai nol.
+- Owner/Super Admin dapat memakai **Cocokkan Data Lama** setelah memeriksa bukti. Sistem melengkapi catatan pemberian awal dan audit tanpa membuat kas keluar historis baru.
+- Histori baru dan legacy dilihat dari filter **Riwayat Lunas** atau **Semua Riwayat**. Panjar yang lunas melalui pembayaran TBS memiliki pintasan ke Kwitansi TBS terkait.
+- P1 lanjutan: lampiran foto tanda tangan/bukti transfer dan batas kasbon per pihak belum diaktifkan.
 
 ### 4.8 Biaya Operasional - `/keuangan/biaya`
 

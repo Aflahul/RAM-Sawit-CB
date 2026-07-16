@@ -15,7 +15,7 @@ function hitungSaldoLedger(rows = []) {
 
 function getLedgerLabel(row) {
   const labels = {
-    kasbon: 'Kasbon',
+    kasbon: 'Pinjaman',
     panjar: 'Panjar',
     pupuk: 'Bon Pupuk',
     lainnya: 'Lainnya',
@@ -133,7 +133,7 @@ export default function LaporanPetaniPage() {
         { key: 'berat_bersih_kg', label: 'Berat Bersih (kg)' },
         { key: 'harga_per_kg', label: 'Harga /kg' },
         { key: 'total_harga', label: 'Total Harga' },
-        { key: 'potongan_hutang', label: 'Potong Hutang' },
+        { key: 'potongan_hutang', label: 'Potong Pinjaman' },
         { key: 'total_bayar_tunai', label: 'Bayar Tunai' },
       ],
       `Laporan_${selectedPetani.nama.replace(/\s+/g, '_')}`,
@@ -142,7 +142,7 @@ export default function LaporanPetaniPage() {
   }
 
   return (
-    <AppShell title="Laporan per Petani" subtitle="Rekap transaksi, pembayaran, dan hutang petani lokal">
+    <AppShell title="Laporan per Petani" subtitle="Rekap transaksi, pembayaran, dan pinjaman petani lokal">
       {toast && (
         <div className="toast-container">
           <div className={`toast toast-${toast.type}`}>
@@ -183,7 +183,7 @@ export default function LaporanPetaniPage() {
                     {petani.saldoHutang > 0 && (
                       <>
                         <span>|</span>
-                        <span style={{ color: 'var(--color-warning)' }}>Hutang: {formatRupiah(petani.saldoHutang)}</span>
+                        <span style={{ color: 'var(--color-warning)' }}>Pinjaman: {formatRupiah(petani.saldoHutang)}</span>
                       </>
                     )}
                   </div>
@@ -227,7 +227,7 @@ export default function LaporanPetaniPage() {
                   <div className="text-mono" style={{ fontSize: 'var(--text-xl)', fontWeight: 700, color: selectedPetani.saldoHutang > 0 ? 'var(--color-warning)' : 'var(--color-success)' }}>
                     {formatRupiah(selectedPetani.saldoHutang)}
                   </div>
-                  <div className="text-tertiary text-xs">Saldo Hutang</div>
+                  <div className="text-tertiary text-xs">Sisa Pinjaman</div>
                 </div>
               </div>
             </div>
@@ -253,7 +253,7 @@ export default function LaporanPetaniPage() {
                             <th>Struk</th>
                             <th style={{ textAlign: 'right' }}>Berat</th>
                             <th style={{ textAlign: 'right' }}>Total</th>
-                            <th style={{ textAlign: 'right' }}>Pot. Hutang</th>
+                            <th style={{ textAlign: 'right' }}>Pot. Pinjaman</th>
                             <th style={{ textAlign: 'right' }}>Tunai</th>
                           </tr>
                         </thead>
@@ -279,7 +279,7 @@ export default function LaporanPetaniPage() {
                 {detail?.ledger.length > 0 && (
                   <div className="card">
                     <div className="card-header">
-                      <span className="card-title">Riwayat Hutang dan Pembayaran</span>
+                      <span className="card-title">Riwayat Pinjaman dan Pengembalian</span>
                     </div>
                     <div className="table-container" style={{ border: 'none' }}>
                       <table className="table">

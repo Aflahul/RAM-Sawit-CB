@@ -3,7 +3,7 @@ import './globals.css';
 export const metadata = {
   title: 'Sawit CB — Sistem Pencatatan RAM Kelapa Sawit',
   description:
-    'Aplikasi manajemen operasional RAM kelapa sawit. Pencatatan pembelian TBS, hutang petani, pengiriman pabrik, biaya operasional, dan laporan keuangan.',
+    'Aplikasi manajemen operasional RAM kelapa sawit. Pencatatan pembelian TBS, pinjaman petani, pengiriman pabrik, biaya operasional, dan laporan keuangan.',
 };
 
 export const viewport = {

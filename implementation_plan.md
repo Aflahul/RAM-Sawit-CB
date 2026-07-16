@@ -247,3 +247,26 @@ Sewa Masuk = Berat Netto x Tarif Sewa Mitra
 Margin Sebelum Perawatan = Sewa Masuk - Dana Operasional Trip
 Margin Armada = Sewa Masuk - Dana Operasional Trip - Biaya Operasional Lain
 ```
+
+## P0 - Pinjaman, Panjar, dan Kasbon (16 Juli 2026)
+
+Tujuan: semua uang yang diberikan CB lebih dahulu memiliki persetujuan, bukti penyerahan, sumber kas, cara pengembalian, sisa pinjaman, dan histori koreksi yang dapat diaudit.
+
+Alur final:
+
+1. Admin mengajukan Panjar Mitra, Kasbon Karyawan/Sopir, Panjar Petani, atau Pinjaman Pihak Lain.
+2. Owner/Super Admin menyetujui atau menolak. Pengajuan oleh Owner dapat langsung berstatus disetujui.
+3. Admin mengonfirmasi penyerahan uang dan rekening kas. Baru pada langkah ini `kas_ledger` dan `hutang_ledger` dibuat.
+4. Sistem menerbitkan Bukti Pemberian Panjar/Kasbon dengan nomor dan snapshot identitas penerima.
+5. Panjar Mitra diselesaikan dari Kwitansi Pembayaran TBS. Pihak lain dapat membayar tunai/transfer atau dipotong dari gaji/upah sesuai kesepakatan.
+6. Pengembalian tunai/transfer menerbitkan Bukti Pengembalian Uang dan menambah kas CB.
+7. Kesalahan dibatalkan Owner/Super Admin melalui reversal, bukan delete.
+8. Panjar legacy yang sudah dipotong tetapi belum memiliki catatan pemberian awal dicocokkan Owner melalui bukti manual; sistem melengkapi saldo awal tanpa mengubah Buku Kas.
+
+Pemisahan dokumen:
+
+- **Kwitansi Pembayaran TBS Mitra**: bukti CB membayar transaksi TBS.
+- **Bukti Pemberian Panjar/Kasbon**: bukti CB menyerahkan uang lebih dahulu.
+- **Bukti Pengembalian Uang**: bukti CB menerima uang kembali.
+
+Implementasi memakai migration `20260716100224_add_piutang_document_approval_workflow.sql` dan `20260716101654_complete_piutang_repayment_reversal_sync.sql`, tabel `piutang_dokumen` dan `piutang_pelunasan`, serta mempertahankan `hutang_ledger` sebagai buku mutasi dan `panjar_mitra` sebagai kompatibilitas kwitansi.

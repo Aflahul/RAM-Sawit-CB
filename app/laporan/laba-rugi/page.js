@@ -111,8 +111,8 @@ export default function LabaRugiPage() {
     pembelian_tbs: 'Pembelian TBS',
     biaya_operasional: 'Biaya Operasional',
     panjar_mitra: 'Panjar Mitra',
-    hutang_pencairan: 'Pencairan Hutang',
-    hutang_pelunasan: 'Pelunasan Hutang',
+    hutang_pencairan: 'Pemberian Pinjaman',
+    hutang_pelunasan: 'Pengembalian Pinjaman',
     reversal: 'Pembalikan Transaksi',
   };
 
@@ -191,7 +191,7 @@ export default function LabaRugiPage() {
       ) : !data ? null : (
         <>
           <div className="alert alert-info" style={{ marginBottom: 'var(--space-lg)' }}>
-            Ringkasan ini memakai uang aktual di Buku Kas. Angka surplus belum sama dengan laba akuntansi karena belum menghitung persediaan, hutang yang belum dibayar, dan penyusutan aset.
+            Ringkasan ini memakai uang aktual di Buku Kas. Angka surplus belum sama dengan laba akuntansi karena belum menghitung persediaan, kewajiban yang belum dibayar, dan penyusutan aset.
           </div>
 
           {data.jumlahTxPendapatanKas === 0 && (

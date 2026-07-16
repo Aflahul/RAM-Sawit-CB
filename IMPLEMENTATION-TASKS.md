@@ -863,6 +863,25 @@ Acceptance:
 - [ ] Kasbon melewati batas butuh role owner/super_admin atau ditolak.
 - [ ] Histori panjar mitra lama tetap bisa ditelusuri setelah migrasi.
 
+#### P0B.5a Dokumen, Persetujuan, dan Role Pinjaman (16 Juli 2026)
+
+- [x] Ubah istilah UI menjadi **Pinjaman & Panjar** agar mudah dipahami; istilah teknis akuntansi/database tetap piutang.
+- [x] Pisahkan Panjar Mitra, Kasbon Karyawan, Kasbon Sopir, Panjar Petani, dan Pinjaman Pihak Lain.
+- [x] Cegah Dana Trip dipilih sebagai kasbon sopir.
+- [x] Tambah workflow pengajuan -> persetujuan Owner -> penyerahan uang; kas baru bergerak pada penyerahan.
+- [x] Admin dapat mengajukan, menyerahkan yang sudah disetujui, mencatat pengembalian, melihat status, dan mencetak bukti.
+- [x] Owner/Super Admin dapat menyetujui, menolak, membatalkan dokumen, dan membatalkan pengembalian melalui reversal.
+- [x] Tambah nomor bukti dan snapshot nama/kode/kontak penerima agar arsip tidak berubah saat master diedit.
+- [x] Tambah **Bukti Pemberian Panjar/Kasbon** dan **Bukti Pengembalian Uang** yang berbeda dari Kwitansi Pembayaran TBS.
+- [x] Integrasikan Panjar Mitra yang diserahkan ke `panjar_mitra`, `hutang_ledger`, dan `kas_ledger` agar tetap dipotong oleh kwitansi.
+- [x] Tambah alokasi pengembalian parsial untuk karyawan, sopir, petani, dan pihak lain.
+- [x] Tambah reversal pengembalian; histori finansial tidak dihapus.
+- [x] Tambah rekonsiliasi Owner-only untuk panjar legacy yang sudah dipotong kwitansi tetapi belum memiliki catatan pemberian awal; backfill tidak membuat mutasi kas baru.
+- [x] Arsipkan hasil rekonsiliasi legacy ke Dokumen & Riwayat Pinjaman dan hubungkan kembali ke periode Kwitansi TBS.
+- [ ] Tambah unggah bukti transfer/foto dokumen bertanda tangan ke Supabase Storage.
+- [ ] Tambah aturan batas kasbon per pihak dan laporan umur piutang.
+- [ ] Kembangkan alokasi parsial Panjar Mitra saat hak TBS lebih kecil daripada sisa panjar.
+
 ### P0B.6 Biaya Bantuan Mitra dan Armada
 
 - [x] Tambah migration non-destruktif untuk sopir aktual per pengiriman: `sopir_aktual_id`, snapshot nama/no HP, source master/manual, dan flag berbeda dari default.

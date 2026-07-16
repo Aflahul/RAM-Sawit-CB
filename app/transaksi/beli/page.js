@@ -94,7 +94,7 @@ export default function InputTBSPage() {
 
     if (error) {
       setSaldoHutang(0);
-      setToast({ type: 'error', message: `Gagal membaca saldo hutang: ${error.message}` });
+      setToast({ type: 'error', message: `Gagal membaca sisa pinjaman: ${error.message}` });
       return;
     }
 
@@ -235,7 +235,7 @@ export default function InputTBSPage() {
             {selectedPetani && saldoHutang > 0 && (
               <div className="alert alert-warning">
                 <div>
-                  <strong>{selectedPetani.nama}</strong> memiliki saldo hutang{' '}
+                  <strong>{selectedPetani.nama}</strong> memiliki sisa pinjaman{' '}
                   <strong className="text-mono">{formatRupiah(saldoHutang)}</strong>
                   {selectedPetani.batas_hutang > 0 && (
                     <span className="text-tertiary"> / Batas: {formatRupiah(selectedPetani.batas_hutang)}</span>
@@ -309,7 +309,7 @@ export default function InputTBSPage() {
                   <span className="toggle-track">
                     <span className="toggle-thumb"></span>
                   </span>
-                  <span className="toggle-label">Potong hutang dari pembayaran</span>
+                  <span className="toggle-label">Potong pinjaman dari pembayaran</span>
                 </label>
                 {form.potong_hutang && (
                   <div style={{ marginTop: 'var(--space-sm)' }}>
@@ -451,7 +451,7 @@ export default function InputTBSPage() {
           </div>
           {showStruk.potongan_hutang > 0 && (
             <div className="struk-row">
-              <span>Potong Hutang</span>
+              <span>Potong Pinjaman</span>
               <span>{formatRupiah(showStruk.potongan_hutang)}</span>
             </div>
           )}
@@ -468,7 +468,7 @@ export default function InputTBSPage() {
       <PromptDialog
         open={!!cancelTarget}
         title="Batalkan Transaksi"
-        message={cancelTarget ? `Transaksi ${cancelTarget.no_struk} akan dibatalkan dengan reversal stok dan hutang.` : ''}
+        message={cancelTarget ? `Transaksi ${cancelTarget.no_struk} akan dibatalkan dengan transaksi balik stok dan pinjaman.` : ''}
         label="Alasan pembatalan"
         placeholder="Contoh: salah timbang / salah petani / input ganda"
         confirmText="Batalkan Transaksi"

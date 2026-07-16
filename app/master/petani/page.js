@@ -176,7 +176,7 @@ export default function PetaniPage() {
                 <th>Nama</th>
                 <th>No. HP</th>
                 <th>Alamat</th>
-                <th style={{ textAlign: 'right' }}>Batas Hutang</th>
+                <th style={{ textAlign: 'right' }}>Batas Pinjaman</th>
                 <th style={{ textAlign: 'center' }}>Aksi</th>
               </tr>
             </thead>
@@ -261,7 +261,7 @@ export default function PetaniPage() {
                   />
                 </div>
                 <div className="form-group">
-                  <label className="form-label">Batas Hutang Maksimal (Rp)</label>
+                  <label className="form-label">Batas Pinjaman Maksimal (Rp)</label>
                   <input
                     type="number"
                     className="form-input form-input-mono"
@@ -271,7 +271,7 @@ export default function PetaniPage() {
                     min={0}
                     step={1000}
                   />
-                  <div className="form-hint">Isi 0 jika tidak ingin membatasi hutang petani ini</div>
+                  <div className="form-hint">Isi 0 jika tidak ingin membatasi pinjaman petani ini</div>
                 </div>
               </div>
               <div className="modal-footer">

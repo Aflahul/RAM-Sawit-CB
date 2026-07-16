@@ -45,6 +45,8 @@ Keputusan produk:
 4. Transaksi yang sudah masuk kwitansi, pembayaran pabrik, atau Dana Trip tidak boleh diedit/batalkan melalui tombol biasa.
 5. Koreksi pembayaran tidak menghapus catatan lama. Sistem membuat transaksi pembalik, menyimpan alasan, waktu, pelaku, dan hubungan ke catatan asal.
 6. Kwitansi membedakan **Berat Netto** dari pabrik dan **Berat Dibayar** setelah potongan. Snapshot kwitansi yang sudah dibayar tidak mengikuti perubahan transaksi live.
+7. UI menyebut uang CB yang dipinjam pihak lain sebagai **Pinjaman & Panjar** agar mudah dipahami. Dalam skema akuntansi/database posisinya tetap piutang CB. Admin mengajukan dan mencatat penyerahan/pengembalian; Owner/Super Admin menyetujui serta melakukan pembatalan/reversal.
+8. Dokumen dibedakan tegas: **Kwitansi Pembayaran TBS Mitra**, **Bukti Pemberian Panjar/Kasbon**, dan **Bukti Pengembalian Uang**.
 7. Halaman yang sebelumnya disebut Laba/Rugi basis kas diberi nama **Ringkasan Arus Kas**. Laba akuntansi membutuhkan pengembangan terpisah untuk persediaan, hutang periode, penyusutan, dan penutupan periode.
 
 Gerbang data:

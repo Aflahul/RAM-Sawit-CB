@@ -554,7 +554,7 @@ export default function DashboardPage() {
 
     if (stats.jumlahPihakHutang > 0) {
       items.push({
-        title: 'Sisa Hutang/Panjar',
+        title: 'Sisa Pinjaman/Panjar',
         value: stats.jumlahPihakHutang,
         description: `${formatRupiah(stats.hutangAktif)} masih harus dipotong atau dilunasi.`,
         href: '/keuangan/hutang',
@@ -803,7 +803,7 @@ export default function DashboardPage() {
             tone="danger"
           />
           <MetricCard
-            title="Sisa Hutang/Panjar"
+            title="Sisa Pinjaman/Panjar"
             value={formatRupiah(stats.hutangAktif)}
             label={`${stats.jumlahPihakHutang} pihak masih harus dipantau`}
             icon={<Clock3 size={20} />}
@@ -846,7 +846,7 @@ export default function DashboardPage() {
             {canSeeFinance && (
               <QuickAction href="/owner/pembayaran-pabrik" icon={<BadgeDollarSign size={20} />} title="Pembayaran Pabrik" description="Catat uang masuk pabrik" />
             )}
-            <QuickAction href="/keuangan/hutang" icon={<Wallet size={20} />} title="Hutang & Panjar" description="Catat kasbon dan pelunasan" tone="gold" />
+            <QuickAction href="/keuangan/hutang" icon={<Wallet size={20} />} title="Pinjaman & Panjar" description="Catat pemberian dan pengembalian uang" tone="gold" />
             <QuickAction href="/owner/laporan-mitra" icon={<FileText size={20} />} title="Laporan Mitra" description="Rekap dan status bayar mitra" tone="outline" />
           </div>
         </div>
