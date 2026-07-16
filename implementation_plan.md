@@ -6,9 +6,9 @@ Dokumen ini adalah plan ringkas yang menyambungkan `PRD-final.md` dan `IMPLEMENT
 
 Audit lengkap tersedia di `docs/page-flow-control-audit-2026-07-16.md`. Audit mencakup route, role, tombol, query, RPC, snapshot, ledger, laporan, dan data remote.
 
-Keputusan pengembangan setelah audit:
+Keputusan pengembangan setelah audit yang sudah dilaksanakan:
 
-1. Tunda add-on finansial baru sampai release gate audit P0 selesai.
+1. Release gate audit P0 diselesaikan sebelum workflow Pinjaman & Panjar ditambahkan.
 2. Amankan RLS dan fungsi audit agar role operasional tidak dapat mengubah atau membaca data di luar kewenangannya.
 3. Kunci transaksi yang sudah masuk kwitansi atau Dana Trip, lalu sediakan alur koreksi/reversal yang menjaga kas dan laporan tetap seimbang.
 4. Pisahkan istilah **Berat Netto** dan **Berat Dibayar** di kwitansi agar angka tidak berubah arti setelah pembayaran.
@@ -37,6 +37,7 @@ Temuan data remote yang menjadi release gate:
 - Laba/Rugi basis kas telah diganti nama menjadi **Ringkasan Arus Kas**; laporan laba akrual tetap pengembangan berikutnya.
 - Smoke test rollback dan uji akun Admin nyata sudah lulus. Lint serta production build aplikasi lulus.
 - Kontrol laporan dan Master Data berbasis role aktif melalui migration `20260716050000_role_aware_reports_and_master_data.sql`.
+- Workflow Pinjaman & Panjar aktif: Admin mengajukan dan menyerahkan uang yang sudah disetujui; Owner/Super Admin menyetujui dan melakukan reversal; riwayat legacy dapat direkonsiliasi tanpa membuat kas historis baru.
 
 Tindakan bisnis yang masih terbuka:
 
@@ -248,16 +249,16 @@ Margin Sebelum Perawatan = Sewa Masuk - Dana Operasional Trip
 Margin Armada = Sewa Masuk - Dana Operasional Trip - Biaya Operasional Lain
 ```
 
-## P0 - Pinjaman, Panjar, dan Kasbon (16 Juli 2026)
+## P0 - Pinjaman & Panjar (Selesai - 16 Juli 2026)
 
 Tujuan: semua uang yang diberikan CB lebih dahulu memiliki persetujuan, bukti penyerahan, sumber kas, cara pengembalian, sisa pinjaman, dan histori koreksi yang dapat diaudit.
 
 Alur final:
 
-1. Admin mengajukan Panjar Mitra, Kasbon Karyawan/Sopir, Panjar Petani, atau Pinjaman Pihak Lain.
+1. Admin mengajukan Panjar Mitra, Pinjaman Karyawan/Sopir, Panjar Petani, atau Pinjaman Pihak Lain.
 2. Owner/Super Admin menyetujui atau menolak. Pengajuan oleh Owner dapat langsung berstatus disetujui.
 3. Admin mengonfirmasi penyerahan uang dan rekening kas. Baru pada langkah ini `kas_ledger` dan `hutang_ledger` dibuat.
-4. Sistem menerbitkan Bukti Pemberian Panjar/Kasbon dengan nomor dan snapshot identitas penerima.
+4. Sistem menerbitkan bukti pemberian sesuai jenis Pinjaman/Panjar dengan nomor dan snapshot identitas penerima.
 5. Panjar Mitra diselesaikan dari Kwitansi Pembayaran TBS. Pihak lain dapat membayar tunai/transfer atau dipotong dari gaji/upah sesuai kesepakatan.
 6. Pengembalian tunai/transfer menerbitkan Bukti Pengembalian Uang dan menambah kas CB.
 7. Kesalahan dibatalkan Owner/Super Admin melalui reversal, bukan delete.
@@ -266,7 +267,23 @@ Alur final:
 Pemisahan dokumen:
 
 - **Kwitansi Pembayaran TBS Mitra**: bukti CB membayar transaksi TBS.
-- **Bukti Pemberian Panjar/Kasbon**: bukti CB menyerahkan uang lebih dahulu.
+- **Bukti Pemberian Panjar Mitra/Petani**: bukti CB menyerahkan uang muka yang akan dipotong dari hak pembayaran berikutnya.
+- **Bukti Pemberian Pinjaman Karyawan/Sopir** atau **Surat Pengakuan Pinjaman**: bukti CB menyerahkan uang yang harus dikembalikan.
 - **Bukti Pengembalian Uang**: bukti CB menerima uang kembali.
 
-Implementasi memakai migration `20260716100224_add_piutang_document_approval_workflow.sql` dan `20260716101654_complete_piutang_repayment_reversal_sync.sql`, tabel `piutang_dokumen` dan `piutang_pelunasan`, serta mempertahankan `hutang_ledger` sebagai buku mutasi dan `panjar_mitra` sebagai kompatibilitas kwitansi.
+Implementasi memakai migration:
+
+- `20260716100224_add_piutang_document_approval_workflow.sql`
+- `20260716101654_complete_piutang_repayment_reversal_sync.sql`
+- `20260716104718_add_legacy_loan_reconciliation_control.sql`
+- `20260716110212_expand_audit_actions_for_loan_workflow.sql`
+- `20260716110725_archive_reconciled_legacy_loans.sql`
+
+Tabel `piutang_dokumen` menjadi sumber dokumen dan status workflow, `piutang_pelunasan` menyimpan rincian pengembalian, `hutang_ledger` tetap menjadi buku mutasi kompatibel, dan `panjar_mitra` tetap dipakai untuk integrasi potongan Kwitansi TBS. Nama teknis lama tidak digunakan sebagai label UI.
+
+Status verifikasi:
+
+- Pengajuan, persetujuan, penyerahan, pengembalian parsial, reversal, dan arsip riwayat sudah aktif.
+- Rekonsiliasi legacy Owner-only sudah aktif dan hasilnya dapat dibuka dari **Riwayat Lunas** menuju Kwitansi TBS terkait.
+- Kas hanya bergerak saat uang benar-benar diserahkan atau dikembalikan; rekonsiliasi saldo awal legacy tidak membuat mutasi kas baru.
+- Backlog lanjutan: lampiran bukti, batas pinjaman per pihak, laporan umur pinjaman, dan alokasi parsial Panjar Mitra ketika hak TBS tidak mencukupi.

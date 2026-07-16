@@ -1,9 +1,17 @@
 # ADDENDUM MVP TAHAP 1 (Selesai - Juli 2026)
+
+## Terminologi dan Sumber Kebenaran Aktif
+
+- Istilah UI final adalah **Pinjaman & Panjar**. **Panjar** dipakai untuk uang muka yang akan dipotong dari hak pembayaran berikutnya; **Pinjaman** dipakai untuk uang yang harus dikembalikan oleh karyawan, sopir, atau pihak lain.
+- Label dokumen aktif adalah **Bukti Pemberian Panjar Mitra/Petani**, **Bukti Pemberian Pinjaman Karyawan/Sopir**, **Surat Pengakuan Pinjaman**, dan **Bukti Pengembalian Uang**. Semuanya berbeda dari **Kwitansi Pembayaran TBS Mitra**.
+- Nama `hutang_ledger`, `piutang_dokumen`, `piutang_pelunasan`, `kasbon_sopir`, dan `kasbon_karyawan` adalah kontrak teknis/legacy database. Nama tersebut tidak menjadi istilah tampilan dan tidak boleh diubah tanpa migration kompatibilitas.
+- Jika bagian historis dokumen masih menyebut hutang/piutang/kasbon untuk uang yang diberikan CB kepada pihak lain, maknanya mengikuti istilah final **Pinjaman & Panjar** di atas.
+
 Pengembangan Tahap 1 (MVP) berfokus pada **Pengiriman Mitra ke Pabrik** telah selesai. Setelah pembaruan Fase 2 minimum pada 14 Juli 2026, sebagian menu operasional dan keuangan dasar sudah dibuka. Label [Coming Soon] hanya dipakai lagi untuk fitur Fase 3/Fase 4 yang belum aman dipakai.
 Fitur utama yang telah live:
 1. **Master Data Mitra & Sopir**: Relasi `sopir` ke `master_mitra`, termasuk pengaturan `fee_per_kg` sebagai **Fee Owner** per mitra.
 2. **Pengiriman Mitra**: Pencatatan armada masuk dengan perhitungan Skenario B (Harga Bersih ke Mitra = Harga Pabrik/TWB - Fee Owner).
-3. **Panjar Mitra**: Modul kasbon mitra dengan tombol input cepat (Quick Add).
+3. **Panjar Mitra**: Modul pemberian uang muka mitra dengan tombol input cepat (Quick Add).
 4. **Kwitansi Mitra**: Cetak kwitansi pembayaran otomatis dari owner ke mitra, dengan potongan panjar dari total nilai bersih TBS.
 5. **Laporan Mitra**: Ledger rekapan global seluruh transaksi pengiriman mitra.
 6. **Laporan Pendapatan Owner Bruto**: Rekap Fee Owner bruto dari transaksi mitra, hanya untuk Owner dan Super Admin.
@@ -18,22 +26,22 @@ Yang sudah tersedia:
 
 1. **Buku Kas**: `rekening_kas` dan `kas_ledger` menjadi buku kas tunggal untuk arus uang aktual.
 2. **Uang Masuk Pabrik Dasar**: status pengiriman lokal dibayar pabrik membuat `pembayaran_pabrik` dan `kas_masuk`.
-3. **Uang Keluar Dasar**: pembelian petani lokal, biaya operasional, pembayaran mitra kwitansi, dan panjar/hutang baru membuat `kas_keluar`.
-4. **Hutang/Panjar Universal**: `hutang_ledger` diperluas untuk `petani`, `mitra`, `sopir`, `karyawan`, dan `lainnya`.
+3. **Uang Keluar Dasar**: pembelian petani lokal, biaya operasional, pembayaran mitra kwitansi, serta pemberian Pinjaman/Panjar membuat `kas_keluar`.
+4. **Pinjaman & Panjar**: `hutang_ledger` diperluas untuk `petani`, `mitra`, `sopir`, `karyawan`, dan `lainnya`.
 5. **Panjar Mitra Baru**: input baru di `panjar_mitra` disambungkan ke `hutang_ledger` dan `kas_ledger`; data legacy lama tetap dipertahankan.
-6. **UI Minimum**: halaman Buku Kas, Hutang/Panjar, Biaya Operasional, Panjar Mitra, Pengiriman Lokal, Pembelian Lokal, dan Laba/Rugi sudah terhubung ke RPC/fondasi kas.
+6. **UI Minimum**: halaman Buku Kas, Pinjaman & Panjar, Biaya Operasional, Panjar Mitra, Pengiriman Lokal, Pembelian Lokal, dan Ringkasan Arus Kas sudah terhubung ke RPC/fondasi kas.
 7. **No Delete Finansial Dasar**: koreksi memakai status batal dan reversal ledger pada flow yang sudah dipindah ke RPC.
 
 Batasan yang sengaja belum disebut selesai:
 
 - Alokasi pembayaran pabrik satu transaksi ke banyak DO.
 - Upload bukti, nomor referensi wajib, atau lampiran pembayaran.
-- Limit kasbon/panjar dan approval otomatis.
-- Backfill panjar mitra legacy lama ke ledger universal.
+- Batas pinjaman/panjar per pihak dan persetujuan berbasis batas.
+- Rekonsiliasi massal seluruh panjar legacy. Rekonsiliasi terkontrol per kasus oleh Owner sudah tersedia dan tidak membuat mutasi kas historis baru.
 - Settlement mitra advanced, pembagian selisih tonase, tarif armada, dan biaya bantuan.
 - SOP backup production dan latihan pemulihan penuh. Uji role Admin dengan akun nyata serta smoke test rollback finansial sudah tersedia per 16 Juli 2026.
 
-Kesimpulan produk: web sudah dapat dipakai sebagai **Sistem Bisnis Minimal Fase 2** untuk kontrol kas dan hutang harian, sambil pengembangan Fase 3 berjalan. Hardening role dan reversal P0 sudah diterapkan 16 Juli 2026, tetapi web belum boleh diposisikan sebagai sistem akuntansi penuh/final sampai settlement lanjutan, limit, lampiran bukti, persediaan, dan laba akrual selesai.
+Kesimpulan produk: web sudah dapat dipakai sebagai **Sistem Bisnis Minimal Fase 2** untuk kontrol kas serta Pinjaman/Panjar harian, sambil pengembangan Fase 3 berjalan. Hardening role dan reversal P0 sudah diterapkan 16 Juli 2026, tetapi web belum boleh diposisikan sebagai sistem akuntansi penuh/final sampai settlement lanjutan, batas pinjaman, lampiran bukti, persediaan, dan laba akrual selesai.
 
 # ADDENDUM KONTROL BISNIS P0 (Diimplementasikan - 16 Juli 2026)
 
@@ -46,8 +54,8 @@ Keputusan produk:
 5. Koreksi pembayaran tidak menghapus catatan lama. Sistem membuat transaksi pembalik, menyimpan alasan, waktu, pelaku, dan hubungan ke catatan asal.
 6. Kwitansi membedakan **Berat Netto** dari pabrik dan **Berat Dibayar** setelah potongan. Snapshot kwitansi yang sudah dibayar tidak mengikuti perubahan transaksi live.
 7. UI menyebut uang CB yang dipinjam pihak lain sebagai **Pinjaman & Panjar** agar mudah dipahami. Dalam skema akuntansi/database posisinya tetap piutang CB. Admin mengajukan dan mencatat penyerahan/pengembalian; Owner/Super Admin menyetujui serta melakukan pembatalan/reversal.
-8. Dokumen dibedakan tegas: **Kwitansi Pembayaran TBS Mitra**, **Bukti Pemberian Panjar/Kasbon**, dan **Bukti Pengembalian Uang**.
-7. Halaman yang sebelumnya disebut Laba/Rugi basis kas diberi nama **Ringkasan Arus Kas**. Laba akuntansi membutuhkan pengembangan terpisah untuk persediaan, hutang periode, penyusutan, dan penutupan periode.
+8. Dokumen dibedakan tegas: **Kwitansi Pembayaran TBS Mitra**, bukti pemberian sesuai jenis Pinjaman/Panjar, dan **Bukti Pengembalian Uang**.
+9. Halaman yang sebelumnya disebut Laba/Rugi basis kas diberi nama **Ringkasan Arus Kas**. Laba akuntansi membutuhkan pengembangan terpisah untuk persediaan, hutang periode, penyusutan, dan penutupan periode.
 
 Gerbang data:
 
@@ -56,6 +64,14 @@ Gerbang data:
 - Tidak ada role aplikasi yang boleh melakukan `DELETE`/`TRUNCATE` tabel bisnis dan finansial.
 - Kas menampilkan Saldo Pembuka, Kas Masuk, Kas Keluar, dan Saldo Akhir berdasarkan rekening serta periode.
 - Satu kasus legacy yang sudah ditandai **Perlu Review** harus diputuskan Owner; sistem tidak melakukan reversal uang secara otomatis tanpa keputusan manusia.
+
+Status Pinjaman & Panjar per 16 Juli 2026:
+
+- Workflow pengajuan, persetujuan, penyerahan uang, pengembalian parsial, dan reversal sudah aktif.
+- Panjar Mitra tetap terhubung ke Kwitansi Pembayaran TBS; pinjaman pihak lain dikembalikan tunai/transfer atau melalui potongan yang disepakati.
+- Dokumen dan riwayat memakai snapshot identitas penerima agar arsip tidak berubah saat master diedit.
+- Rekonsiliasi legacy dilakukan Owner per kasus berdasarkan bukti, tidak membuat kas keluar historis baru, dan hasilnya masuk **Riwayat Lunas** dengan pintasan ke Kwitansi TBS.
+- Backlog yang belum selesai: lampiran bukti, batas pinjaman per pihak, laporan umur pinjaman, dan alokasi parsial Panjar Mitra ketika hak TBS tidak mencukupi.
 
 Aturan Fee Owner MVP:
 
@@ -396,9 +412,12 @@ Acceptance:
 > 2. Menggunakan metode *Non-Destructive Migration* (hanya boleh menambah kolom/tabel baru).
 > 3. Melakukan *Backup* database *Production* sebelum rilis fitur baru.
 
-# PRD Final - Sawit CB
+# Baseline PRD Historis - Sawit CB
 
 Tanggal konfirmasi klien: 11 Juli 2026, 06:12:40
+
+> [!NOTE]
+> Bagian baseline di bawah mempertahankan kebutuhan awal dan nama field/schema untuk jejak keputusan. Status implementasi, istilah UI, role aktif, serta keputusan yang lebih baru mengikuti addendum bertanggal 14-16 Juli 2026 di bagian atas dokumen. Jika terjadi perbedaan, addendum terbaru menjadi sumber kebenaran.
 
 ## 1. Ringkasan Produk
 
@@ -1843,7 +1862,7 @@ Transaksi yang wajib masuk audit log:
 | Settlement mitra | Ya | Ya | Lihat | Ya |
 | Hutang petani | Ya | Ya | Lihat | Ya |
 | Hutang mitra | Ya | Ya | Lihat | Ya |
-| Hutang/panjar sopir/karyawan/lainnya | Ya | Ya | Lihat | Ya |
+| Pinjaman/Panjar sopir, karyawan, dan pihak lain | Ya | Ya | Lihat | Ya |
 | Biaya operasional | Ya | Ya | Input | Ya |
 | Pengaturan bisnis | Ya | Ya | Lihat | Lihat |
 | Audit log | Ya | Ya | Tidak | Tidak |
@@ -1868,7 +1887,7 @@ Urutan pengembangan tidak boleh hanya mengikuti kemudahan coding. Urutan harus m
 
 1. Lindungi data dan akses role sebelum membuka fitur uang yang lebih sensitif.
 2. Rapikan ledger uang aktual sebelum laporan laba kas dianggap final.
-3. Satukan hutang/panjar sebelum settlement mitra memakai potongan otomatis.
+3. Satukan Pinjaman/Panjar sebelum settlement mitra memakai potongan otomatis.
 4. Hitung settlement dengan fungsi teruji sebelum UI pembayaran dibuat penuh.
 5. Rilis per modul kecil agar jika ada bug, dampaknya tidak menyebar ke seluruh sistem.
 
@@ -1899,7 +1918,7 @@ Batasan fase ini:
 
 #### Fase 2 - Sistem Bisnis Minimal
 
-Fase ini adalah batas pertama ketika web boleh disebut sistem bisnis minimal. Sebelum pembaruan 14 Juli 2026, MVP belum layak disebut sistem bisnis minimal karena bisnis sawit tidak cukup hanya dengan input DO dan cetak kwitansi; uang, hutang/panjar, pembayaran, dan akses role harus terkunci dulu. Setelah pembaruan Fase 2 minimum, fondasi kas dan hutang sudah tersedia untuk flow dasar, dengan catatan release gate manual tetap wajib sebelum ekspansi fitur yang lebih sensitif.
+Fase ini adalah batas pertama ketika web boleh disebut sistem bisnis minimal. Sebelum pembaruan 14 Juli 2026, MVP belum layak disebut sistem bisnis minimal karena bisnis sawit tidak cukup hanya dengan input DO dan cetak kwitansi; uang, Pinjaman/Panjar, pembayaran, dan akses role harus terkunci dulu. Setelah pembaruan Fase 2 minimum, fondasi kas dan ledger pihak sudah tersedia untuk flow dasar, dengan catatan release gate manual tetap wajib sebelum ekspansi fitur yang lebih sensitif.
 
 Wajib selesai sebelum fase ini dianggap lulus:
 
@@ -1907,17 +1926,17 @@ Wajib selesai sebelum fase ini dianggap lulus:
 - Tidak ada delete fisik untuk transaksi finansial; semua memakai cancel/reversal.
 - Pembayaran pabrik dasar berjalan dan membedakan nilai tagihan DO dari uang aktual diterima.
 - `rekening_kas` dan `kas_ledger` menjadi sumber semua uang masuk/keluar aktual.
-- Hutang/panjar universal untuk petani, mitra, sopir, karyawan, dan pihak lain.
+- Pinjaman/Panjar universal untuk petani, mitra, sopir, karyawan, dan pihak lain.
 - Panjar/kasbon dicatat sebagai saldo pihak/piutang, bukan biaya langsung.
 - Pembayaran mitra dasar bisa dicatat sebagai kas keluar dan status bayar.
-- Laporan owner dasar tersedia: posisi kas, uang masuk pabrik, uang keluar, DO belum dibayar, mitra belum dibayar, dan saldo hutang/panjar per pihak.
+- Laporan owner dasar tersedia: posisi kas, uang masuk pabrik, uang keluar, DO belum dibayar, mitra belum dibayar, dan sisa Pinjaman/Panjar per pihak.
 - Backup production, staging test, dan rollback checklist tersedia sebelum release.
 
 Status implementasi 14 Juli 2026:
 
-- `rekening_kas`, `kas_ledger`, hutang/panjar universal, pembayaran pabrik dasar, pembayaran mitra dasar, biaya operasional, dan laporan kas minimum sudah diimplementasikan.
+- `rekening_kas`, `kas_ledger`, Pinjaman/Panjar universal, pembayaran pabrik dasar, pembayaran mitra dasar, biaya operasional, dan laporan kas minimum sudah diimplementasikan.
 - Test otomatis/build/lint dan lint database level error sudah lulus.
-- Test manual semua role, SOP backup/rollback production, alokasi pembayaran multi-DO, limit kasbon, dan bukti transaksi masih menjadi syarat sebelum menyebut sistem ini selesai penuh.
+- Test manual semua role, SOP backup/rollback production, alokasi pembayaran multi-DO, batas pinjaman, dan lampiran bukti transaksi masih menjadi syarat sebelum menyebut sistem ini selesai penuh.
 
 Batasan fase ini:
 
@@ -1937,7 +1956,7 @@ Wajib selesai:
 - Settlement mitra lengkap: fee history, tonase dasar settlement, pembagian selisih, potongan kasbon, biaya bantuan, dan tarif armada.
 - Pembayaran mitra final beserta bukti/kwitansi.
 - Audit/reversal untuk stok, kas, hutang, pembayaran, settlement, dan pengaturan bisnis.
-- Laporan operasional harian: kas, pabrik per DO, stok, hutang/panjar, settlement mitra, dan export sesuai role.
+- Laporan operasional harian: kas, pabrik per DO, stok, Pinjaman/Panjar, settlement mitra, dan export sesuai role.
 
 Batasan fase ini:
 
@@ -1992,7 +2011,7 @@ Pada fase ini aplikasi bisa dianggap utuh dan matang, bukan hanya sistem operasi
 - Perbaiki nomor struk dan nomor bukti agar aman dari bentrok.
 - Tambah pembatalan/reversal ledger untuk transaksi uang, stok, hutang, dan pembayaran.
 
-#### P0B - Kas, Pembayaran Pabrik, dan Hutang/Panjar Universal
+#### P0B - Kas, Pembayaran Pabrik, dan Pinjaman/Panjar Universal
 
 - Tambah `rekening_kas` dan `kas_ledger`.
 - Catat semua uang masuk aktual ke `kas_ledger`.
@@ -2000,7 +2019,7 @@ Pada fase ini aplikasi bisa dianggap utuh dan matang, bukan hanya sistem operasi
 - Selesaikan UI pembayaran pabrik agar satu pembayaran bisa dialokasikan ke satu/banyak DO.
 - Bedakan nilai tagihan DO dari uang aktual diterima.
 - Laba Bersih Kas dihitung dari `kas_ledger`, bukan dari nilai estimasi transaksi.
-- Perluas hutang/panjar menjadi ledger pihak universal: petani, mitra, sopir, karyawan, dan pihak lain.
+- Perluas ledger Pinjaman/Panjar menjadi ledger pihak universal: petani, mitra, sopir, karyawan, dan pihak lain.
 - Migrasikan/sinkronkan `panjar_mitra` aktif ke ledger universal tanpa merusak histori MVP.
 - Kasbon/panjar bukan biaya laba-rugi; kasbon/panjar adalah saldo pihak dan arus kas.
 - Setiap kasbon/panjar yang mengeluarkan uang harus membuat mutasi ledger pihak dan Buku Kas (`kas_ledger`).
@@ -2008,7 +2027,7 @@ Pada fase ini aplikasi bisa dianggap utuh dan matang, bukan hanya sistem operasi
 
 #### P0C - Alur Mitra dan Settlement
 
-- Tambah modul pengaturan bisnis untuk fee, pembagian selisih tonase, tarif armada, limit kasbon, dan prioritas laporan.
+- Tambah modul pengaturan bisnis untuk fee, pembagian selisih tonase, tarif armada, batas pinjaman, dan prioritas laporan.
 - Tambah riwayat fee mitra berdasarkan tanggal/jam berlaku.
 - Tambah alur pengiriman mitra per DO.
 - Pisahkan konsep **Armada CB** dari **Mitra Transaksi**: Armada CB adalah sopir/plat internal CB dan tidak wajib memiliki `mitra_id`; Mitra Transaksi adalah pihak yang punya muatan dan masuk kwitansi.
@@ -2029,7 +2048,7 @@ Pada fase ini aplikasi bisa dianggap utuh dan matang, bukan hanya sistem operasi
 - Tambah audit log minimal untuk transaksi uang, tonase, stok, settlement, dan pengaturan bisnis.
 - Tambah laporan dasar harian, pabrik per DO, stok lokal, settlement mitra, dan laba-rugi owner.
 - Tambah rekonsiliasi kas masuk/keluar per rekening.
-- Tambah laporan saldo hutang/panjar per pihak.
+- Tambah laporan sisa Pinjaman/Panjar per pihak.
 - Perbaiki encoding teks/icon.
 
 ### P1 - Penting Untuk Operasional Harian

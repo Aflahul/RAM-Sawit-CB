@@ -9,7 +9,7 @@ Audit ini memeriksa route Next.js, menu, pembatasan role, query Supabase, RPC, t
 Kesimpulan utama:
 
 - Alur utama sudah terbentuk: **Pengiriman Mitra -> Kwitansi Mitra -> Buku Kas -> Laporan**, serta **Pembayaran Pabrik -> Buku Kas -> Laba/Rugi**.
-- RPC pembayaran pabrik, pembayaran mitra, biaya, dan hutang sudah lebih aman karena mencatat ledger secara terpusat.
+- RPC pembayaran pabrik, pembayaran mitra, biaya, dan Pinjaman/Panjar sudah lebih aman karena mencatat ledger secara terpusat.
 - Sistem belum layak menambah fitur finansial besar sebelum release gate P0 di bagian 8 selesai.
 - Risiko terbesar bukan tata letak, melainkan hak akses terlalu luas, koreksi transaksi yang sudah dibayar, arti tonase kwitansi yang berubah, histori tarif tumpang tindih, dan laporan bruto yang tidak konsisten.
 
@@ -117,14 +117,14 @@ Status audit: alur tersedia. Setelah Dana Trip dibayar, perubahan tanggal, armad
 
 ### 4.2 Dashboard - `/dashboard`
 
-- Data: Harga Pabrik/TWB, tonase mitra hari ini, estimasi pendapatan owner, kwitansi pending, fokus mitra 7 hari, konteks lokal, kas, biaya, hutang/panjar, dan pending review.
+- Data: Harga Pabrik/TWB, tonase mitra hari ini, estimasi pendapatan owner, kwitansi pending, fokus mitra 7 hari, konteks lokal, kas, biaya, Pinjaman/Panjar, dan pending review.
 - **Set/Ubah Harga**: upsert `harga_tbs` tanggal hari ini.
 - **Input Pengiriman**, **Laporan Mitra**, **Kwitansi**, dan aksi cepat: navigasi.
 - Tombol mitra pada **Fokus Mitra**: mengganti grafik lokal.
 - P0: tombol harga tidak mengikuti role; pending review hanya menghitung header `perlu_review`, bukan selisih snapshot atau transaksi dibatalkan setelah dibayar.
 - P1: hitungan antrian memakai limit 1.500 transaksi dan 3.000 item; akan kurang saat data melewati batas.
 - P1: link dari Fokus Mitra tidak membawa filter mitra ke halaman tujuan.
-- P1: kartu Hutang/Panjar dan Biaya dapat menampilkan nominal ke Admin Operasional karena read policy luas.
+- P1: kartu Pinjaman/Panjar dan Biaya dapat menampilkan nominal ke Admin Operasional karena read policy luas.
 
 ### 4.3 Pengiriman Mitra - `/admin/input-timbangan`
 
@@ -186,17 +186,17 @@ Status audit: alur tersedia. Setelah Dana Trip dibayar, perubahan tanggal, armad
 
 - Posisi bisnis: halaman mencatat uang CB yang diberikan lebih dahulu dan masih harus dikembalikan/dipotong. Halaman ini bukan daftar utang CB kepada pemasok.
 - **Panjar Mitra**: dikembalikan melalui potongan Kwitansi Pembayaran TBS.
-- **Kasbon Karyawan**: dikembalikan tunai/transfer atau dipotong dari gaji.
-- **Kasbon Sopir**: dikembalikan tunai/transfer atau dipotong dari upah. Dana Trip tidak boleh masuk sebagai kasbon.
+- **Pinjaman Karyawan**: dikembalikan tunai/transfer atau dipotong dari gaji.
+- **Pinjaman Sopir**: dikembalikan tunai/transfer atau dipotong dari upah. Dana Trip tidak boleh masuk sebagai pinjaman.
 - **Pinjaman Pihak Lain**: wajib memiliki nama, keperluan, cara pengembalian, dan target tanggal bila tersedia.
 - Alur baru: Admin membuat pengajuan -> Owner menyetujui/menolak -> Admin menyerahkan uang -> kas keluar dan pinjaman baru dicatat -> pengembalian/potongan mengurangi sisa pinjaman.
 - Owner/Super Admin yang membuat pengajuan dapat menyetujuinya otomatis, tetapi kas tetap belum bergerak sampai aksi **Serahkan**.
-- Dokumen keluar adalah **Bukti Pemberian Panjar/Kasbon**; dokumen uang kembali adalah **Bukti Pengembalian Uang**. Keduanya berbeda dari **Kwitansi Pembayaran TBS Mitra**.
+- Dokumen keluar memakai nama sesuai jenisnya: **Bukti Pemberian Panjar Mitra/Petani**, **Bukti Pemberian Pinjaman Karyawan/Sopir**, atau **Surat Pengakuan Pinjaman**. Dokumen uang kembali adalah **Bukti Pengembalian Uang**. Semuanya berbeda dari **Kwitansi Pembayaran TBS Mitra**.
 - Koreksi dokumen dan pengembalian memakai reversal oleh Owner/Super Admin; tidak ada penghapusan histori.
 - Ledger lama tetap dibaca untuk menjaga histori. Nilai negatif ditampilkan sebagai peringatan rekonsiliasi dan tidak lagi disembunyikan sebagai nol.
 - Owner/Super Admin dapat memakai **Cocokkan Data Lama** setelah memeriksa bukti. Sistem melengkapi catatan pemberian awal dan audit tanpa membuat kas keluar historis baru.
 - Histori baru dan legacy dilihat dari filter **Riwayat Lunas** atau **Semua Riwayat**. Panjar yang lunas melalui pembayaran TBS memiliki pintasan ke Kwitansi TBS terkait.
-- P1 lanjutan: lampiran foto tanda tangan/bukti transfer dan batas kasbon per pihak belum diaktifkan.
+- P1 lanjutan: lampiran foto tanda tangan/bukti transfer, batas pinjaman per pihak, laporan umur pinjaman, dan alokasi parsial Panjar Mitra belum diaktifkan.
 
 ### 4.8 Biaya Operasional - `/keuangan/biaya`
 
@@ -295,7 +295,7 @@ Status audit: alur tersedia. Setelah Dana Trip dibayar, perubahan tanggal, armad
 
 | Route | Status | Keputusan Audit |
 | --- | --- | --- |
-| `/owner/panjar-mitra` | Tersembunyi | Jadikan arsip read-only atau redirect ke Hutang & Panjar; tombol Lunasi/Batalkan menduplikasi satu pintu. |
+| `/owner/panjar-mitra` | Tersembunyi | Jadikan arsip read-only atau redirect ke Pinjaman & Panjar; tombol Lunasi/Batalkan menduplikasi satu pintu. |
 | `/laporan/harian` | Tersembunyi | Tetap di roadmap Tutup Hari, tetapi route sekarang sebaiknya Coming Soon/redirect. |
 | `/transaksi/kirim` | Legacy | Sudah read-only dan mengarah ke Pengiriman Mitra internal; pertahankan sementara untuk arsip. |
 | `/transaksi/beli` | Coming Soon | Overlay menonaktifkan aksi. |
@@ -369,7 +369,7 @@ Status audit: alur tersedia. Setelah Dana Trip dibayar, perubahan tanggal, armad
 
 1. Tambahkan watermark DRAFT dan blok WhatsApp resmi sebelum pembayaran.
 2. Bawa filter mitra/periode saat navigasi antarhalaman.
-3. Izinkan tanggal kejadian dan rekening kas pada Hutang/Panjar, Biaya, Dana Trip, dan pembayaran mitra.
+3. Izinkan tanggal kejadian dan rekening kas pada Pinjaman/Panjar, Biaya, Dana Trip, dan pembayaran mitra.
 4. Terjemahkan istilah debit/kredit tanpa mengubah tipe ledger.
 5. Tambah normalized unique untuk kode mitra dan plat; sediakan proses merge/nonaktif duplikat.
 6. Ganti Laba/Rugi basis kas menjadi Ringkasan Arus Kas dan rancang laba periode terpisah.
@@ -403,6 +403,7 @@ Status setelah audit:
 - P0-D selesai: mutasi manual dapat dibalik Owner, bukti/keterangan diwajibkan sesuai alur, dan Buku Kas menampilkan saldo pembuka serta akhir.
 - P1 utama selesai: Laba/Rugi basis kas diganti menjadi Ringkasan Arus Kas, Panjar lama dan Laporan Harian diarahkan ke satu pintu yang benar, serta pagination ditambahkan pada Kas/Biaya.
 - P0 kontrol Armada CB selesai: fakta trip, potongan sewa, dan Dana Operasional Trip dipisahkan; pengecualian wajib beralasan dan kasus lama masuk antrean review tanpa membuat uang baru.
+- P0 Pinjaman & Panjar selesai: pengajuan, persetujuan, penyerahan, pengembalian parsial, reversal, rekonsiliasi legacy, arsip riwayat, dan pintasan ke Kwitansi TBS sudah tersedia.
 
 Verifikasi:
 
@@ -412,6 +413,7 @@ Verifikasi:
 - Uji akun Admin nyata: akses operasional berhasil; direct write, reversal Owner, dan RPC anonim ditolak.
 - Rekonsiliasi remote: mismatch kwitansi `0`, overlap fee `0`, dan data quick-add uji tersisa `0`.
 - Rekonsiliasi Armada CB remote: 11 trip aktif; 2 dengan sewa/Dana dan 9 data lama ditandai perlu review tanpa backfill nominal.
+- Rekonsiliasi Panjar Mitra legacy Rp50.000.000 telah diarsipkan sebagai `HIS-20260716-000001` tanpa membuat kas keluar historis baru dan dapat ditelusuri ke Kwitansi TBS terkait.
 - Smoke test kontrol Armada CB sudah disiapkan di `supabase/tests/armada_cb_controls_rollback.sql`; eksekusi CLI dari mesin ini tertunda karena Docker Desktop tidak tersedia.
 
 Tindak lanjut manusia/data legacy:

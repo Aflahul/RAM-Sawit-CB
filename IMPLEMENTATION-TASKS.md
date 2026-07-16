@@ -2,6 +2,13 @@
 
 Dokumen ini menurunkan `PRD-final.md` menjadi task implementasi teknis berdasarkan kondisi repo saat ini.
 
+## Cara Membaca Status
+
+- Bagian teratas dan addendum bertanggal paling baru menjadi sumber status implementasi aktif.
+- Checklist roadmap lama tetap dipertahankan sebagai jejak perencanaan. Item lama yang sudah digantikan alur baru harus dibaca melalui bagian konsolidasi terbaru, bukan dianggap otomatis sebagai pekerjaan yang belum dilakukan.
+- Istilah UI final adalah **Pinjaman & Panjar**. Nama `hutang_ledger`, `piutang_*`, dan enum `kasbon_*` hanya dipakai saat merujuk kontrak teknis/legacy database.
+- Konsolidasi terakhir: 16 Juli 2026, setelah workflow dokumen, persetujuan, pengembalian, reversal, rekonsiliasi legacy, dan arsip riwayat Pinjaman & Panjar aktif.
+
 ## P0 Audit Lintas Halaman - 16 Juli 2026
 
 Referensi temuan dan alasan bisnis: `docs/page-flow-control-audit-2026-07-16.md`.
@@ -47,7 +54,7 @@ Referensi temuan dan alasan bisnis: `docs/page-flow-control-audit-2026-07-16.md`
 ### P1 - Perapian Workflow dan UX
 
 - [x] Ubah halaman Laba/Rugi saat ini menjadi **Ringkasan Arus Kas** sampai laporan laba/rugi akrual tersedia.
-- [x] Redirect Panjar Mitra lama agar satu pintu tetap berada di Hutang & Panjar Semua Pihak.
+- [x] Redirect Panjar Mitra lama agar satu pintu tetap berada di Pinjaman & Panjar.
 - [x] Redirect Laporan Harian yang disembunyikan ke Dashboard.
 - [x] Tambahkan pagination dan indikator batas 500 data pada Buku Kas dan Biaya Operasional.
 - [ ] Rapikan data plat duplikat, armada tanpa plat, dan transaksi tanpa relasi sopir.
@@ -166,33 +173,33 @@ Status implementasi MVP live:
 - [ ] Tahap 2: biaya operasional owner, kepemilikan armada, status sopir, dan pendapatan owner bersih.
 - [ ] Review apakah `SL/MD` perlu dibuat sebagai master mitra baru atau tetap menjadi armada tanpa default mitra.
 
-### Agenda Baru - Tahap 2 Kas, Uang Masuk, dan Hutang/Panjar Universal (14 Juli 2026)
+### Agenda Baru - Tahap 2 Kas, Uang Masuk, dan Pinjaman/Panjar Universal (14 Juli 2026)
 
-Tahap 2 perlu menyatukan pencatatan uang dan utang agar tidak terpecah antara panjar mitra, hutang petani, pembayaran pabrik, biaya, dan pembayaran mitra.
+Tahap 2 perlu menyatukan pencatatan uang dan Pinjaman/Panjar agar tidak terpecah antara panjar mitra, pinjaman petani, pembayaran pabrik, biaya, dan pembayaran mitra.
 
 Kondisi sistem sekarang:
 
 - **Uang masuk pabrik** sudah punya fondasi schema `pembayaran_pabrik` dan `pembayaran_pabrik_detail`, tetapi UI alokasi satu pembayaran ke satu/banyak DO belum selesai.
 - **Pendapatan Owner Bruto** saat ini dihitung dari snapshot Fee Owner transaksi mitra, jadi masih basis transaksi/bruto, belum basis kas aktual.
 - **Kwitansi/Pembayaran Mitra** adalah uang keluar dari owner/perusahaan ke mitra, bukan uang masuk.
-- **Panjar Mitra** masih tercatat di `panjar_mitra` dan dipotong saat kwitansi; ini perlu dimigrasikan atau disinkronkan ke ledger hutang/piutang universal.
-- **Hutang Petani** sudah memakai `hutang_ledger`, tetapi belum cukup fleksibel untuk mitra, sopir, karyawan, dan pihak lain.
+- **Panjar Mitra** masih tercatat di `panjar_mitra` dan dipotong saat kwitansi; data baru disinkronkan ke ledger pihak universal, sedangkan data legacy direkonsiliasi per kasus berdasarkan bukti.
+- **Pinjaman Petani** memakai `hutang_ledger`; ledger yang sama sudah diperluas untuk mitra, sopir, karyawan, dan pihak lain.
 - **Biaya Operasional** sudah ada sebagai pencatatan biaya, tetapi belum menjadi bagian dari buku kas yang menyatukan seluruh arus uang.
 
 Keputusan desain Tahap 2:
 
-- Panjar, kasbon, pinjaman, dan pembayaran balik diperlakukan sebagai **saldo pihak** dalam satu ledger, bukan modul terpisah per jenis orang.
+- Panjar, pinjaman, dan pengembalian diperlakukan sebagai **sisa kewajiban pihak kepada CB** dalam satu ledger, bukan modul terpisah per jenis orang.
 - Pihak yang bisa punya saldo: `petani`, `mitra`, `sopir`, `karyawan`, dan `lainnya`.
 - Semua uang masuk dan uang keluar harus masuk ke **Buku Kas** (`kas_ledger`).
-- Uang masuk minimal mencakup pembayaran pabrik, pengembalian kasbon/panjar, setoran modal/owner, pendapatan lain, dan koreksi plus.
-- Uang keluar minimal mencakup pembayaran petani, pembayaran mitra, biaya operasional, panjar/kasbon, gaji/fee, tarik owner, dan koreksi minus.
+- Uang masuk minimal mencakup pembayaran pabrik, pengembalian Pinjaman/Panjar, setoran modal/owner, pendapatan lain, dan koreksi plus.
+- Uang keluar minimal mencakup pembayaran petani, pembayaran mitra, biaya operasional, pemberian Pinjaman/Panjar, gaji/fee, tarik owner, dan koreksi minus.
 - Laporan owner harus membedakan **Laba Kas** dari uang aktual yang sudah masuk/keluar dan **Laba Estimasi** dari nilai transaksi/DO yang belum tentu sudah dibayar.
 - Transaksi finansial tidak boleh dihapus fisik; koreksi memakai reversal/pembatalan dengan alasan dan audit log.
 
 Praktik bisnis yang harus diikuti:
 
 - Pisahkan uang kas tunai, rekening bank, dan akun owner/modal jika nanti ada lebih dari satu sumber uang.
-- Setiap kasbon/panjar wajib punya pihak, tanggal, nominal, sumber kas, alasan, pencatat, dan status approval jika melewati batas.
+- Setiap Pinjaman/Panjar wajib punya pihak, tanggal, nominal, sumber kas, alasan, pencatat, dan status persetujuan.
 - Setiap pembayaran wajib punya bukti atau nomor referensi: transfer, kwitansi, catatan kas, atau lampiran.
 - Tutup kas harian direkomendasikan: saldo awal + uang masuk - uang keluar = saldo akhir, lalu direkonsiliasi dengan kas fisik/bank.
 - Tidak ada edit langsung pada transaksi yang sudah memengaruhi kas; gunakan koreksi/reversal agar histori tetap bisa diaudit.
@@ -412,7 +419,7 @@ Untuk menjaga integritas data operasional MVP (Tahap 1) yang sudah mulai digunak
 3. Migrasi ke *Production* wajib berupa *Non-Destructive Migration* (hanya menambah tabel/kolom, tidak menghapus/mengubah struktur tabel MVP yang sudah berjalan).
 4. Lakukan *Backup* database *Production* di Supabase sebelum me-release Tahap 2.
 
-Langkah selanjutnya adalah mengunci **P0-0 - Fondasi Keamanan Produksi** terlebih dahulu, lalu melanjutkan modul Tahap 2 berdasarkan gate bisnis: lokal, kas, hutang/panjar universal, settlement, dan laporan.
+Langkah selanjutnya adalah mengunci **P0-0 - Fondasi Keamanan Produksi** terlebih dahulu, lalu melanjutkan modul Tahap 2 berdasarkan gate bisnis: lokal, kas, Pinjaman/Panjar universal, settlement, dan laporan.
 
 Stack:
 
@@ -423,12 +430,12 @@ Stack:
 
 Kondisi teknis saat ini:
 
-- Role sudah berkembang menjadi `owner`, `super_admin`, `admin_operasional`, dan `admin_keuangan`, tetapi test query role belum lengkap.
+- Tiga role pengguna aktif adalah `admin_operasional` (ditampilkan sebagai Admin), `owner`, dan `super_admin`. `admin_keuangan` dipertahankan sebagai role internal cadangan; smoke test akun Admin dan kontrol RPC sensitif sudah lulus.
 - Modul MVP live masih memakai `master_mitra`, `sopir`, `transaksi_mitra`, `panjar_mitra`, dan tabel kwitansi pembayaran.
 - Schema P0 sudah menambah fondasi lokal: `petani`, `pabrik`, `armada_perusahaan`, `harga_tbs_lokal`, `transaksi_beli_tbs`, `stok_tbs_lokal_ledger`, `pengiriman_lokal_detail`, `hutang_ledger`, `pembayaran_pabrik`, `settlement_mitra`, `pembayaran_mitra`, `biaya_operasional`, `audit_log`, `rekening_kas`, dan `kas_ledger`.
-- Penguatan RLS sudah dimulai tetapi belum boleh dianggap final sampai ada matrix test per role dan per modul.
-- Uang masuk/keluar dasar sudah punya `kas_ledger`: pembelian petani lokal, pembayaran pabrik dari pengiriman lokal, pembayaran mitra lewat kwitansi, biaya operasional, serta hutang/panjar universal.
-- Panjar mitra masih mempertahankan tabel legacy `panjar_mitra`, tetapi input baru sudah disinkronkan ke `hutang_ledger` dan `kas_ledger`. Backfill data panjar legacy lama belum dilakukan.
+- RLS/RPC P0 untuk modul live sudah diperkuat dan diuji. Review ulang tetap menjadi release gate setiap kali tabel atau RPC finansial baru ditambahkan.
+- Uang masuk/keluar dasar sudah punya `kas_ledger`: pembelian petani lokal, pembayaran pabrik dari pengiriman lokal, pembayaran mitra lewat kwitansi, biaya operasional, serta Pinjaman/Panjar universal.
+- Panjar mitra tetap mempertahankan tabel legacy `panjar_mitra`, tetapi input baru sudah disinkronkan ke `piutang_dokumen`, `hutang_ledger`, dan `kas_ledger`. Rekonsiliasi legacy dilakukan per kasus oleh Owner berdasarkan bukti; migrasi massal sengaja tidak dilakukan.
 - Pembayaran pabrik sudah mencatat uang aktual ke kas untuk alur dasar pengiriman lokal. UI alokasi satu pembayaran ke banyak DO belum selesai.
 - `master_mitra` MVP dan `mitra` final perlu mapping/sumber kebenaran sebelum settlement final agar tidak terjadi data ganda.
 
@@ -439,30 +446,30 @@ Prinsip implementasi:
 - Buat fungsi/formula settlement sebagai unit test sebelum UI settlement.
 - Jaga kompatibilitas data lama dengan migration yang eksplisit.
 - Jangan deploy perubahan RLS/policy besar ke production tanpa uji role di staging.
-- Rilis Tahap 2 per gate kecil: security -> kas -> hutang/panjar -> settlement -> laporan.
+- Rilis Tahap 2 per gate kecil: security -> kas -> Pinjaman/Panjar -> settlement -> laporan.
 
 Roadmap gate bisnis:
 
 1. **Gate Keamanan:** role, RLS, RPC, audit, dan no-delete untuk data finansial.
 2. **Gate Operasional Lokal:** pembelian petani, stok, pengiriman lokal, dan pembayaran pabrik stabil.
 3. **Gate Kas:** semua uang aktual masuk/keluar dicatat di `kas_ledger`.
-4. **Gate Hutang/Panjar:** semua pihak yang mengutang atau menerima panjar masuk ledger universal.
-5. **Gate Settlement:** formula mitra, fee history, selisih tonase, potongan armada, dan potongan kasbon dihitung dari data yang sudah terkunci.
-6. **Gate Laporan:** owner melihat kas, hutang/panjar, settlement, laba kas, dan laba estimasi dengan label jelas.
+4. **Gate Pinjaman/Panjar:** semua pihak yang menerima Pinjaman/Panjar dari CB masuk ledger universal.
+5. **Gate Settlement:** formula mitra, fee history, selisih tonase, potongan armada, dan potongan Pinjaman/Panjar dihitung dari data yang sudah terkunci.
+6. **Gate Laporan:** owner melihat kas, Pinjaman/Panjar, settlement, laba kas, dan laba estimasi dengan label jelas.
 7. **Gate Release:** security verification, regression test modul live, backup production, dan rollback checklist.
 
 Tahapan kelayakan produk:
 
-1. **Fase 1 - MVP Operasional Terbatas (status saat ini):**
+1. **Fase 1 - MVP Operasional Terbatas (status historis sebelum 14 Juli 2026):**
    - Boleh dipakai untuk input pengiriman mitra ke pabrik, panjar mitra dasar, kwitansi mitra, laporan mitra, dan koreksi/batal transaksi mitra.
-   - Belum boleh disebut sistem bisnis minimal karena uang masuk, uang keluar, hutang/panjar semua pihak, dan pembayaran aktual belum memakai ledger tunggal.
+   - Belum boleh disebut sistem bisnis minimal karena uang masuk, uang keluar, Pinjaman/Panjar semua pihak, dan pembayaran aktual belum memakai ledger tunggal.
    - Live production boleh berjalan sambil pengembangan lanjut selama perubahan production bersifat kecil, non-destruktif, sudah lolos build, dan sudah diuji di staging jika menyentuh database/policy.
 
 2. **Fase 2 - Sistem Bisnis Minimal:**
    - Target minimum agar web layak dipakai sebagai kontrol bisnis harian, bukan hanya pencatatan pengiriman.
-   - Wajib selesai: P0-0 security gate, no-delete/reversal finansial, pembayaran pabrik dasar, `rekening_kas`, `kas_ledger`, pencatatan semua uang masuk/keluar aktual, hutang/panjar universal, pembayaran mitra dasar yang tercatat ke kas, dan laporan owner dasar untuk kas, hutang/panjar, DO belum dibayar, dan mitra belum dibayar.
-   - Pada fase ini owner boleh memakai laporan kas/hutang sebagai referensi operasional harian, tetapi laba/margin detail masih harus diberi label estimasi jika settlement penuh belum selesai.
-   - Status 14 Juli 2026: Fase 2 minimum sudah diimplementasikan untuk fondasi kas, hutang/panjar universal, biaya, panjar mitra baru, pembayaran mitra dasar, pembayaran pabrik dasar, dan laporan laba kas berbasis `kas_ledger`. Fase ini belum berarti aplikasi utuh karena settlement advanced, bukti/lampiran, limit kasbon, dan alokasi multi-DO masih masuk Fase 3/Fase 4.
+   - Wajib selesai: P0-0 security gate, no-delete/reversal finansial, pembayaran pabrik dasar, `rekening_kas`, `kas_ledger`, pencatatan semua uang masuk/keluar aktual, Pinjaman/Panjar universal, pembayaran mitra dasar yang tercatat ke kas, dan laporan owner dasar untuk kas, Pinjaman/Panjar, DO belum dibayar, dan mitra belum dibayar.
+   - Pada fase ini owner boleh memakai laporan kas dan Pinjaman/Panjar sebagai referensi operasional harian, tetapi laba/margin detail masih harus diberi label estimasi jika settlement penuh belum selesai.
+   - Status 16 Juli 2026: Fase 2 minimum sudah diimplementasikan untuk fondasi kas, Pinjaman/Panjar universal, dokumen dan persetujuan pinjaman, biaya, pembayaran mitra dasar, pembayaran pabrik dasar, serta Ringkasan Arus Kas berbasis `kas_ledger`. Fase ini belum berarti aplikasi utuh karena settlement lanjutan, lampiran bukti, batas pinjaman, dan alokasi multi-DO masih masuk Fase 3/Fase 4.
 
 3. **Fase 3 - Sistem Operasional Lengkap:**
    - Target agar seluruh alur utama sawit berjalan rapi: petani lokal, stok lokal, pengiriman lokal, pembayaran pabrik multi-DO, settlement mitra, fee history, tarif armada, biaya bantuan, audit/reversal, laporan operasional, dan export.
@@ -707,7 +714,7 @@ Task:
 - [x] Catat pembayaran mitra, pembayaran petani, biaya operasional, kasbon/panjar, dan gaji/fee sebagai `kas_keluar` pada flow Fase 2 minimum.
 - [ ] Tambahkan nomor referensi/bukti untuk transaksi kas: transfer, kwitansi, catatan kas, atau lampiran.
 - [x] Tambahkan validasi agar transaksi kas tidak bisa negatif pada RPC kas/hutang/biaya/pembayaran dasar. Tutup kas periodik belum dibuat.
-- [x] Siapkan reversal kas untuk koreksi transaksi yang salah pada hutang/panjar, biaya, pembelian, dan panjar mitra baru.
+- [x] Siapkan reversal kas untuk koreksi transaksi yang salah pada Pinjaman/Panjar, biaya, pembelian, dan panjar mitra baru.
 - [x] Tambahkan ringkasan total masuk, total keluar, dan net per periode/rekening di `/keuangan/kas`. Saldo awal/akhir tutup kas masuk Fase 3.
 
 Acceptance:
@@ -721,7 +728,7 @@ Acceptance:
 
 ## P0B - Alur Mitra dan Settlement
 
-Tujuan: pisahkan mitra, pengiriman mitra, settlement per DO, Fee Owner history, kasbon mitra, biaya armada, dan bukti pembayaran.
+Tujuan: pisahkan mitra, pengiriman mitra, settlement per DO, Fee Owner history, Panjar Mitra, biaya armada, dan bukti pembayaran.
 
 ### P0B.0 Pengaturan Bisnis
 
@@ -738,14 +745,14 @@ Acceptance:
 
 - [ ] Persentase selisih perusahaan + mitra selalu 100%.
 - [ ] Admin operasional/admin keuangan hanya bisa melihat pengaturan yang dibutuhkan untuk input.
-- [ ] Settlement, kasbon, dashboard, dan laporan memakai pengaturan aktif.
+- [ ] Settlement, batas Pinjaman/Panjar, dashboard, dan laporan memakai pengaturan aktif.
 
 ### P0B.1 Master Mitra
 
 - [x] Buat tabel `mitra`.
 - [ ] Buat halaman `/master/mitra` atau pisahkan dari `/master/petani`.
 - [ ] Migrasikan data mitra jika sebelumnya tersimpan sebagai petani.
-- [ ] Tambahkan field boleh kasbon, batas kasbon, rekening, persentase selisih tonase.
+- [ ] Tambahkan pengaturan boleh Pinjaman/Panjar, batas pinjaman, rekening, dan persentase selisih tonase. Nama field teknis legacy dapat tetap `boleh_kasbon`/`batas_kasbon`.
 - [ ] Tambah ringkasan tonase, nilai pabrik, fee, hak mitra, dibayar, sisa bayar.
 
 Acceptance:
@@ -796,7 +803,7 @@ Dependency:
 
 - Pembayaran pabrik dan status DO sudah jelas.
 - Fee history sudah berjalan dan bisa mengambil nilai berdasarkan tanggal pengiriman/DO.
-- Hutang/panjar universal sudah punya pola potongan yang tidak double count.
+- Pinjaman/Panjar universal sudah punya pola potongan yang tidak double count.
 - Fungsi kalkulasi wajib dibuat dan diuji sebelum UI settlement final.
 
 - [ ] Implement fungsi kalkulasi settlement terpisah dari UI.
@@ -809,7 +816,7 @@ Dependency:
   - [ ] tonase dasar settlement lebih besar dari timbang mitra
   - [ ] fee per kg
   - [ ] potongan armada
-  - [ ] potongan kasbon
+  - [ ] potongan Pinjaman/Panjar
   - [ ] pembulatan rupiah
 - [ ] Snapshot hasil settlement ke `settlement_mitra`.
 - [ ] Gunakan `tonase_dasar_settlement`.
@@ -821,21 +828,21 @@ Acceptance:
 - [ ] Semua nilai rupiah dibulatkan ke rupiah terdekat.
 - [ ] Hak mitra tidak negatif tanpa approval owner/super_admin.
 
-### P0B.5 Hutang/Panjar Universal
+### P0B.5 Pinjaman & Panjar Universal
 
-Tujuan: panjar, kasbon, pinjaman, dan pembayaran balik untuk petani, mitra, sopir, karyawan, atau pihak lain dicatat dalam satu pola ledger.
+Tujuan: panjar, pinjaman, dan pengembalian untuk petani, mitra, sopir, karyawan, atau pihak lain dicatat dalam satu pola ledger. Nama `hutang_ledger` dan enum `kasbon_*` dipertahankan sebagai kontrak teknis legacy, bukan istilah UI.
 
 Dependency:
 
 - P0A.8 `kas_ledger` sudah tersedia untuk mencatat uang keluar/masuk aktual.
-- P0-0 security gate untuk tabel hutang/panjar dan kas sudah lolos staging.
+- P0-0 security gate untuk tabel Pinjaman/Panjar dan kas sudah lolos staging.
 
 Keputusan desain:
 
 - `hutang_ledger` dikembangkan menjadi ledger pihak universal, atau dibuat ledger baru yang kompatibel dengan data hutang petani lama.
 - `panjar_mitra` tidak menjadi sumber utama jangka panjang; data lama dipertahankan sebagai legacy, dimigrasikan, atau disinkronkan ke ledger universal.
 - Saldo pihak dihitung dari mutasi ledger, bukan dari field saldo manual.
-- Kasbon/panjar yang dibayar tunai atau transfer harus sekaligus membuat mutasi `kas_ledger`.
+- Pinjaman/panjar yang diserahkan tunai atau transfer harus sekaligus membuat mutasi `kas_ledger`.
 - Potongan saat settlement/kwitansi hanya membuat mutasi pelunasan, tidak boleh memotong saldo dua kali.
 
 Task:
@@ -844,42 +851,47 @@ Task:
 - [x] Tambahkan `pihak_type`: `petani`, `mitra`, `sopir`, `karyawan`, `lainnya`.
 - [x] Tambahkan referensi pihak nullable (`petani_id`, `master_mitra_id`, `sopir_id`, `mitra_id` legacy) dan `pihak_nama_manual` untuk pihak non-master.
 - [x] Tambahkan kategori mutasi: kasbon/panjar, pembayaran balik, potongan settlement/kwitansi, koreksi, reversal, dan kategori operasional dasar.
-- [x] Tambah form kasbon/panjar universal dengan pilihan pihak dan sumber kas/rekening.
-- [ ] Tambah batas kasbon per pihak atau per tipe pihak.
-- [ ] Implement `blokir_otomatis` atau `wajib_approval` sesuai pengaturan bisnis.
-- [x] Integrasikan kasbon/panjar dengan `kas_ledger` saat uang benar-benar keluar.
-- [x] Integrasikan pengembalian kasbon/panjar dengan `kas_ledger` saat uang benar-benar masuk.
+- [x] Tambah form Pinjaman/Panjar universal dengan pilihan pihak dan sumber kas/rekening.
+- [ ] Tambah batas pinjaman per pihak atau per tipe pihak.
+- [ ] Implement `blokir_otomatis` atau persetujuan tambahan berbasis batas sesuai pengaturan bisnis. Persetujuan Owner untuk setiap pengajuan sudah aktif.
+- [x] Integrasikan Pinjaman/Panjar dengan `kas_ledger` saat uang benar-benar diserahkan.
+- [x] Integrasikan pengembalian Pinjaman/Panjar dengan `kas_ledger` saat uang benar-benar masuk.
 - [x] Potong saldo mitra saat kwitansi melalui ledger universal. Settlement advanced tetap Fase 3.
-- [ ] Migrasikan atau backfill `panjar_mitra` aktif ke ledger universal tanpa mengubah histori pembayaran.
-- [x] Tambahkan halaman ringkasan saldo per pihak dan riwayat mutasi. Status melewati limit menunggu fitur limit kasbon.
+- [x] Sediakan rekonsiliasi terkontrol per kasus untuk `panjar_mitra` legacy tanpa mengubah histori pembayaran atau membuat kas keluar baru. Migrasi massal tidak dilakukan agar data lama tidak diubah tanpa bukti.
+- [x] Tambahkan halaman ringkasan sisa per pihak dan riwayat mutasi. Status melewati batas menunggu fitur batas pinjaman.
 
 Acceptance:
 
-- [x] Saldo kasbon/panjar semua pihak dihitung dari ledger universal untuk transaksi baru Fase 2.
-- [x] Petani, mitra, sopir, karyawan, dan pihak lain bisa dicatat utang/kasbonnya.
-- [x] Kasbon/panjar yang mengeluarkan uang tercatat juga sebagai `kas_keluar`.
-- [x] Pengembalian kasbon/panjar tercatat juga sebagai `kas_masuk`.
+- [x] Sisa Pinjaman/Panjar semua pihak dihitung dari ledger universal untuk transaksi baru Fase 2.
+- [x] Petani, mitra, sopir, karyawan, dan pihak lain bisa dicatat Pinjaman/Panjarnya.
+- [x] Pinjaman/Panjar yang benar-benar diserahkan tercatat juga sebagai `kas_keluar`.
+- [x] Pengembalian Pinjaman/Panjar tercatat juga sebagai `kas_masuk`.
 - [x] Potongan kwitansi tidak double count untuk panjar mitra baru yang tersambung ke ledger. Settlement advanced tetap Fase 3.
-- [ ] Kasbon melewati batas butuh role owner/super_admin atau ditolak.
-- [ ] Histori panjar mitra lama tetap bisa ditelusuri setelah migrasi.
+- [ ] Pinjaman melewati batas membutuhkan persetujuan tambahan Owner/Super Admin atau ditolak. Batas nominal belum tersedia.
+- [x] Histori panjar mitra lama yang direkonsiliasi tetap dapat ditelusuri dari **Riwayat Lunas** ke Kwitansi TBS.
 
 #### P0B.5a Dokumen, Persetujuan, dan Role Pinjaman (16 Juli 2026)
 
 - [x] Ubah istilah UI menjadi **Pinjaman & Panjar** agar mudah dipahami; istilah teknis akuntansi/database tetap piutang.
-- [x] Pisahkan Panjar Mitra, Kasbon Karyawan, Kasbon Sopir, Panjar Petani, dan Pinjaman Pihak Lain.
-- [x] Cegah Dana Trip dipilih sebagai kasbon sopir.
+- [x] Pisahkan Panjar Mitra, Pinjaman Karyawan, Pinjaman Sopir, Panjar Petani, dan Pinjaman Pihak Lain pada UI; enum teknis lama tetap kompatibel.
+- [x] Cegah Dana Trip dipilih sebagai Pinjaman Sopir.
 - [x] Tambah workflow pengajuan -> persetujuan Owner -> penyerahan uang; kas baru bergerak pada penyerahan.
 - [x] Admin dapat mengajukan, menyerahkan yang sudah disetujui, mencatat pengembalian, melihat status, dan mencetak bukti.
 - [x] Owner/Super Admin dapat menyetujui, menolak, membatalkan dokumen, dan membatalkan pengembalian melalui reversal.
 - [x] Tambah nomor bukti dan snapshot nama/kode/kontak penerima agar arsip tidak berubah saat master diedit.
-- [x] Tambah **Bukti Pemberian Panjar/Kasbon** dan **Bukti Pengembalian Uang** yang berbeda dari Kwitansi Pembayaran TBS.
+- [x] Tambah bukti pemberian sesuai jenis Pinjaman/Panjar dan **Bukti Pengembalian Uang** yang berbeda dari Kwitansi Pembayaran TBS.
 - [x] Integrasikan Panjar Mitra yang diserahkan ke `panjar_mitra`, `hutang_ledger`, dan `kas_ledger` agar tetap dipotong oleh kwitansi.
 - [x] Tambah alokasi pengembalian parsial untuk karyawan, sopir, petani, dan pihak lain.
 - [x] Tambah reversal pengembalian; histori finansial tidak dihapus.
 - [x] Tambah rekonsiliasi Owner-only untuk panjar legacy yang sudah dipotong kwitansi tetapi belum memiliki catatan pemberian awal; backfill tidak membuat mutasi kas baru.
 - [x] Arsipkan hasil rekonsiliasi legacy ke Dokumen & Riwayat Pinjaman dan hubungkan kembali ke periode Kwitansi TBS.
+- [x] Aktifkan migration `20260716100224_add_piutang_document_approval_workflow.sql`.
+- [x] Aktifkan migration `20260716101654_complete_piutang_repayment_reversal_sync.sql`.
+- [x] Aktifkan migration `20260716104718_add_legacy_loan_reconciliation_control.sql`.
+- [x] Aktifkan migration `20260716110212_expand_audit_actions_for_loan_workflow.sql`.
+- [x] Aktifkan migration `20260716110725_archive_reconciled_legacy_loans.sql`.
 - [ ] Tambah unggah bukti transfer/foto dokumen bertanda tangan ke Supabase Storage.
-- [ ] Tambah aturan batas kasbon per pihak dan laporan umur piutang.
+- [ ] Tambah aturan batas pinjaman per pihak dan laporan umur pinjaman.
 - [ ] Kembangkan alokasi parsial Panjar Mitra saat hak TBS lebih kecil daripada sisa panjar.
 
 ### P0B.6 Biaya Bantuan Mitra dan Armada
@@ -965,7 +977,7 @@ Acceptance:
 - [x] Tampilkan Fee Owner bruto mitra dari snapshot transaksi MVP.
 - [ ] Tampilkan potongan armada, biaya aktual, koreksi selisih.
 - [x] Tambahkan laporan kas masuk/keluar per rekening dan periode dari `kas_ledger` melalui `/keuangan/kas`.
-- [x] Tambahkan laporan saldo hutang/panjar per pihak dari ledger universal melalui `/keuangan/hutang`.
+- [x] Tambahkan laporan sisa Pinjaman/Panjar per pihak dari ledger universal melalui `/keuangan/hutang`.
 - [ ] Tambahkan rekonsiliasi pembayaran pabrik: tagihan DO vs uang aktual diterima.
 - [x] Sembunyikan dari admin biasa.
 
@@ -991,7 +1003,7 @@ Acceptance:
 
 Acceptance:
 
-- [ ] Laporan harian menampilkan kas, stok/TBS lokal, DO pabrik, settlement mitra, hutang/kasbon.
+- [ ] Laporan harian menampilkan kas, stok/TBS lokal, DO pabrik, settlement mitra, dan Pinjaman/Panjar.
 - [ ] Laporan mitra menampilkan anomali tonase.
 
 ### P0C.5 Security Verification and Release Gate
@@ -1020,7 +1032,7 @@ Acceptance:
 - [x] Membuka halaman Fase 2 minimum yang sudah siap dipakai dan menyesuaikan sidebar berdasarkan role keuangan/owner.
 - [x] Hapus judul konten duplikat di halaman utama; title halaman cukup dari AppShell/top bar, area konten menyisakan deskripsi, filter, dan aksi.
 - [x] Perbesar logo kwitansi cetak dan preview pengaturan web agar proporsinya lebih dominan dan seimbang dengan judul kwitansi.
-- [ ] Pastikan label UI memakai istilah final: petani lokal, mitra, DO, settlement, kasbon, laba kas, laba estimasi.
+- [ ] Pastikan label UI memakai istilah final: petani lokal, mitra, DO, settlement, Pinjaman/Panjar, Ringkasan Arus Kas, dan laba estimasi.
 - [ ] Pastikan menu dan judul halaman mengikuti role baru.
 
 Acceptance:
@@ -1063,15 +1075,15 @@ Mapping fase:
 6. Finalisasi alur lokal yang sudah ada: pembelian petani, stok ledger, pengiriman lokal, sortasi lokal di laporan owner.
 7. Pembayaran pabrik dasar: UI alokasi satu pembayaran ke satu/banyak DO, validasi alokasi, dan status pembayaran DO.
 8. Buku Kas: `rekening_kas`, `kas_ledger`, uang masuk pabrik, uang keluar dasar, koreksi/reversal kas.
-9. Hutang/panjar universal: petani, mitra, sopir, karyawan, pihak lain; integrasi dengan `kas_ledger`.
+9. Pinjaman/Panjar universal: petani, mitra, sopir, karyawan, pihak lain; integrasi dengan `kas_ledger`.
 10. Mapping master mitra: putuskan sumber kebenaran `master_mitra` MVP vs `mitra` final sebelum settlement final.
 11. Pembayaran mitra dasar: status bayar dari kwitansi/panjar masuk ke `kas_ledger`, tanpa menunggu settlement advanced.
-12. Fee history dan pengaturan bisnis settlement: fee, persentase selisih, toleransi anomali, limit kasbon.
+12. Fee history dan pengaturan bisnis settlement: fee, persentase selisih, toleransi anomali, dan batas pinjaman.
 13. Formula settlement mitra + unit test sebelum UI settlement.
 14. Biaya armada/bantuan mitra dan tarif armada history.
 15. UI settlement dan pembayaran mitra final, termasuk bukti pembayaran/kwitansi.
 16. Audit/reversal menyeluruh untuk stok, kas, hutang, pembayaran, settlement, dan pengaturan.
-17. Laporan owner dan operasional berbasis Buku Kas: kas, DO pabrik, hutang/panjar, settlement, laba kas, laba estimasi.
+17. Laporan owner dan operasional berbasis Buku Kas: kas, DO pabrik, Pinjaman/Panjar, settlement, laba kas, dan laba estimasi.
 18. Security verification/release gate sebelum production.
 19. Cleanup encoding, label final, dan polish UI.
 
@@ -1088,10 +1100,10 @@ Mapping fase:
 - [ ] Dua transaksi beli bersamaan tidak bentrok nomor struk.
 - [ ] Dua pengiriman lokal bersamaan tidak over-allocate stok.
 - [ ] Hutang petani tidak double count setelah potong TBS.
-- [x] Hutang/panjar petani, mitra, sopir, karyawan, dan pihak lain dihitung dari ledger universal untuk transaksi baru.
-- [x] Hutang/panjar mitra tidak double count setelah kwitansi untuk flow Fase 2 minimum. Settlement advanced belum diuji.
-- [x] Kasbon/panjar keluar tercatat di ledger pihak dan `kas_ledger`.
-- [x] Pengembalian kasbon/panjar tercatat di ledger pihak dan `kas_ledger`.
+- [x] Pinjaman/Panjar petani, mitra, sopir, karyawan, dan pihak lain dihitung dari ledger universal untuk transaksi baru.
+- [x] Pinjaman/Panjar mitra tidak double count setelah kwitansi untuk flow Fase 2 minimum. Settlement advanced belum diuji.
+- [x] Pinjaman/Panjar yang diserahkan tercatat di ledger pihak dan `kas_ledger`.
+- [x] Pengembalian Pinjaman/Panjar tercatat di ledger pihak dan `kas_ledger`.
 - [x] Pembayaran pabrik tercatat sebagai uang masuk aktual dan bisa ditelusuri ke DO/pengiriman dasar. Alokasi multi-DO belum selesai.
 - [x] Laba Kas tidak memasukkan DO yang belum benar-benar dibayar pabrik.
 - [ ] Persentase selisih tonase tidak bisa disimpan jika totalnya bukan 100%.
