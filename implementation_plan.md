@@ -2,6 +2,28 @@
 
 Dokumen ini adalah plan ringkas yang menyambungkan `PRD-final.md` dan `IMPLEMENTATION-TASKS.md`.
 
+## Audit Lintas Halaman - 16 Juli 2026
+
+Audit lengkap tersedia di `docs/page-flow-control-audit-2026-07-16.md`. Audit mencakup route, role, tombol, query, RPC, snapshot, ledger, laporan, dan data remote.
+
+Keputusan pengembangan setelah audit:
+
+1. Tunda add-on finansial baru sampai release gate audit P0 selesai.
+2. Amankan RLS dan fungsi audit agar role operasional tidak dapat mengubah atau membaca data di luar kewenangannya.
+3. Kunci transaksi yang sudah masuk kwitansi atau Dana Trip, lalu sediakan alur koreksi/reversal yang menjaga kas dan laporan tetap seimbang.
+4. Pisahkan istilah **Berat Netto** dan **Berat Dibayar** di kwitansi agar angka tidak berubah arti setelah pembayaran.
+5. Betulkan laporan Pendapatan Owner dan definisikan ulang halaman Laba/Rugi sebagai laporan arus kas sampai akuntansi periodenya tersedia.
+
+Temuan data remote yang menjadi release gate:
+
+- Ada 1 transaksi batal yang masih terhubung ke kwitansi aktif dan sudah dibayar.
+- Ada 8 kwitansi dibayar yang header tonasenya memakai Berat Netto, sedangkan rincian pembayaran memakai Berat Dibayar.
+- Ada 19 pasangan periode fee yang tumpang tindih pada 13 mitra.
+- Ada 3 kelompok plat aktif duplikat setelah normalisasi dan 1 armada aktif tanpa plat.
+- Seluruh pembayaran mitra/pabrik yang diperiksa sudah memiliki pasangan Buku Kas dengan nominal yang sesuai.
+
+Status **selesai** di bawah ini hanya berlaku untuk scope Armada CB tanggal 15 Juli 2026. Status tersebut tidak menggantikan release gate audit lintas halaman di atas.
+
 ## Status Implementasi - Selesai 15 Juli 2026
 
 - P0 selesai: alur Armada First, pemisahan Mitra Transaksi, dan rumus sewa kotor sudah aktif.
@@ -13,6 +35,7 @@ Dokumen ini adalah plan ringkas yang menyambungkan `PRD-final.md` dan `IMPLEMENT
 - Sinkronisasi tagihan saat mitra/tanggal berubah aktif: `20260715124759_sync_dana_trip_ledger_on_route_change.sql`.
 - Snapshot sewa kwitansi dibekukan melalui `20260715113428_freeze_kwitansi_sewa_snapshots.sql`; detail kwitansi dibayar tidak lagi mengambil nominal dari transaksi live.
 - RPC finansial lama dibersihkan melalui `20260715114309_repair_financial_rpc_lint.sql` dan `20260715114553_repair_kwitansi_panjar_audit_field.sql`; remote DB lint kini lulus tanpa error.
+- Peringatan palsu **Perlu Cek** pada transaksi berpotongan diperbaiki: halaman Pengiriman Mitra membandingkan `berat_dibayar_kg` dengan `berat_dibayar_snapshot`, bukan dengan berat netto lama.
 - Verifikasi: lint dan production build lulus; remote memiliki dua trigger aktif dan tidak ada baris sewa yang totalnya berbeda dari sewa kotor.
 - Tarif owner per 15 Juli 2026 disiapkan untuk `SL`, `BL`, `SL/F`, `SL/BS`, `SL/MLD`, dan `BL/ML`. Tarif mitra lain tetap `Rp0` sampai dikonfirmasi.
 
@@ -111,6 +134,15 @@ Dana satu kali jalan dicatat sebagai Dana Operasional Trip pada P1.
 - Sistem menyimpan sewa standar dan selisih historis sebagai metadata audit tanpa mengubah Buku Kas.
 - Koreksi kwitansi dilakukan dengan pembatalan dan penerbitan kwitansi baru, bukan mengedit item snapshot.
 
+### P0 - Penanganan Status Perlu Cek
+
+- **Perlu Cek** hanya muncul jika berat/nilai transaksi berbeda dari snapshot, header pembayaran memang ditandai review, atau pembayaran belum terhubung ke Buku Kas.
+- Pengiriman Mitra menampilkan alasan awam dan tombol **Periksa kwitansi** yang membawa admin ke mitra serta periode terkait.
+- Transaksi baru setelah kwitansi sebelumnya terbit tetap berstatus **Belum Dibayar** dan masuk kwitansi berikutnya; kondisi ini bukan kesalahan kwitansi lama.
+- Admin tidak boleh menghapus peringatan dengan checkbox bebas.
+- Jika snapshot benar dan data transaksi salah, koreksi harus melalui alur pembatalan/reversal pembayaran, lalu terbitkan kwitansi baru.
+- Alur reversal pembayaran mitra merupakan P0 finansial berikutnya karena wajib membalik kas keluar dan pelunasan panjar secara atomik serta menyimpan alasan dan audit log.
+
 ### UI Pengiriman Mitra
 
 - Ubah halaman menjadi Data Grid + Quick Add Modal.
@@ -148,6 +180,8 @@ Dana satu kali jalan dicatat sebagai Dana Operasional Trip pada P1.
 6. Pastikan Sewa Armada CB = Berat Netto x Tarif, tanpa dikurangi perongkosan.
 7. Pastikan kwitansi memotong sewa Armada CB dari hak mitra.
 8. Pastikan pendapatan owner membaca sewa Armada CB dengan arti yang sama.
+9. Pastikan transaksi berpotongan yang tidak berubah tetap berstatus Sudah Dibayar.
+10. Ubah berat atau nilai transaksi yang sudah dibayar pada data uji dan pastikan alasan Perlu Cek serta pintasan kwitansi tampil.
 
 ### P1
 

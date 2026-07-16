@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
 import AppShell from '@/components/layout/AppShell';
 import SearchableCombobox from '@/components/ui/SearchableCombobox';
 import SortableHeader from '@/components/ui/SortableHeader';
@@ -24,7 +25,7 @@ import {
   resolveTotalNilaiBersihMitra,
 } from '@/lib/transaksi-mitra-calculations';
 import { formatDateDisplay, formatRupiah, formatWaktu, getTimestampMs, getTodayISO } from '@/lib/utils';
-import { Ban, Pencil, RefreshCw, Plus } from 'lucide-react';
+import { Ban, Pencil, ReceiptText, RefreshCw, Plus } from 'lucide-react';
 
 const SOPIR_AKTUAL_DEFAULT = 'default';
 const SOPIR_AKTUAL_MASTER = 'master';
@@ -98,9 +99,7 @@ function getPaymentBadge(row) {
     return {
       className: 'badge-warning',
       label: 'Perlu Cek',
-      detail: row.payment
-        ? `Kwitansi ${formatDateDisplay(row.payment.tanggal_bayar)} ${formatWaktu(row.payment.dibayar_at)}`
-        : 'Kwitansi perlu dicek',
+      detail: row.payment_review_reason || 'Data pembayaran perlu diperiksa',
     };
   }
 
@@ -119,6 +118,14 @@ function getPaymentBadge(row) {
     label: 'Belum Dibayar',
     detail: 'Belum masuk kwitansi',
   };
+}
+
+function getKwitansiHref(row) {
+  const params = new URLSearchParams();
+  if (row.mitra_id) params.set('mitra', row.mitra_id);
+  if (row.payment?.periode_dari || row.tanggal) params.set('dari', row.payment?.periode_dari || row.tanggal);
+  if (row.payment?.periode_sampai || row.tanggal) params.set('sampai', row.payment?.periode_sampai || row.tanggal);
+  return `/owner/kwitansi-mitra?${params.toString()}`;
 }
 
 export default function RiwayatPengirimanMitraPage() {
@@ -212,10 +219,14 @@ export default function RiwayatPengirimanMitraPage() {
           .select(`
             transaksi_mitra_id,
             tonase_snapshot,
+            berat_netto_snapshot,
+            potongan_snapshot,
+            berat_dibayar_snapshot,
             total_nilai_bersih_snapshot,
             pembayaran:pembayaran_mitra_kwitansi (
               id, status, tanggal_bayar, dibayar_at, metode_bayar, nominal_dibayar,
-              kas_ledger_id, penerima_label, mode_pembayaran
+              kas_ledger_id, penerima_label, mode_pembayaran, review_reason,
+              periode_dari, periode_sampai
             )
           `)
           .in('transaksi_mitra_id', trxIds);
@@ -235,15 +246,26 @@ export default function RiwayatPengirimanMitraPage() {
           const hasMissingCashLedger = payment?.status === 'dibayar'
             && Number(payment?.nominal_dibayar || 0) > 0
             && !payment?.kas_ledger_id;
-          const hasChangedAfterPayment = payment
-            && (
-              Math.round(resolveBeratDibayar(row) * 100) !== Math.round(Number(paymentItem.berat_dibayar_snapshot ?? paymentItem.tonase_snapshot ?? 0) * 100)
-              || Math.round(resolveTotalNilaiBersihMitra(row)) !== Math.round(Number(paymentItem.total_nilai_bersih_snapshot || 0))
-            );
+          const hasWeightChanged = Boolean(payment)
+            && Math.round(resolveBeratDibayar(row) * 100)
+              !== Math.round(Number(paymentItem.berat_dibayar_snapshot ?? paymentItem.tonase_snapshot ?? 0) * 100);
+          const hasValueChanged = Boolean(payment)
+            && Math.round(resolveTotalNilaiBersihMitra(row))
+              !== Math.round(Number(paymentItem.total_nilai_bersih_snapshot || 0));
+          const hasChangedAfterPayment = hasWeightChanged || hasValueChanged;
+          const reviewReasons = [
+            payment?.status === 'perlu_review'
+              ? payment.review_reason || 'Kwitansi ditandai untuk diperiksa oleh bagian keuangan'
+              : '',
+            hasWeightChanged ? 'Berat transaksi berbeda dari berat pada kwitansi' : '',
+            hasValueChanged ? 'Nilai transaksi berbeda dari nilai pada kwitansi' : '',
+            hasMissingCashLedger ? 'Pembayaran belum terhubung ke Buku Kas' : '',
+          ].filter(Boolean);
 
           return {
             ...row,
             payment,
+            payment_review_reason: reviewReasons.join('. '),
             payment_status: payment?.status === 'perlu_review' || hasChangedAfterPayment || hasMissingCashLedger
               ? 'perlu_review'
               : payment?.status === 'dibayar'
@@ -633,7 +655,10 @@ export default function RiwayatPengirimanMitraPage() {
         <div>
           <p className="page-description">Daftar transaksi detail untuk koreksi input dan pembatalan tanpa hapus data</p>
         </div>
-        <div style={{ display: 'flex', gap: 12 }}>
+        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+          <Link className="btn btn-outline" href="/owner/kwitansi-mitra">
+            <ReceiptText size={18} /> Buka Kwitansi Mitra
+          </Link>
           <button className="btn btn-outline" onClick={loadData} disabled={loading}>
             <RefreshCw size={18} /> Muat Ulang
           </button>
@@ -763,6 +788,14 @@ export default function RiwayatPengirimanMitraPage() {
                       <div style={{ color: 'var(--text-tertiary)', fontSize: 12, marginTop: 2 }}>
                         {row.payment.penerima_label}
                       </div>
+                    )}
+                    {row.payment_status === 'perlu_review' && (
+                      <Link
+                        href={getKwitansiHref(row)}
+                        style={{ display: 'inline-flex', alignItems: 'center', gap: 5, marginTop: 7, fontSize: 12, fontWeight: 700 }}
+                      >
+                        <ReceiptText size={14} /> Periksa kwitansi
+                      </Link>
                     )}
                   </td>
                   <td style={{ textAlign: 'right', fontWeight: 700 }}>

@@ -2,6 +2,53 @@
 
 Dokumen ini menurunkan `PRD-final.md` menjadi task implementasi teknis berdasarkan kondisi repo saat ini.
 
+## P0 Audit Lintas Halaman - 16 Juli 2026
+
+Referensi temuan dan alasan bisnis: `docs/page-flow-control-audit-2026-07-16.md`.
+
+### P0-A - Hak Akses dan Audit Trail
+
+- [ ] Terapkan tiga role aktif saat ini: **Admin**, **Owner**, dan **Super Admin**; pertahankan `admin_keuangan` sebagai role internal cadangan untuk ekspansi staf.
+- [ ] Buat matriks izin per aksi: Admin untuk pencatatan rutin, Owner untuk approval/reversal/pengaturan bisnis, dan Super Admin untuk administrasi teknis.
+- [ ] Ganti policy `Authenticated full access` pada `master_mitra` dan `transaksi_mitra` dengan matriks role yang eksplisit.
+- [ ] Cabut grant `DELETE`/`TRUNCATE` yang tidak dibutuhkan dari role aplikasi.
+- [ ] Batasi `write_audit_log` agar hanya menerima actor dari sesi login dan tidak dapat dipanggil `anon`.
+- [ ] Tambahkan route guard server untuk halaman owner, keuangan, master, dan laporan sensitif.
+- [ ] Pastikan Admin tetap dapat menambah Sopir/Armada dari form pengiriman melalui RPC/RLS terkontrol dengan status `perlu_verifikasi`.
+- [ ] Simpan `dibuat_oleh`, waktu pembuatan, dan status verifikasi pada master operasional baru; larang hard delete jika sudah dipakai transaksi.
+
+### P0-B - Koreksi Setelah Pembayaran
+
+- [ ] Larang edit/cancel langsung untuk transaksi yang sudah masuk kwitansi aktif atau Dana Trip yang sudah dibayar.
+- [ ] Buat RPC koreksi/reversal transaksi yang membalik kas, pembayaran, panjar, dan ledger secara atomik.
+- [ ] Tandai kwitansi `perlu_review` otomatis di database jika transaksi sumber berubah atau dibatalkan.
+- [ ] Selesaikan 1 transaksi batal yang masih berada dalam kwitansi aktif dan dibayar melalui prosedur koreksi terkontrol.
+
+### P0-C - Konsistensi Angka dan Istilah
+
+- [ ] Simpan dan tampilkan `total_berat_netto` serta `total_berat_dibayar` sebagai angka berbeda pada kwitansi.
+- [ ] Perbaiki 8 header kwitansi lama yang arti tonasenya tidak sama dengan rincian pembayaran.
+- [ ] Perbaiki laporan Pendapatan Owner: nilai Bruto per mitra harus mengikuti definisi kartu total dan sorting tonase memakai field yang benar.
+- [ ] Hindari pemakaian Harga Pabrik terbaru untuk mencocokkan pembayaran periode lama; gunakan harga nota/snapshot periode.
+- [ ] Cegah periode fee tumpang tindih dan rapikan 19 overlap pada 13 mitra.
+
+### P0-D - Kontrol Kas
+
+- [ ] Tambahkan pembatalan/reversal untuk kas manual dengan alasan, actor, waktu, dan referensi asal.
+- [ ] Wajibkan atau jelaskan Nomor Bukti pada transaksi finansial sesuai metode pembayaran.
+- [ ] Tampilkan saldo awal, mutasi, dan saldo akhir; jangan menyebut net periode sebagai saldo.
+- [ ] Kunci koreksi Armada CB/sopir setelah Dana Trip dibayar atau arahkan ke alur koreksi.
+
+### P1 - Perapian Workflow dan UX
+
+- [ ] Ubah halaman Laba/Rugi saat ini menjadi **Ringkasan Arus Kas** sampai laporan laba/rugi akrual tersedia.
+- [ ] Jadikan Panjar Mitra lama read-only/redirect agar satu pintu tetap berada di Hutang & Panjar Semua Pihak.
+- [ ] Redirect atau beri status pengembangan pada Laporan Harian yang disembunyikan.
+- [ ] Tambahkan pagination dan indikator keterbatasan data pada halaman yang masih memakai limit tetap.
+- [ ] Rapikan data plat duplikat, armada tanpa plat, dan transaksi tanpa relasi sopir.
+
+Release belum dinyatakan siap hanya berdasarkan selesainya fitur Armada CB; seluruh task P0 audit di atas adalah gerbang rilis finansial berikutnya.
+
 ## Aturan Pencatatan Implementasi
 
 Setiap perubahan yang sudah diimplementasikan wajib tercatat di dokumen ini agar status MVP, migration, UI, dan backlog tidak tercecer.
@@ -251,7 +298,10 @@ Task:
 - [x] Tambah filter pembayaran di `/owner/laporan-mitra`.
 - [ ] Tambah ringkasan mitra sudah/belum dibayar untuk periode tertentu.
 - [x] Jika transaksi dalam batch diedit setelah pembayaran, tampilkan badge **Perlu Review** di kwitansi dan laporan.
-- [ ] Tambah alur pembatalan/reversal pembayaran mitra jika pembayaran salah ditandai.
+- [x] Perbaiki pembanding status agar berat setelah potongan dibandingkan dengan `berat_dibayar_snapshot`, bukan `tonase_snapshot`.
+- [x] Tampilkan alasan awam dan pintasan **Periksa kwitansi** dari Pengiriman Mitra dengan mitra/periode terisi otomatis.
+- [ ] Tambah RPC pembatalan/reversal pembayaran mitra jika pembayaran salah ditandai: reversal kas, buka kembali panjar, status batal, alasan, dan audit log harus satu transaksi database.
+- [ ] Kunci edit langsung transaksi yang sudah masuk kwitansi; arahkan ke alur koreksi/reversal.
 
 Acceptance:
 

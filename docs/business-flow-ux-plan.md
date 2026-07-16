@@ -347,7 +347,18 @@ Status tindak lanjut:
 | --- | --- | --- |
 | Belum Dibayar | Transaksi aktif belum masuk snapshot kwitansi bayar. | Masuk antrian pembayaran di Kwitansi Mitra. |
 | Sudah Dibayar | Transaksi sudah masuk `pembayaran_mitra_kwitansi_item` dan header kwitansi berstatus dibayar. | Arsipkan sebagai sudah lunas, cetak/kirim ulang dari Kwitansi Mitra bila diperlukan. |
-| Perlu Review | Ada transaksi baru, batal, atau berubah setelah kwitansi dibayar. | Owner/Keuangan wajib cek ulang sebelum mencetak ulang atau membuat revisi kwitansi. |
+| Perlu Cek | Berat/nilai transaksi berbeda dari snapshot kwitansi, pembayaran ditandai review, atau kas keluar belum terhubung. | Klik **Periksa kwitansi**, baca penyebab dan cocokkan bukti sebelum melakukan koreksi/reversal. |
+
+Transaksi baru yang masuk pada tanggal sama setelah kwitansi pertama dibayar bukan kesalahan. Transaksi itu tetap **Belum Dibayar** dan masuk ke kwitansi berikutnya tanpa mengubah kwitansi lama.
+
+Urutan penanganan **Perlu Cek**:
+
+1. Admin membuka **Periksa kwitansi** dari baris transaksi.
+2. Sistem membuka mitra dan periode pembayaran yang tepat.
+3. Admin mencocokkan angka transaksi, snapshot kwitansi, bukti bayar, dan Buku Kas.
+4. Jika hanya hubungan Buku Kas historis yang hilang, jalankan perbaikan/backfill yang idempotent; jangan tandai bayar ulang.
+5. Jika pembayaran memang salah, Owner/Admin Keuangan membatalkan pembayaran melalui reversal, kemudian membuat kwitansi pengganti.
+6. Sistem menyimpan alasan, pengguna, waktu, kas pembalik, dan pemulihan panjar sebagai audit.
 
 Saat user klik **Tandai Dibayar** di Kwitansi Mitra:
 

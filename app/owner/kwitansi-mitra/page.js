@@ -146,6 +146,17 @@ export default function KwitansiMitraPage() {
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [paymentForm, setPaymentForm] = useState({ metode_bayar: 'tunai', catatan: '', penerima_label: '' });
 
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const mitraId = params.get('mitra');
+    const dari = params.get('dari');
+    const sampai = params.get('sampai');
+
+    if (mitraId) setSelectedMitraIds([mitraId]);
+    if (/^\d{4}-\d{2}-\d{2}$/.test(dari || '')) setDateFrom(dari);
+    if (/^\d{4}-\d{2}-\d{2}$/.test(sampai || '')) setDateTo(sampai);
+  }, []);
+
   const checkRole = useCallback(async () => {
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) return;

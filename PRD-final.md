@@ -2124,6 +2124,9 @@ Berdasarkan jawaban owner 15 Juli 2026, Armada CB adalah armada internal CB dan 
 - Perubahan atau backfill pada `transaksi_mitra` tidak boleh mengubah detail, total, maupun Buku Kas dari kwitansi yang sudah dibayar.
 - Sistem boleh menyimpan sewa menurut rumus terbaru dan selisih historis sebagai metadata audit, tetapi angka tersebut tidak menggantikan nominal yang pernah ditagihkan.
 - Kesalahan kwitansi diselesaikan melalui pembatalan dan penerbitan kwitansi baru, bukan mengedit item kwitansi lama.
+- Status **Perlu Cek** wajib memiliki penyebab yang dapat dipahami admin dan pintasan ke kwitansi terkait; status tidak boleh diselesaikan dengan checkbox tanpa tindakan finansial.
+- Transaksi baru setelah pembayaran sebelumnya tetap menjadi tagihan baru dan tidak menandai kwitansi lama sebagai bermasalah.
+- Pembatalan pembayaran wajib membalik kas dan pelunasan panjar secara atomik serta menyimpan alasan dan audit log.
 
 Enam tarif awal telah diisi berdasarkan konfirmasi owner. Mitra lain tetap `Rp0` dan tidak boleh dipakai untuk pengiriman Armada CB sebelum tarif sewa serta Dana Operasional Trip dilengkapi di menu Mitra.
 
