@@ -1759,8 +1759,16 @@ a:hover {
   gap: var(--space-lg);
 }
 
+.pengiriman-primary-grid {
+  grid-template-columns: minmax(150px, 1fr) minmax(0, 2fr);
+}
+
 @media (max-width: 600px) {
   .form-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .form-grid.pengiriman-primary-grid {
     grid-template-columns: 1fr;
   }
 }

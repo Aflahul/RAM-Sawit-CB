@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
 import AppShell from '@/components/layout/AppShell';
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
 import PromptDialog from '@/components/ui/PromptDialog';
@@ -30,6 +31,7 @@ function toNumber(value) {
 }
 
 function resolveDanaOperasionalTrip(row) {
+  if (row?.catat_dana_operasional_trip === false) return 0;
   return toNumber(row?.dana_operasional_trip_snapshot ?? row?.total_biaya_sopir_cb_snapshot);
 }
 
@@ -71,13 +73,17 @@ export default function LaporanArmadaCBPage() {
         sopir_default_nama, sopir_aktual_nama,
         berat_netto_pabrik_kg, tonase,
         biaya_sewa_armada_total, biaya_sewa_armada_kotor,
+        menggunakan_armada_cb_snapshot, kenakan_sewa_armada_cb,
+        catat_dana_operasional_trip, alasan_tanpa_sewa_armada_cb,
+        alasan_tanpa_dana_operasional_trip, armada_cb_perlu_review,
+        alasan_review_armada_cb,
         dana_operasional_trip_snapshot,
         upah_sopir_cb_snapshot, uang_jalan_sopir_cb_snapshot,
         total_biaya_sopir_cb_snapshot, tagihan_sopir_ledger_id,
         biaya_sopir_operasional_id, biaya_sopir_dibayar_at,
         status, master_mitra ( id, kode, nama, alamat )
       `)
-      .eq('pakai_sewa_armada_bl', true)
+      .eq('menggunakan_armada_cb_snapshot', true)
       .eq('status', 'aktif')
       .gte('tanggal', period.from)
       .lte('tanggal', period.to)
@@ -144,6 +150,9 @@ export default function LaporanArmadaCBPage() {
     const totalOperasionalLain = expenses
       .filter(row => !['gaji_sopir', 'dana_operasional_trip'].includes(row.kategori))
       .reduce((sum, row) => sum + toNumber(row.jumlah), 0);
+    const tripDenganSewa = transactions.filter(row => row.kenakan_sewa_armada_cb).length;
+    const tripDenganDana = transactions.filter(row => row.catat_dana_operasional_trip).length;
+    const perluReview = transactions.filter(row => row.armada_cb_perlu_review).length;
 
     return {
       totalTrip,
@@ -153,6 +162,11 @@ export default function LaporanArmadaCBPage() {
       totalSudahDibayar,
       totalBelumDibayar: Math.max(totalDanaTrip - totalSudahDibayar, 0),
       totalOperasionalLain,
+      tripDenganSewa,
+      tripTanpaSewa: totalTrip - tripDenganSewa,
+      tripDenganDana,
+      tripTanpaDana: totalTrip - tripDenganDana,
+      perluReview,
       margin: totalSewa - totalDanaTrip - totalOperasionalLain,
     };
   }, [expenses, transactions]);
@@ -178,6 +192,9 @@ export default function LaporanArmadaCBPage() {
         danaTrip: 0,
         danaDibayar: 0,
         biayaLain: 0,
+        tripDenganSewa: 0,
+        tripDenganDana: 0,
+        perluReview: 0,
       });
     });
 
@@ -194,9 +211,15 @@ export default function LaporanArmadaCBPage() {
         danaTrip: 0,
         danaDibayar: 0,
         biayaLain: 0,
+        tripDenganSewa: 0,
+        tripDenganDana: 0,
+        perluReview: 0,
       };
       const danaTrip = resolveDanaOperasionalTrip(transaction);
       current.trip += 1;
+      if (transaction.kenakan_sewa_armada_cb) current.tripDenganSewa += 1;
+      if (transaction.catat_dana_operasional_trip) current.tripDenganDana += 1;
+      if (transaction.armada_cb_perlu_review) current.perluReview += 1;
       current.muatan += toNumber(transaction.berat_netto_pabrik_kg ?? transaction.tonase);
       current.sewa += toNumber(transaction.biaya_sewa_armada_kotor ?? transaction.biaya_sewa_armada_total);
       current.danaTrip += danaTrip;
@@ -298,6 +321,9 @@ export default function LaporanArmadaCBPage() {
       sewa_armada: toNumber(row.biaya_sewa_armada_kotor ?? row.biaya_sewa_armada_total),
       dana_operasional_trip: resolveDanaOperasionalTrip(row),
       status_bayar: row.biaya_sopir_dibayar_at ? 'Sudah Dibayar' : 'Belum Dibayar',
+      perlakuan_sewa: row.kenakan_sewa_armada_cb ? 'Dipotong dari mitra' : 'Tanpa potongan sewa',
+      perlakuan_dana_trip: row.catat_dana_operasional_trip ? 'Dicatat' : 'Tidak dicatat',
+      perlu_review: row.armada_cb_perlu_review ? 'Ya' : 'Tidak',
     })), [
       { key: 'tanggal', label: 'Tanggal' },
       { key: 'plat_nomor', label: 'Plat' },
@@ -307,6 +333,9 @@ export default function LaporanArmadaCBPage() {
       { key: 'sewa_armada', label: 'Sewa Armada (Rp)' },
       { key: 'dana_operasional_trip', label: 'Dana Operasional Trip (Rp)' },
       { key: 'status_bayar', label: 'Status Pembayaran Dana Trip' },
+      { key: 'perlakuan_sewa', label: 'Perlakuan Sewa' },
+      { key: 'perlakuan_dana_trip', label: 'Perlakuan Dana Trip' },
+      { key: 'perlu_review', label: 'Perlu Dicek' },
     ], `Laporan_Armada_CB_${tahun}_${String(bulan).padStart(2, '0')}`, 'Armada CB');
   }
 
@@ -369,7 +398,21 @@ export default function LaporanArmadaCBPage() {
 
       {summary.totalTrip > 0 && summary.totalDanaTrip === 0 && (
         <div className="alert alert-warning" style={{ marginTop: 'var(--space-lg)' }}>
-          Dana Operasional Trip belum terisi. Atur tarif mitra pada menu Mitra, lalu terapkan ke trip yang belum dibayar.
+          {summary.tripDenganDana > 0
+            ? 'Dana Operasional Trip yang dipilih belum memiliki nominal. Atur tarif mitra, lalu terapkan ke trip yang belum dibayar.'
+            : 'Semua trip pada periode ini sengaja dicatat tanpa Dana Operasional Trip.'}
+        </div>
+      )}
+
+      {summary.perluReview > 0 && (
+        <div className="alert alert-warning" style={{ marginTop: 'var(--space-lg)' }}>
+          <div>
+            <strong>{summary.perluReview} trip lama perlu dicek.</strong>
+            <div style={{ marginTop: 4 }}>Pastikan apakah sewa perlu dipotong dan Dana Operasional Trip perlu dicatat.</div>
+            <Link className="btn btn-outline btn-sm" href="/admin/input-timbangan?status=review_armada_cb" style={{ marginTop: 10 }}>
+              Periksa di Pengiriman Mitra
+            </Link>
+          </div>
         </div>
       )}
 
@@ -403,7 +446,15 @@ export default function LaporanArmadaCBPage() {
               ) : armadaSummaries.map(row => (
                 <tr key={row.id}>
                   <td><strong className="table-mono">{row.platNomor}</strong><div className="text-tertiary text-xs">{row.sopir}</div></td>
-                  <td className="table-mono" style={{ textAlign: 'right' }}>{row.trip.toLocaleString('id-ID')}</td>
+                  <td className="table-mono" style={{ textAlign: 'right' }}>
+                    {row.trip.toLocaleString('id-ID')}
+                    {(row.tripDenganSewa < row.trip || row.tripDenganDana < row.trip || row.perluReview > 0) && (
+                      <div className="text-tertiary text-xs" style={{ marginTop: 3 }}>
+                        {row.trip - row.tripDenganSewa} tanpa sewa, {row.trip - row.tripDenganDana} tanpa Dana
+                        {row.perluReview > 0 ? `, ${row.perluReview} perlu cek` : ''}
+                      </div>
+                    )}
+                  </td>
                   <td className="table-mono" style={{ textAlign: 'right' }}>{row.muatan.toLocaleString('id-ID')} kg</td>
                   <td className="table-mono text-success" style={{ textAlign: 'right' }}>{formatRupiah(row.sewa)}</td>
                   <td className="table-mono" style={{ textAlign: 'right' }}>{formatRupiah(row.danaTrip)}</td>
@@ -454,11 +505,21 @@ export default function LaporanArmadaCBPage() {
                   <td><strong className="table-mono">{row.plat_nomor || '-'}</strong><div className="text-tertiary text-xs">{row.sopir_aktual_nama || row.sopir_default_nama || '-'}</div></td>
                   <td>{row.master_mitra?.kode || row.master_mitra?.nama || '-'}</td>
                   <td className="table-mono" style={{ textAlign: 'right' }}>{toNumber(row.berat_netto_pabrik_kg ?? row.tonase).toLocaleString('id-ID')} kg</td>
-                  <td className="table-mono text-success" style={{ textAlign: 'right' }}>{formatRupiah(row.biaya_sewa_armada_kotor ?? row.biaya_sewa_armada_total)}</td>
-                  <td className="table-mono" style={{ textAlign: 'right' }}>{formatRupiah(driverCost)}<div className="text-tertiary text-xs">satu kali jalan</div></td>
-                  <td><span className={`badge ${paid ? 'badge-success' : driverCost > 0 ? 'badge-warning' : 'badge-neutral'}`}>{paid ? 'Sudah Dibayar' : driverCost > 0 ? 'Belum Dibayar' : 'Tarif Kosong'}</span></td>
+                  <td className="table-mono text-success" style={{ textAlign: 'right' }}>
+                    {formatRupiah(row.biaya_sewa_armada_kotor ?? row.biaya_sewa_armada_total)}
+                    {!row.kenakan_sewa_armada_cb && <div className="text-tertiary text-xs">tanpa potongan sewa</div>}
+                  </td>
+                  <td className="table-mono" style={{ textAlign: 'right' }}>
+                    {formatRupiah(driverCost)}
+                    <div className="text-tertiary text-xs">{row.catat_dana_operasional_trip ? 'satu kali jalan' : 'tidak dicatat'}</div>
+                  </td>
                   <td>
-                    {canPay && !paid && driverCost > 0 && <button className="btn btn-primary btn-sm" onClick={() => setPayTarget(row)}>Bayar Dana Trip</button>}
+                    <span className={`badge ${paid ? 'badge-success' : row.armada_cb_perlu_review ? 'badge-warning' : driverCost > 0 ? 'badge-warning' : 'badge-neutral'}`}>
+                      {paid ? 'Sudah Dibayar' : row.armada_cb_perlu_review ? 'Perlu Cek' : !row.catat_dana_operasional_trip ? 'Tanpa Dana' : driverCost > 0 ? 'Belum Dibayar' : 'Tarif Kosong'}
+                    </span>
+                  </td>
+                  <td>
+                    {canPay && row.catat_dana_operasional_trip && !row.armada_cb_perlu_review && !paid && driverCost > 0 && <button className="btn btn-primary btn-sm" onClick={() => setPayTarget(row)}>Bayar Dana Trip</button>}
                     {canCancelPay && paid && (
                       <button className="btn btn-ghost btn-sm" onClick={() => setCancelPayTarget(row)} title="Batalkan pembayaran Dana Trip">
                         <RotateCcw size={14} /> Batal Bayar

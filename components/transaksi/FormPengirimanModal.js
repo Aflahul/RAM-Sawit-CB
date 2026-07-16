@@ -60,7 +60,10 @@ export default function FormPengirimanModal({ open, onClose, onSuccess, initialD
     catatan_sopir: '',
     berat_netto: '',
     potongan_pabrik: '0',
-    pakai_sewa_armada_cb: false,
+    kenakan_sewa_armada_cb: false,
+    catat_dana_operasional_trip: false,
+    alasan_tanpa_sewa_armada_cb: '',
+    alasan_tanpa_dana_operasional_trip: '',
     tarif_sewa_angkut: 0,
     dana_operasional_trip: 0,
   });
@@ -164,7 +167,7 @@ export default function FormPengirimanModal({ open, onClose, onSuccess, initialD
     && selectedDefaultSopir.mitra_id !== form.mitra_id
   );
   const isSelectedArmadaCB = Boolean(selectedDefaultSopir?.is_armada_cb);
-  const danaOperasionalTrip = isSelectedArmadaCB
+  const danaOperasionalTrip = isSelectedArmadaCB && form.catat_dana_operasional_trip
     ? Number(form.dana_operasional_trip || 0)
     : 0;
 
@@ -182,7 +185,7 @@ export default function FormPengirimanModal({ open, onClose, onSuccess, initialD
     const totalFeeOwner     = Math.round(beratDibayar * feeOwner);
     const totalNilaiBersih  = Math.round(beratDibayar * hargaBersih);
 
-    const pakaiSewaArmada = form.pakai_sewa_armada_cb;
+    const pakaiSewaArmada = isSelectedArmadaCB && form.kenakan_sewa_armada_cb;
     const isSewa = hitungSewaArmadaCB({ 
       isArmadaCB: pakaiSewaArmada, 
       beratNettoPabrikKg: beratNetto,
@@ -209,7 +212,7 @@ export default function FormPengirimanModal({ open, onClose, onSuccess, initialD
       totalBersihMitra,
       ...sewaArmada,
     };
-  }, [form.berat_netto, form.potongan_pabrik, form.mitra_fee, form.pakai_sewa_armada_cb, form.tarif_sewa_angkut, latestHarga]);
+  }, [form.berat_netto, form.potongan_pabrik, form.mitra_fee, form.kenakan_sewa_armada_cb, form.tarif_sewa_angkut, isSelectedArmadaCB, latestHarga]);
 
   const beratNettoNum = kalkulasi.beratNetto;
   const potonganNum = kalkulasi.potongan;
@@ -261,7 +264,10 @@ export default function FormPengirimanModal({ open, onClose, onSuccess, initialD
         sopir_aktual_nama: '',
         sopir_aktual_no_hp: '',
         catatan_sopir: '',
-        pakai_sewa_armada_cb: false,
+        kenakan_sewa_armada_cb: false,
+        catat_dana_operasional_trip: false,
+        alasan_tanpa_sewa_armada_cb: '',
+        alasan_tanpa_dana_operasional_trip: '',
       });
       return;
     }
@@ -271,8 +277,6 @@ export default function FormPengirimanModal({ open, onClose, onSuccess, initialD
       const nextMitraId = form.mitra_id || sopir.mitra_id || '';
       
       const isCb = Boolean(sopir.is_armada_cb);
-      const autoSewa = hitungSewaArmadaCB({ isArmadaCB: isCb, beratNettoPabrikKg: 0 }).pakaiSewaArmada;
-
       setForm(applyMitraSnapshot({
         ...form,
         sopir_id: sopir.id,
@@ -284,7 +288,10 @@ export default function FormPengirimanModal({ open, onClose, onSuccess, initialD
         sopir_aktual_nama: sopir.nama,
         sopir_aktual_no_hp: sopir.no_hp || '',
         catatan_sopir: '',
-        pakai_sewa_armada_cb: autoSewa,
+        kenakan_sewa_armada_cb: isCb,
+        catat_dana_operasional_trip: isCb,
+        alasan_tanpa_sewa_armada_cb: '',
+        alasan_tanpa_dana_operasional_trip: '',
       }, nextMitraId, form.tanggal));
     }
   }
@@ -298,11 +305,7 @@ export default function FormPengirimanModal({ open, onClose, onSuccess, initialD
       }, '', form.tanggal));
       return;
     }
-    const sopir = sopirs.find(s => s.id === form.sopir_id);
-    const isCb = Boolean(sopir?.is_armada_cb);
-    const autoSewa = hitungSewaArmadaCB({ isArmadaCB: isCb, beratNettoPabrikKg: 0 }).pakaiSewaArmada;
-
-    setForm(applyMitraSnapshot({ ...form, pakai_sewa_armada_cb: autoSewa }, selectedId, form.tanggal));
+    setForm(applyMitraSnapshot({ ...form }, selectedId, form.tanggal));
   }
 
   function handleSopirAktualModeChange(mode) {
@@ -404,7 +407,10 @@ export default function FormPengirimanModal({ open, onClose, onSuccess, initialD
       sopir_aktual_nama: savedArmada.nama,
       sopir_aktual_no_hp: savedArmada.no_hp || '',
       catatan_sopir: '',
-      pakai_sewa_armada_cb: Boolean(savedArmada.is_armada_cb),
+      kenakan_sewa_armada_cb: Boolean(savedArmada.is_armada_cb),
+      catat_dana_operasional_trip: Boolean(savedArmada.is_armada_cb),
+      alasan_tanpa_sewa_armada_cb: '',
+      alasan_tanpa_dana_operasional_trip: '',
     }, nextMitraId, form.tanggal));
 
     setFormArmadaCepat({ nama: '', plat_nomor: '', no_hp: '', mitra_id: '', is_armada_cb: false });
@@ -447,14 +453,26 @@ export default function FormPengirimanModal({ open, onClose, onSuccess, initialD
       return;
     }
 
-    if (isSelectedArmadaCB && Number(form.tarif_sewa_angkut || 0) <= 0) {
+    if (isSelectedArmadaCB && form.kenakan_sewa_armada_cb && Number(form.tarif_sewa_angkut || 0) <= 0) {
       showToast('Tarif sewa Armada CB untuk mitra ini belum diatur. Lengkapi tarif di menu Mitra.');
       setSaving(false);
       return;
     }
 
-    if (isSelectedArmadaCB && danaOperasionalTrip <= 0) {
+    if (isSelectedArmadaCB && form.catat_dana_operasional_trip && danaOperasionalTrip <= 0) {
       showToast('Dana Operasional Trip untuk mitra ini belum diatur. Lengkapi tarif di menu Mitra.');
+      setSaving(false);
+      return;
+    }
+
+    if (isSelectedArmadaCB && !form.kenakan_sewa_armada_cb && !form.alasan_tanpa_sewa_armada_cb.trim()) {
+      showToast('Isi alasan mengapa sewa Armada CB tidak dipotong dari mitra.');
+      setSaving(false);
+      return;
+    }
+
+    if (isSelectedArmadaCB && !form.catat_dana_operasional_trip && !form.alasan_tanpa_dana_operasional_trip.trim()) {
+      showToast('Isi alasan mengapa Dana Operasional Trip tidak dibuat.');
       setSaving(false);
       return;
     }
@@ -508,17 +526,24 @@ export default function FormPengirimanModal({ open, onClose, onSuccess, initialD
       total_nilai_bersih: k.totalNilaiBersih,
 
       // Sewa armada CB
-      pakai_sewa_armada_bl:      form.pakai_sewa_armada_cb,
-      tarif_sewa_angkut_per_kg_snapshot: form.pakai_sewa_armada_cb ? form.tarif_sewa_angkut : 0,
+      menggunakan_armada_cb_snapshot: isSelectedArmadaCB,
+      kenakan_sewa_armada_cb: form.kenakan_sewa_armada_cb,
+      catat_dana_operasional_trip: form.catat_dana_operasional_trip,
+      alasan_tanpa_sewa_armada_cb: form.kenakan_sewa_armada_cb ? null : form.alasan_tanpa_sewa_armada_cb.trim(),
+      alasan_tanpa_dana_operasional_trip: form.catat_dana_operasional_trip
+        ? null
+        : form.alasan_tanpa_dana_operasional_trip.trim(),
+      pakai_sewa_armada_bl:      form.kenakan_sewa_armada_cb,
+      tarif_sewa_angkut_per_kg_snapshot: form.kenakan_sewa_armada_cb ? form.tarif_sewa_angkut : 0,
       nominal_perongkosan_snapshot:      0,
-      biaya_sewa_armada_kotor:           form.pakai_sewa_armada_cb ? k.biayaSewaArmadaKotor : 0,
-      biaya_sewa_armada_total:           form.pakai_sewa_armada_cb ? k.biayaSewaArmadaTotal : 0,
+      biaya_sewa_armada_kotor:           form.kenakan_sewa_armada_cb ? k.biayaSewaArmadaKotor : 0,
+      biaya_sewa_armada_total:           form.kenakan_sewa_armada_cb ? k.biayaSewaArmadaTotal : 0,
 
       // Satu dana per trip; rinciannya dikelola sopir di luar sistem.
-      dana_operasional_trip_snapshot:      danaOperasionalTrip,
+      dana_operasional_trip_snapshot:      form.catat_dana_operasional_trip ? danaOperasionalTrip : 0,
       upah_sopir_cb_snapshot:              0,
       uang_jalan_sopir_cb_snapshot:        0,
-      total_biaya_sopir_cb_snapshot:       danaOperasionalTrip,
+      total_biaya_sopir_cb_snapshot:       form.catat_dana_operasional_trip ? danaOperasionalTrip : 0,
     });
 
     if (error) {
@@ -549,7 +574,10 @@ export default function FormPengirimanModal({ open, onClose, onSuccess, initialD
         catatan_sopir: '',
         berat_netto: '',
         potongan_pabrik: '0',
-        pakai_sewa_armada_cb: false,
+        kenakan_sewa_armada_cb: false,
+        catat_dana_operasional_trip: false,
+        alasan_tanpa_sewa_armada_cb: '',
+        alasan_tanpa_dana_operasional_trip: '',
         tarif_sewa_angkut: 0,
         dana_operasional_trip: 0,
       });
@@ -648,7 +676,7 @@ export default function FormPengirimanModal({ open, onClose, onSuccess, initialD
       ) : (
         <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
           {/* Row 1: Tanggal & Sopir/Armada */}
-          <div className="form-grid" style={{ gridTemplateColumns: '1fr 2fr' }}>
+          <div className="form-grid pengiriman-primary-grid">
             <div className="form-group">
               <label className="form-label form-label-required">Tanggal</label>
               <input
@@ -717,7 +745,7 @@ export default function FormPengirimanModal({ open, onClose, onSuccess, initialD
               style={{ fontSize: 24, fontWeight: 'bold', padding: 16, height: 'auto' }}
               required
               min={1}
-              placeholder={siapInput ? '0' : 'Pilih armada/mitra dulu'}
+              placeholder={siapInput ? '0' : selectedDefaultSopir ? 'Pilih mitra dulu' : 'Pilih armada dulu'}
               value={form.berat_netto}
               onChange={e => setForm({ ...form, berat_netto: e.target.value })}
               disabled={!siapInput}
@@ -739,12 +767,87 @@ export default function FormPengirimanModal({ open, onClose, onSuccess, initialD
         </div>
 
         {isSelectedArmadaCB && (
-          <div className="alert alert-info" style={{ marginBottom: 0 }}>
-            <strong>Armada CB</strong>
-            <div className="text-sm" style={{ marginTop: 4 }}>
-              Sewa {formatRupiah(form.tarif_sewa_angkut)}/kg netto
-              {' | '}Dana operasional trip {formatRupiah(danaOperasionalTrip)}
+          <div style={{ border: '1px solid var(--color-info)', borderRadius: 8, padding: 16 }}>
+            <div style={{ fontWeight: 700, marginBottom: 4 }}>Perlakuan Armada CB</div>
+            <div className="text-sm text-tertiary" style={{ marginBottom: 14 }}>
+              Perjalanan tetap dihitung sebagai trip Armada CB. Pilih perlakuan uangnya untuk pengiriman ini.
             </div>
+
+            <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer', marginBottom: 12 }}>
+              <input
+                type="checkbox"
+                checked={form.kenakan_sewa_armada_cb}
+                onChange={event => setForm({
+                  ...form,
+                  kenakan_sewa_armada_cb: event.target.checked,
+                  alasan_tanpa_sewa_armada_cb: event.target.checked ? '' : form.alasan_tanpa_sewa_armada_cb,
+                })}
+                style={{ marginTop: 3 }}
+              />
+              <span>
+                <strong>Potong sewa dari pembayaran mitra</strong>
+                <span className="text-sm text-tertiary" style={{ display: 'block' }}>
+                  {formatRupiah(form.tarif_sewa_angkut)}/kg dari Berat Netto Pabrik
+                </span>
+              </span>
+            </label>
+
+            {!form.kenakan_sewa_armada_cb && (
+              <div className="form-group" style={{ marginLeft: 26 }}>
+                <label className="form-label form-label-required">Alasan tanpa potongan sewa</label>
+                <input
+                  className="form-input"
+                  list="alasan-tanpa-sewa-armada"
+                  required
+                  value={form.alasan_tanpa_sewa_armada_cb}
+                  onChange={event => setForm({ ...form, alasan_tanpa_sewa_armada_cb: event.target.value })}
+                  placeholder="Pilih atau tulis alasan"
+                />
+                <datalist id="alasan-tanpa-sewa-armada">
+                  <option value="Bantuan armada tanpa biaya sewa" />
+                  <option value="Mitra internal, sewa tidak dipotong" />
+                  <option value="Keputusan Owner" />
+                </datalist>
+              </div>
+            )}
+
+            <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer' }}>
+              <input
+                type="checkbox"
+                checked={form.catat_dana_operasional_trip}
+                onChange={event => setForm({
+                  ...form,
+                  catat_dana_operasional_trip: event.target.checked,
+                  alasan_tanpa_dana_operasional_trip: event.target.checked ? '' : form.alasan_tanpa_dana_operasional_trip,
+                })}
+                style={{ marginTop: 3 }}
+              />
+              <span>
+                <strong>Buat Dana Operasional Trip</strong>
+                <span className="text-sm text-tertiary" style={{ display: 'block' }}>
+                  {formatRupiah(form.dana_operasional_trip)} untuk satu kali jalan
+                </span>
+              </span>
+            </label>
+
+            {!form.catat_dana_operasional_trip && (
+              <div className="form-group" style={{ marginLeft: 26, marginTop: 12, marginBottom: 0 }}>
+                <label className="form-label form-label-required">Alasan tanpa Dana Operasional Trip</label>
+                <input
+                  className="form-input"
+                  list="alasan-tanpa-dana-trip"
+                  required
+                  value={form.alasan_tanpa_dana_operasional_trip}
+                  onChange={event => setForm({ ...form, alasan_tanpa_dana_operasional_trip: event.target.value })}
+                  placeholder="Pilih atau tulis alasan"
+                />
+                <datalist id="alasan-tanpa-dana-trip">
+                  <option value="Dana dibayar di luar transaksi ini" />
+                  <option value="Tidak ada Dana Operasional Trip" />
+                  <option value="Keputusan Owner" />
+                </datalist>
+              </div>
+            )}
           </div>
         )}
 
@@ -900,7 +1003,7 @@ export default function FormPengirimanModal({ open, onClose, onSuccess, initialD
               </div>
             )}
 
-            {isSelectedArmadaCB && (
+            {isSelectedArmadaCB && form.catat_dana_operasional_trip && (
               <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, marginBottom: 6 }}>
                 <span style={{ color: 'var(--text-tertiary)', fontSize: 14 }}>Dana Operasional Trip:</span>
                 <span style={{ fontWeight: 600, textAlign: 'right' }}>
@@ -909,6 +1012,18 @@ export default function FormPengirimanModal({ open, onClose, onSuccess, initialD
                     Dibayar satu kali jalan; sudah termasuk solar, makan, dan bagian sopir
                   </div>
                 </span>
+              </div>
+            )}
+
+            {isSelectedArmadaCB && !form.kenakan_sewa_armada_cb && (
+              <div className="alert alert-warning" style={{ marginTop: 10, marginBottom: 0 }}>
+                Trip Armada CB tercatat tanpa potongan sewa: {form.alasan_tanpa_sewa_armada_cb || 'alasan belum diisi'}.
+              </div>
+            )}
+
+            {isSelectedArmadaCB && !form.catat_dana_operasional_trip && (
+              <div className="alert alert-warning" style={{ marginTop: 10, marginBottom: 0 }}>
+                Dana Operasional Trip tidak dibuat: {form.alasan_tanpa_dana_operasional_trip || 'alasan belum diisi'}.
               </div>
             )}
 

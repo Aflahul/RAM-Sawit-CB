@@ -160,6 +160,17 @@ Dana satu kali jalan dicatat sebagai Dana Operasional Trip pada P1.
 - Jika snapshot benar dan data transaksi salah, koreksi harus melalui alur pembatalan/reversal pembayaran, lalu terbitkan kwitansi baru.
 - Alur reversal pembayaran mitra sudah tersedia untuk Owner dan membalik kas keluar serta pelunasan panjar secara atomik dengan alasan dan audit log.
 
+### P0 - Kontrol Perlakuan Armada CB per Pengiriman
+
+- Fakta perjalanan memakai Armada CB disimpan di `menggunakan_armada_cb_snapshot` berdasarkan plat/sopir yang dipilih. Admin tidak mematikan fakta trip dengan checkbox.
+- **Potong sewa dari pembayaran mitra** disimpan di `kenakan_sewa_armada_cb`.
+- **Buat Dana Operasional Trip** disimpan terpisah di `catat_dana_operasional_trip`.
+- Jika salah satu keputusan uang dimatikan, admin wajib mengisi alasan agar bantuan armada, keputusan owner, atau pembayaran di luar transaksi tetap dapat diaudit.
+- Trip tanpa sewa tetap menambah jumlah trip dan muatan Armada CB, tetapi tidak menjadi potongan kwitansi atau pendapatan sewa.
+- Trip tanpa Dana Operasional Trip tidak membuat tagihan sopir, biaya operasional, atau kas keluar.
+- Field lama `pakai_sewa_armada_bl` dipertahankan sebagai kompatibilitas dan sekarang mengikuti keputusan potongan sewa, bukan fakta penggunaan Armada CB.
+- Data lama yang armadanya sekarang terdeteksi sebagai Armada CB tetapi belum memiliki keputusan uang ditandai `armada_cb_perlu_review`; sistem tidak membuat nilai uang baru secara otomatis.
+
 ### UI Pengiriman Mitra
 
 - Ubah halaman menjadi Data Grid + Quick Add Modal.

@@ -52,7 +52,13 @@ const emptyEditForm = {
   total_kotor: 0,
   total_fee_owner: 0,
   total_nilai_bersih: 0,
+  menggunakan_armada_cb_snapshot: false,
   pakai_sewa_armada_bl: false,
+  kenakan_sewa_armada_cb: false,
+  catat_dana_operasional_trip: false,
+  alasan_tanpa_sewa_armada_cb: '',
+  alasan_tanpa_dana_operasional_trip: '',
+  dana_operasional_trip: 0,
   tarif_sewa_angkut_per_kg: 0,
   biaya_sewa_armada_total: 0,
   alasan_edit: '',
@@ -77,6 +83,9 @@ function getRowSearchText(row) {
     row.payment?.metode_bayar,
     row.alasan_batal,
     row.alasan_edit,
+    row.alasan_tanpa_sewa_armada_cb,
+    row.alasan_tanpa_dana_operasional_trip,
+    row.alasan_review_armada_cb,
   ].filter(Boolean).join(' ').toLowerCase();
 }
 
@@ -162,6 +171,14 @@ export default function RiwayatPengirimanMitraPage() {
   const [toast, setToast] = useState(null);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
 
+  useEffect(() => {
+    const requestedStatus = new URLSearchParams(window.location.search).get('status');
+    if (requestedStatus === 'review_armada_cb') {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setStatusFilter('review_armada_cb');
+    }
+  }, []);
+
   const loadData = useCallback(async () => {
     setLoading(true);
     setErrorMsg('');
@@ -173,7 +190,11 @@ export default function RiwayatPengirimanMitraPage() {
         harga_pabrik_per_kg, fee_owner_per_kg, harga_bersih_per_kg, total_fee_owner,
         total_nilai_bersih, fee_owner_history_id,
         berat_netto_pabrik_kg, potongan_pabrik_kg, berat_dibayar_kg,
-        pakai_sewa_armada_bl, biaya_sewa_armada_per_kg, biaya_sewa_armada_total,
+        menggunakan_armada_cb_snapshot, pakai_sewa_armada_bl,
+        kenakan_sewa_armada_cb, catat_dana_operasional_trip,
+        alasan_tanpa_sewa_armada_cb, alasan_tanpa_dana_operasional_trip,
+        armada_cb_perlu_review, alasan_review_armada_cb,
+        biaya_sewa_armada_per_kg, biaya_sewa_armada_total,
         tarif_sewa_angkut_per_kg_snapshot, biaya_sewa_armada_kotor,
         dana_operasional_trip_snapshot, upah_sopir_cb_snapshot, uang_jalan_sopir_cb_snapshot, total_biaya_sopir_cb_snapshot,
         tagihan_sopir_ledger_id, biaya_sopir_operasional_id, biaya_sopir_dibayar_at,
@@ -182,11 +203,19 @@ export default function RiwayatPengirimanMitraPage() {
         sopir_aktual_no_hp, sopir_aktual_source, sopir_diganti_dari_default, catatan_sopir,
         master_mitra ( id, kode, alamat, nama, fee_per_kg )
       `)
-      .gte('tanggal', dateFrom)
-      .lte('tanggal', dateTo)
       .order('created_at', { ascending: false });
 
-    if (statusFilter !== 'semua') {
+    if (statusFilter === 'review_armada_cb') {
+      transaksiQuery = transaksiQuery
+        .eq('status', 'aktif')
+        .eq('armada_cb_perlu_review', true);
+    } else {
+      transaksiQuery = transaksiQuery
+        .gte('tanggal', dateFrom)
+        .lte('tanggal', dateTo);
+    }
+
+    if (!['semua', 'review_armada_cb'].includes(statusFilter)) {
       transaksiQuery = transaksiQuery.eq('status', statusFilter);
     }
 
@@ -351,6 +380,7 @@ export default function RiwayatPengirimanMitraPage() {
       }), { berat_netto: 0, berat_dibayar: 0, total: 0, sewa_armada: 0 });
   }, [filteredTransaksi]);
   const editFeeOwner = toNumber(editForm.fee_owner_per_kg);
+  const editUsesArmadaCb = Boolean(editForm.menggunakan_armada_cb_snapshot);
 
   function handleSort(key) {
     setPage(1);
@@ -380,6 +410,7 @@ export default function RiwayatPengirimanMitraPage() {
       fee_owner_per_kg: snapshot.fee,
       fee_owner_history_id: snapshot.historyId,
       tarif_sewa_angkut_per_kg: snapshot.tarifSewaAngkut || 0,
+      dana_operasional_trip: snapshot.danaOperasionalTrip || 0,
     };
   }
 
@@ -392,7 +423,7 @@ export default function RiwayatPengirimanMitraPage() {
     const beratDibayar = Math.max(0, beratNetto - potongan);
 
     // Deteksi sewa armada dari form state (pakai_sewa_armada_bl sudah dihitung di openEdit)
-    const sewaArmadaTotal = nextForm.pakai_sewa_armada_bl
+    const sewaArmadaTotal = nextForm.menggunakan_armada_cb_snapshot && nextForm.kenakan_sewa_armada_cb
       ? Math.round(beratNetto * toNumber(nextForm.tarif_sewa_angkut_per_kg))
       : 0;
 
@@ -415,7 +446,8 @@ export default function RiwayatPengirimanMitraPage() {
     const beratNetto   = resolveBeratNettoPabrik(row);
     const potongan     = toNumber(row.potongan_pabrik_kg);
     const beratDibayar = resolveBeratDibayar(row);
-    const pakaiSewa    = Boolean(row.pakai_sewa_armada_bl);
+    const menggunakanArmadaCb = Boolean(row.menggunakan_armada_cb_snapshot ?? row.pakai_sewa_armada_bl);
+    const pakaiSewa    = menggunakanArmadaCb && Boolean(row.kenakan_sewa_armada_cb ?? row.pakai_sewa_armada_bl);
     const tarifSewa    = toNumber(row.tarif_sewa_angkut_per_kg_snapshot ?? row.biaya_sewa_armada_per_kg);
     const sewaTotal    = pakaiSewa ? Math.round(beratNetto * tarifSewa) : 0;
 
@@ -440,7 +472,14 @@ export default function RiwayatPengirimanMitraPage() {
       total_kotor:        Math.round(beratDibayar * hargaDasar),
       total_fee_owner:    toNumber(row.total_fee_owner),
       total_nilai_bersih: toNumber(row.total_nilai_bersih ?? row.total_kotor),
+      menggunakan_armada_cb_snapshot: menggunakanArmadaCb,
       pakai_sewa_armada_bl: pakaiSewa,
+      kenakan_sewa_armada_cb: pakaiSewa,
+      catat_dana_operasional_trip: menggunakanArmadaCb
+        && Boolean(row.catat_dana_operasional_trip ?? toNumber(row.dana_operasional_trip_snapshot) > 0),
+      alasan_tanpa_sewa_armada_cb: row.alasan_tanpa_sewa_armada_cb || '',
+      alasan_tanpa_dana_operasional_trip: row.alasan_tanpa_dana_operasional_trip || '',
+      dana_operasional_trip: toNumber(row.dana_operasional_trip_snapshot ?? effectiveFee.danaOperasionalTrip),
       tarif_sewa_angkut_per_kg: tarifSewa,
       biaya_sewa_armada_total: sewaTotal,
       alasan_edit: '',
@@ -458,6 +497,12 @@ export default function RiwayatPengirimanMitraPage() {
         sopir_aktual_id: '',
         sopir_aktual_nama: '',
         sopir_aktual_no_hp: '',
+        menggunakan_armada_cb_snapshot: false,
+        pakai_sewa_armada_bl: false,
+        kenakan_sewa_armada_cb: false,
+        catat_dana_operasional_trip: false,
+        alasan_tanpa_sewa_armada_cb: '',
+        alasan_tanpa_dana_operasional_trip: '',
       });
       return;
     }
@@ -472,7 +517,12 @@ export default function RiwayatPengirimanMitraPage() {
       sopir_aktual_id: sopir.id,
       sopir_aktual_nama: sopir.nama,
       sopir_aktual_no_hp: sopir.no_hp || '',
+      menggunakan_armada_cb_snapshot: Boolean(sopir.is_armada_cb),
       pakai_sewa_armada_bl: Boolean(sopir.is_armada_cb),
+      kenakan_sewa_armada_cb: Boolean(sopir.is_armada_cb),
+      catat_dana_operasional_trip: Boolean(sopir.is_armada_cb),
+      alasan_tanpa_sewa_armada_cb: '',
+      alasan_tanpa_dana_operasional_trip: '',
     };
 
     setEditForm(recalculateTotals(applyFeeSnapshot(nextForm, nextForm.mitra_id, editForm.tanggal)));
@@ -555,6 +605,18 @@ export default function RiwayatPengirimanMitraPage() {
     if (beratNetto <= 0) return showToast('Berat Netto dari Pabrik harus lebih dari 0.');
     if (potongan < 0) return showToast('Potongan Pabrik tidak boleh negatif.');
     if (potongan > beratNetto) return showToast('Potongan Pabrik tidak boleh lebih besar dari Berat Netto.');
+    if (editUsesArmadaCb && editForm.kenakan_sewa_armada_cb && toNumber(editForm.tarif_sewa_angkut_per_kg) <= 0) {
+      return showToast('Tarif sewa Armada CB untuk mitra ini belum diisi.');
+    }
+    if (editUsesArmadaCb && editForm.catat_dana_operasional_trip && toNumber(editForm.dana_operasional_trip) <= 0) {
+      return showToast('Dana Operasional Trip untuk mitra ini belum diisi.');
+    }
+    if (editUsesArmadaCb && !editForm.kenakan_sewa_armada_cb && !editForm.alasan_tanpa_sewa_armada_cb.trim()) {
+      return showToast('Alasan tanpa potongan sewa wajib diisi.');
+    }
+    if (editUsesArmadaCb && !editForm.catat_dana_operasional_trip && !editForm.alasan_tanpa_dana_operasional_trip.trim()) {
+      return showToast('Alasan tanpa Dana Operasional Trip wajib diisi.');
+    }
     if (!editForm.alasan_edit.trim()) return showToast('Alasan edit wajib diisi.');
 
     setSaving(true);
@@ -594,10 +656,18 @@ export default function RiwayatPengirimanMitraPage() {
       total_kotor:        editForm.total_kotor,
       total_fee_owner:    editForm.total_fee_owner,
       total_nilai_bersih: editForm.total_nilai_bersih,
-      // Sewa armada
-      pakai_sewa_armada_bl:     editForm.pakai_sewa_armada_bl,
-      biaya_sewa_armada_per_kg: editForm.pakai_sewa_armada_bl ? editForm.tarif_sewa_angkut_per_kg : 0,
-      tarif_sewa_angkut_per_kg_snapshot: editForm.pakai_sewa_armada_bl ? editForm.tarif_sewa_angkut_per_kg : 0,
+      // Perjalanan Armada CB, potongan sewa, dan Dana Trip adalah keputusan terpisah.
+      kenakan_sewa_armada_cb: editUsesArmadaCb && editForm.kenakan_sewa_armada_cb,
+      catat_dana_operasional_trip: editUsesArmadaCb && editForm.catat_dana_operasional_trip,
+      alasan_tanpa_sewa_armada_cb: editUsesArmadaCb && !editForm.kenakan_sewa_armada_cb
+        ? editForm.alasan_tanpa_sewa_armada_cb.trim()
+        : null,
+      alasan_tanpa_dana_operasional_trip: editUsesArmadaCb && !editForm.catat_dana_operasional_trip
+        ? editForm.alasan_tanpa_dana_operasional_trip.trim()
+        : null,
+      pakai_sewa_armada_bl: editUsesArmadaCb && editForm.kenakan_sewa_armada_cb,
+      biaya_sewa_armada_per_kg: editUsesArmadaCb && editForm.kenakan_sewa_armada_cb ? editForm.tarif_sewa_angkut_per_kg : 0,
+      tarif_sewa_angkut_per_kg_snapshot: editUsesArmadaCb && editForm.kenakan_sewa_armada_cb ? editForm.tarif_sewa_angkut_per_kg : 0,
       biaya_sewa_armada_kotor:  editForm.biaya_sewa_armada_total,
       biaya_sewa_armada_total:  editForm.biaya_sewa_armada_total,
     };
@@ -675,17 +745,18 @@ export default function RiwayatPengirimanMitraPage() {
         <div className="form-grid" style={{ alignItems: 'end' }}>
           <div className="form-group" style={{ marginBottom: 0 }}>
             <label className="form-label">Dari Tanggal</label>
-            <input type="date" className="form-input" value={dateFrom} onChange={event => setDateFrom(event.target.value)} />
+            <input type="date" className="form-input" value={dateFrom} disabled={statusFilter === 'review_armada_cb'} onChange={event => setDateFrom(event.target.value)} />
           </div>
           <div className="form-group" style={{ marginBottom: 0 }}>
             <label className="form-label">Sampai Tanggal</label>
-            <input type="date" className="form-input" value={dateTo} onChange={event => setDateTo(event.target.value)} />
+            <input type="date" className="form-input" value={dateTo} disabled={statusFilter === 'review_armada_cb'} onChange={event => setDateTo(event.target.value)} />
           </div>
           <div className="form-group" style={{ marginBottom: 0 }}>
             <label className="form-label">Status</label>
             <select className="form-input" value={statusFilter} onChange={event => setStatusFilter(event.target.value)}>
               <option value="aktif">Aktif</option>
               <option value="dibatalkan">Dibatalkan</option>
+              <option value="review_armada_cb">Perlu Cek Armada CB</option>
               <option value="semua">Semua</option>
             </select>
           </div>
@@ -777,6 +848,16 @@ export default function RiwayatPengirimanMitraPage() {
                     <span className={`badge ${row.status === 'dibatalkan' ? 'badge-danger' : 'badge-success'}`}>
                       {row.status === 'dibatalkan' ? 'Dibatalkan' : 'Aktif'}
                     </span>
+                    {row.menggunakan_armada_cb_snapshot && (
+                      <div style={{ marginTop: 5 }}>
+                        <span className="badge badge-neutral">Trip Armada CB</span>
+                      </div>
+                    )}
+                    {row.armada_cb_perlu_review && (
+                      <div style={{ color: 'var(--color-warning)', fontSize: 12, marginTop: 5, fontWeight: 700 }}>
+                        Perlu cek perlakuan Armada CB
+                      </div>
+                    )}
                     {row.alasan_batal && (
                       <div style={{ color: 'var(--text-tertiary)', fontSize: 12, marginTop: 4 }}>{row.alasan_batal}</div>
                     )}
@@ -810,8 +891,10 @@ export default function RiwayatPengirimanMitraPage() {
                   </td>
                   <td style={{ textAlign: 'right', fontWeight: 700 }}>
                     {resolveBeratDibayar(row).toLocaleString('id-ID')}
-                    {row.pakai_sewa_armada_bl && (
-                      <div style={{ fontSize: 11, color: 'var(--color-warning)', fontWeight: 400 }}>sewa armada</div>
+                    {row.menggunakan_armada_cb_snapshot && (
+                      <div style={{ fontSize: 11, color: row.kenakan_sewa_armada_cb ? 'var(--color-warning)' : 'var(--text-tertiary)', fontWeight: 400 }}>
+                        {row.kenakan_sewa_armada_cb ? 'sewa dipotong' : 'tanpa potongan sewa'}
+                      </div>
                     )}
                   </td>
                   <td style={{ textAlign: 'right' }} className="table-mono">{formatRupiah(row.harga_bersih_per_kg ?? row.harga_harian)}</td>
@@ -951,6 +1034,92 @@ export default function RiwayatPengirimanMitraPage() {
                   </div>
                 </div>
 
+                {editUsesArmadaCb && (
+                  <div style={{ border: '1px solid var(--color-info)', borderRadius: 8, padding: 16, marginBottom: 'var(--space-lg)' }}>
+                    <div style={{ fontWeight: 700, marginBottom: 4 }}>Perlakuan Armada CB</div>
+                    <div className="text-sm text-tertiary" style={{ marginBottom: 14 }}>
+                      Perjalanan ini tetap masuk hitungan trip dan muatan Armada CB. Atur perlakuan uangnya di bawah ini.
+                    </div>
+
+                    <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer', marginBottom: 12 }}>
+                      <input
+                        type="checkbox"
+                        checked={editForm.kenakan_sewa_armada_cb}
+                        onChange={event => setEditForm(recalculateTotals({
+                          ...editForm,
+                          pakai_sewa_armada_bl: event.target.checked,
+                          kenakan_sewa_armada_cb: event.target.checked,
+                          alasan_tanpa_sewa_armada_cb: event.target.checked ? '' : editForm.alasan_tanpa_sewa_armada_cb,
+                        }))}
+                        style={{ marginTop: 3 }}
+                      />
+                      <span>
+                        <strong>Potong sewa dari pembayaran mitra</strong>
+                        <span className="text-sm text-tertiary" style={{ display: 'block' }}>
+                          {formatRupiah(editForm.tarif_sewa_angkut_per_kg)}/kg dari Berat Netto Pabrik
+                        </span>
+                      </span>
+                    </label>
+
+                    {!editForm.kenakan_sewa_armada_cb && (
+                      <div className="form-group" style={{ marginLeft: 26 }}>
+                        <label className="form-label form-label-required">Alasan tanpa potongan sewa</label>
+                        <input
+                          className="form-input"
+                          list="edit-alasan-tanpa-sewa-armada"
+                          required
+                          value={editForm.alasan_tanpa_sewa_armada_cb}
+                          onChange={event => setEditForm({ ...editForm, alasan_tanpa_sewa_armada_cb: event.target.value })}
+                          placeholder="Pilih atau tulis alasan"
+                        />
+                        <datalist id="edit-alasan-tanpa-sewa-armada">
+                          <option value="Bantuan armada tanpa biaya sewa" />
+                          <option value="Mitra internal, sewa tidak dipotong" />
+                          <option value="Keputusan Owner" />
+                        </datalist>
+                      </div>
+                    )}
+
+                    <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer' }}>
+                      <input
+                        type="checkbox"
+                        checked={editForm.catat_dana_operasional_trip}
+                        onChange={event => setEditForm({
+                          ...editForm,
+                          catat_dana_operasional_trip: event.target.checked,
+                          alasan_tanpa_dana_operasional_trip: event.target.checked ? '' : editForm.alasan_tanpa_dana_operasional_trip,
+                        })}
+                        style={{ marginTop: 3 }}
+                      />
+                      <span>
+                        <strong>Buat Dana Operasional Trip</strong>
+                        <span className="text-sm text-tertiary" style={{ display: 'block' }}>
+                          {formatRupiah(editForm.dana_operasional_trip)} untuk satu kali jalan
+                        </span>
+                      </span>
+                    </label>
+
+                    {!editForm.catat_dana_operasional_trip && (
+                      <div className="form-group" style={{ marginLeft: 26, marginTop: 12, marginBottom: 0 }}>
+                        <label className="form-label form-label-required">Alasan tanpa Dana Operasional Trip</label>
+                        <input
+                          className="form-input"
+                          list="edit-alasan-tanpa-dana-trip"
+                          required
+                          value={editForm.alasan_tanpa_dana_operasional_trip}
+                          onChange={event => setEditForm({ ...editForm, alasan_tanpa_dana_operasional_trip: event.target.value })}
+                          placeholder="Pilih atau tulis alasan"
+                        />
+                        <datalist id="edit-alasan-tanpa-dana-trip">
+                          <option value="Dana dibayar di luar transaksi ini" />
+                          <option value="Tidak ada Dana Operasional Trip" />
+                          <option value="Keputusan Owner" />
+                        </datalist>
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 <div className="form-group">
                   <label className="form-label form-label-required">Sopir Aktual</label>
                   <select className="form-input" value={editForm.sopir_aktual_mode} onChange={event => handleEditSopirAktualModeChange(event.target.value)}>
@@ -1025,7 +1194,7 @@ export default function RiwayatPengirimanMitraPage() {
                         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
                           <span style={{ fontSize: 13 }}>Total Kotor: <strong>{formatRupiah(editForm.total_kotor)}</strong></span>
                           <span style={{ fontSize: 13 }}>Nilai Bersih Mitra: <strong style={{ color: 'var(--color-success)' }}>{formatRupiah(editForm.total_nilai_bersih)}</strong></span>
-                          {editForm.pakai_sewa_armada_bl && (
+                          {editUsesArmadaCb && editForm.kenakan_sewa_armada_cb && (
                             <span style={{ fontSize: 13 }}>Sewa Armada CB: <strong style={{ color: 'var(--color-warning)' }}>{formatRupiah(editForm.biaya_sewa_armada_total)}</strong></span>
                           )}
                         </div>

@@ -1155,3 +1155,18 @@ Acceptance:
 - [x] Bayar Dana Trip membuat satu biaya operasional dan satu kas keluar tanpa pembayaran ganda.
 - [x] Laporan margin tidak menghitung Dana Operasional Trip dua kali.
 - [x] Tampilan Master Data Mitra disempurnakan (merge kolom Kode + Nama, Penanggung Jawab + No HP, Tipe di-hide).
+
+### P0 Koreksi - Kontrol Sewa dan Dana per Trip Armada CB (16 Juli 2026)
+
+- [x] Pisahkan snapshot fakta penggunaan Armada CB dari keputusan potongan sewa dan pencatatan Dana Operasional Trip.
+- [x] Tambahkan checkbox **Potong sewa dari pembayaran mitra** pada form tambah dan edit Pengiriman Mitra.
+- [x] Tambahkan checkbox **Buat Dana Operasional Trip** yang tidak memengaruhi hitungan fisik trip/muatan.
+- [x] Wajibkan alasan saat salah satu perlakuan uang dimatikan.
+- [x] Pastikan trigger database menghormati kedua kontrol dan tidak menghidupkannya kembali dari `is_armada_cb`.
+- [x] Pastikan sinkronisasi tarif periode hanya memproses trip yang memilih Dana Operasional Trip.
+- [x] Ubah Laporan Armada CB agar semua trip fisik tetap dihitung serta menampilkan jumlah tanpa sewa, tanpa Dana, dan perlu review.
+- [x] Tambahkan antrean **Trip Armada CB Perlu Dicek** pada Dashboard.
+- [x] Backfill aman: transaksi lama tidak diberi sewa, Dana, tagihan, atau kas baru; kasus ambigu masuk antrean review.
+- [x] Tambahkan smoke test rollback `supabase/tests/armada_cb_controls_rollback.sql`.
+
+Hasil rekonsiliasi remote setelah migration: 11 trip aktif Armada CB, terdiri dari 2 trip dengan sewa dan Dana serta 9 trip lama tanpa keduanya yang ditandai perlu review. Tidak ada trip yang ditandai sudah membayar Dana pada kelompok ini.

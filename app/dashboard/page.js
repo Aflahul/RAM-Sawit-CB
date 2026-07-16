@@ -191,6 +191,7 @@ const initialStats = {
   kwitansiPerluReview: 0,
   mitraPerluVerifikasi: 0,
   armadaPerluVerifikasi: 0,
+  armadaCbPerluReview: 0,
 };
 
 export default function DashboardPage() {
@@ -378,6 +379,7 @@ export default function DashboardPage() {
       kwitansiPerluReview: Number(pendingSummary.kwitansi_perlu_review || 0),
       mitraPerluVerifikasi: Number(pendingSummary.mitra_perlu_verifikasi || 0),
       armadaPerluVerifikasi: Number(pendingSummary.armada_perlu_verifikasi || 0),
+      armadaCbPerluReview: Number(pendingSummary.trip_armada_cb_perlu_review || 0),
     });
 
     setRevenueSevenDays(days.map((date) => {
@@ -540,6 +542,16 @@ export default function DashboardPage() {
       });
     }
 
+    if (stats.armadaCbPerluReview > 0) {
+      items.push({
+        title: 'Trip Armada CB Perlu Dicek',
+        value: stats.armadaCbPerluReview,
+        description: 'Tentukan apakah sewa dipotong dan Dana Operasional Trip dicatat.',
+        href: '/admin/input-timbangan?status=review_armada_cb',
+        tone: 'danger',
+      });
+    }
+
     if (stats.jumlahPihakHutang > 0) {
       items.push({
         title: 'Sisa Hutang/Panjar',
@@ -570,6 +582,7 @@ export default function DashboardPage() {
         <div className="dashboard-status-row">
           <StatusPill ok={Boolean(hargaPabrik)}>Harga Pabrik</StatusPill>
           <StatusPill ok={stats.kwitansiPerluReview === 0}>Review</StatusPill>
+          <StatusPill ok={stats.armadaCbPerluReview === 0}>Armada CB</StatusPill>
         </div>
       </div>
 

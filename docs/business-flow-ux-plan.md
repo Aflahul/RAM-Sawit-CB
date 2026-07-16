@@ -646,6 +646,18 @@ Alur bisnis final:
 
 Pengaturan tarif ditempatkan di halaman Mitra karena nilainya mengikuti pihak penyewa, sedangkan halaman Armada hanya mengelola plat, sopir tetap, dan status Armada CB.
 
+### 7.4.3 Pengecualian Sewa dan Dana pada Trip Armada CB
+
+Status: **P0 untuk ketepatan pencatatan uang**.
+
+Satu perjalanan Armada CB dapat terjadi tanpa potongan sewa atau tanpa Dana Operasional Trip. Karena itu sistem memisahkan tiga hal:
+
+1. **Memakai Armada CB** adalah fakta dari plat/sopir dan selalu masuk hitungan trip serta muatan.
+2. **Potong sewa dari mitra** menentukan apakah sewa mengurangi pembayaran mitra dan menjadi pemasukan CB.
+3. **Buat Dana Operasional Trip** menentukan apakah sistem membuat tagihan yang nanti dibayar melalui kas.
+
+Pada kondisi normal, kedua pilihan uang otomatis aktif. Admin boleh mematikannya untuk kasus khusus, tetapi wajib mengisi alasan. Mematikan potongan sewa tidak boleh menghilangkan trip dari laporan. Mematikan Dana Trip tidak boleh membuat tagihan, biaya, atau kas keluar. Data lama yang belum jelas tidak diberi nilai uang otomatis dan masuk daftar **Perlu Cek**.
+
 Urutan implementasi yang disarankan:
 
 1. **Migration database aman**

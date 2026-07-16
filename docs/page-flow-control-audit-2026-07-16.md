@@ -393,6 +393,7 @@ Status setelah audit:
 - P0-C selesai: Netto/Dibayar dipisah, 8 header lama dibetulkan, Pendapatan Owner disamakan, harga historis dipertahankan, dan overlap fee menjadi `0`.
 - P0-D selesai: mutasi manual dapat dibalik Owner, bukti/keterangan diwajibkan sesuai alur, dan Buku Kas menampilkan saldo pembuka serta akhir.
 - P1 utama selesai: Laba/Rugi basis kas diganti menjadi Ringkasan Arus Kas, Panjar lama dan Laporan Harian diarahkan ke satu pintu yang benar, serta pagination ditambahkan pada Kas/Biaya.
+- P0 kontrol Armada CB selesai: fakta trip, potongan sewa, dan Dana Operasional Trip dipisahkan; pengecualian wajib beralasan dan kasus lama masuk antrean review tanpa membuat uang baru.
 
 Verifikasi:
 
@@ -401,6 +402,8 @@ Verifikasi:
 - `supabase/tests/p0_financial_controls_rollback.sql`: lulus dan seluruh data uji ter-rollback.
 - Uji akun Admin nyata: akses operasional berhasil; direct write, reversal Owner, dan RPC anonim ditolak.
 - Rekonsiliasi remote: mismatch kwitansi `0`, overlap fee `0`, dan data quick-add uji tersisa `0`.
+- Rekonsiliasi Armada CB remote: 11 trip aktif; 2 dengan sewa/Dana dan 9 data lama ditandai perlu review tanpa backfill nominal.
+- Smoke test kontrol Armada CB sudah disiapkan di `supabase/tests/armada_cb_controls_rollback.sql`; eksekusi CLI dari mesin ini tertunda karena Docker Desktop tidak tersedia.
 
 Tindak lanjut manusia/data legacy:
 
