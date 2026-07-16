@@ -38,6 +38,8 @@ Temuan data remote yang menjadi release gate:
 - Smoke test rollback dan uji akun Admin nyata sudah lulus. Lint serta production build aplikasi lulus.
 - Kontrol laporan dan Master Data berbasis role aktif melalui migration `20260716050000_role_aware_reports_and_master_data.sql`.
 - Workflow Pinjaman & Panjar aktif: Admin mengajukan dan menyerahkan uang yang sudah disetujui; Owner/Super Admin menyetujui dan melakukan reversal; riwayat legacy dapat direkonsiliasi tanpa membuat kas historis baru.
+- Potongan Panjar pada kwitansi dipasangkan per mitra. Kwitansi gabungan tidak boleh memakai hak Mitra A untuk menutup panjar atau sewa Mitra B, dan snapshot lama tanpa pemilik dipulihkan dari relasi `panjar_mitra`.
+- Kontrol tersebut aktif melalui migration `20260716120505_enforce_kwitansi_panjar_per_mitra.sql` dan `20260716121121_enrich_kwitansi_panjar_snapshot_on_write.sql`.
 
 Tindakan bisnis yang masih terbuka:
 

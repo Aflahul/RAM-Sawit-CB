@@ -267,7 +267,7 @@ export default function KwitansiMitraPage() {
         .lte('tanggal', dateTo),
       supabase
         .from('panjar_mitra')
-        .select('id, mitra_id, tanggal, jumlah, keterangan, created_at')
+        .select('id, mitra_id, tanggal, jumlah, keterangan, status, pembayaran_mitra_kwitansi_id, created_at')
         .in('mitra_id', mitraIds)
         .eq('status', 'belum_lunas')
         .order('tanggal', { ascending: true })
@@ -372,23 +372,38 @@ export default function KwitansiMitraPage() {
 
   const panjarRows = useMemo(() => {
     if (!isShowingPaidSnapshot) {
-      return panjars.map(row => ({
-        ...row,
-        master_mitra_id: row.mitra_id,
-        mitra_label: getRowMitraLabel({ ...row, master_mitra_id: row.mitra_id }, selectedMitras),
-      }));
+      return panjars
+        .filter(row => row.status === 'belum_lunas')
+        .map(row => ({
+          ...row,
+          master_mitra_id: row.mitra_id,
+          mitra_label: getRowMitraLabel({ ...row, master_mitra_id: row.mitra_id }, selectedMitras),
+        }));
     }
 
+    const panjarById = new Map(panjars.map(row => [row.id, row]));
+    const paymentMitraIds = [...new Set([
+      payment?.master_mitra_id,
+      ...(payment?.mitra_ids || []),
+      ...(payment?.items || []).map(item => item.master_mitra_id),
+      ...(payment?.mitras || []).map(item => item.master_mitra_id),
+    ].filter(Boolean))];
+    const singlePaymentMitraId = paymentMitraIds.length === 1 ? paymentMitraIds[0] : '';
     const snapshot = Array.isArray(payment?.panjar_snapshot_json) ? payment.panjar_snapshot_json : [];
-    return snapshot.map(row => ({
-      ...row,
-      master_mitra_id: row.master_mitra_id || row.mitra_id,
-      mitra_label: row.mitra_label,
-    }));
+    return snapshot.map(row => {
+      const linkedPanjar = panjarById.get(row.id);
+      const masterMitraId = row.master_mitra_id || row.mitra_id || linkedPanjar?.mitra_id || singlePaymentMitraId;
+      return {
+        ...row,
+        master_mitra_id: masterMitraId,
+        mitra_label: row.mitra_label || getRowMitraLabel({ ...linkedPanjar, master_mitra_id: masterMitraId }, selectedMitras),
+      };
+    });
   }, [isShowingPaidSnapshot, panjars, payment, selectedMitras]);
 
-  const kwitansiGroups = useMemo(() => {
+  const kwitansiGrouping = useMemo(() => {
     const groups = new Map();
+    const unassignedPanjars = [];
     const selectedOrder = new Map(selectedMitraIds.map((id, index) => [id, index]));
 
     function ensureGroup(row) {
@@ -434,22 +449,35 @@ export default function KwitansiMitraPage() {
     });
 
     panjarRows.forEach((row) => {
-      const group = ensureGroup(row);
+      const mitraId = getRowMitraId(row);
+      const group = groups.get(mitraId)
+        || (!mitraId && groups.size === 1 ? groups.values().next().value : null);
+
+      if (!group) {
+        unassignedPanjars.push(row);
+        return;
+      }
+
       const jumlah = toNumber(row.jumlah);
 
       group.panjars.push(row);
       group.totalPanjar += jumlah;
     });
 
-    return [...groups.values()]
-      .filter(group => group.rows.length > 0 || group.panjars.length > 0)
+    const sortedGroups = [...groups.values()]
+      .filter(group => group.rows.length > 0)
       .sort((a, b) => {
         const aOrder = selectedOrder.has(a.mitraId) ? selectedOrder.get(a.mitraId) : 999;
         const bOrder = selectedOrder.has(b.mitraId) ? selectedOrder.get(b.mitraId) : 999;
         if (aOrder !== bOrder) return aOrder - bOrder;
         return a.label.localeCompare(b.label);
       });
+
+    return { groups: sortedGroups, unassignedPanjars };
   }, [kwitansiRows, panjarRows, selectedMitraIds, selectedMitras]);
+
+  const kwitansiGroups = kwitansiGrouping.groups;
+  const unassignedPanjars = kwitansiGrouping.unassignedPanjars;
 
   const currentTotalBeratNetto = kwitansiGroups.reduce((sum, group) => sum + group.totalBeratNetto, 0);
   const currentTotalBeratDibayar = kwitansiGroups.reduce((sum, group) => sum + group.totalBeratDibayar, 0);
@@ -476,6 +504,11 @@ export default function KwitansiMitraPage() {
   const canCancelPayment = canApproveCorrections(userRole);
   const displayPeriode = formatDateRangeDisplay(dateFrom, dateTo);
   const hasNewUnpaidAfterPayment = Boolean(payment && transaksi.length > 0);
+  const groupsOverPayable = kwitansiGroups.filter(group => (
+    group.totalPanjar + (group.totalSewaArmada || 0) > group.totalNilaiBersih
+  ));
+  const hasDraftAllocationIssue = !isShowingPaidSnapshot
+    && (unassignedPanjars.length > 0 || groupsOverPayable.length > 0);
 
   const paymentReview = useMemo(() => {
     if (hasNewUnpaidAfterPayment) {
@@ -556,7 +589,7 @@ export default function KwitansiMitraPage() {
 
   const handleMarkPaid = async (event) => {
     event.preventDefault();
-    if (selectedMitraIds.length === 0 || transaksi.length === 0 || savingPayment) return;
+    if (selectedMitraIds.length === 0 || transaksi.length === 0 || savingPayment || hasDraftAllocationIssue) return;
 
     const finalRecipientLabel = paymentForm.penerima_label.trim() || selectedRecipientLabel;
 
@@ -617,7 +650,7 @@ export default function KwitansiMitraPage() {
             <button
               className="btn btn-outline"
               onClick={() => setShowPaymentModal(true)}
-              disabled={selectedMitraIds.length === 0 || transaksi.length === 0 || savingPayment}
+              disabled={selectedMitraIds.length === 0 || transaksi.length === 0 || savingPayment || hasDraftAllocationIssue}
             >
               <CreditCard size={16} />
               Tandai Dibayar
@@ -692,6 +725,30 @@ export default function KwitansiMitraPage() {
           <div>
             <strong>Pengiriman WhatsApp perlu manual.</strong>
             <div style={{ marginTop: 4 }}>{whatsappWarning}</div>
+          </div>
+        </div>
+      )}
+
+      {!loading && !errorMsg && unassignedPanjars.length > 0 && (
+        <div className="alert alert-warning no-print">
+          <AlertTriangle size={18} />
+          <div>
+            <strong>Ada panjar yang belum dapat dipasangkan ke mitra transaksi.</strong>
+            <div style={{ marginTop: 4 }}>
+              Panjar tidak dibuat sebagai blok mitra kosong dan pembayaran baru dikunci. Periksa pemilik panjar dari menu Pinjaman & Panjar.
+            </div>
+          </div>
+        </div>
+      )}
+
+      {!loading && !errorMsg && groupsOverPayable.length > 0 && (
+        <div className="alert alert-warning no-print">
+          <AlertTriangle size={18} />
+          <div>
+            <strong>Potongan salah satu mitra melebihi hak pembayarannya.</strong>
+            <div style={{ marginTop: 4 }}>
+              {groupsOverPayable.map(group => group.nama || group.label).join(', ')} harus diselesaikan sendiri; hak mitra lain dalam kwitansi gabungan tidak boleh dipakai menutup panjarnya.
+            </div>
           </div>
         </div>
       )}
@@ -1407,7 +1464,7 @@ export default function KwitansiMitraPage() {
                 <button type="button" className="btn btn-outline" disabled={savingPayment} onClick={() => setShowPaymentModal(false)}>
                   Batal
                 </button>
-                <button type="submit" className="btn btn-primary" disabled={savingPayment || transaksi.length === 0}>
+                <button type="submit" className="btn btn-primary" disabled={savingPayment || transaksi.length === 0 || hasDraftAllocationIssue}>
                   <CheckCircle2 size={16} />
                   {savingPayment ? 'Menyimpan...' : 'Simpan Sudah Dibayar'}
                 </button>

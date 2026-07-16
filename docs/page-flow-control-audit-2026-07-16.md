@@ -404,6 +404,7 @@ Status setelah audit:
 - P1 utama selesai: Laba/Rugi basis kas diganti menjadi Ringkasan Arus Kas, Panjar lama dan Laporan Harian diarahkan ke satu pintu yang benar, serta pagination ditambahkan pada Kas/Biaya.
 - P0 kontrol Armada CB selesai: fakta trip, potongan sewa, dan Dana Operasional Trip dipisahkan; pengecualian wajib beralasan dan kasus lama masuk antrean review tanpa membuat uang baru.
 - P0 Pinjaman & Panjar selesai: pengajuan, persetujuan, penyerahan, pengembalian parsial, reversal, rekonsiliasi legacy, arsip riwayat, dan pintasan ke Kwitansi TBS sudah tersedia.
+- P0 grouping kwitansi selesai: grup hanya dibuat dari transaksi; Panjar Mitra menempel ke pemiliknya; potongan per mitra divalidasi agar kwitansi gabungan tidak saling menutup hak antar-mitra.
 
 Verifikasi:
 
@@ -414,6 +415,7 @@ Verifikasi:
 - Rekonsiliasi remote: mismatch kwitansi `0`, overlap fee `0`, dan data quick-add uji tersisa `0`.
 - Rekonsiliasi Armada CB remote: 11 trip aktif; 2 dengan sewa/Dana dan 9 data lama ditandai perlu review tanpa backfill nominal.
 - Rekonsiliasi Panjar Mitra legacy Rp50.000.000 telah diarsipkan sebagai `HIS-20260716-000001` tanpa membuat kas keluar historis baru dan dapat ditelusuri ke Kwitansi TBS terkait.
+- Audit snapshot kwitansi aktif: 19 kwitansi diperiksa, 1 snapshot panjar ditemukan, dan jumlah snapshot tanpa pemilik mitra adalah `0`.
 - Smoke test kontrol Armada CB sudah disiapkan di `supabase/tests/armada_cb_controls_rollback.sql`; eksekusi CLI dari mesin ini tertunda karena Docker Desktop tidak tersedia.
 
 Tindak lanjut manusia/data legacy:

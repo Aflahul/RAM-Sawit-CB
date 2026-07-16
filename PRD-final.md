@@ -69,6 +69,7 @@ Status Pinjaman & Panjar per 16 Juli 2026:
 
 - Workflow pengajuan, persetujuan, penyerahan uang, pengembalian parsial, dan reversal sudah aktif.
 - Panjar Mitra tetap terhubung ke Kwitansi Pembayaran TBS; pinjaman pihak lain dikembalikan tunai/transfer atau melalui potongan yang disepakati.
+- Pada kwitansi gabungan, transaksi, panjar, sewa armada, dan subtotal wajib dihitung per mitra. Hak pembayaran satu mitra tidak boleh dipakai menutup panjar atau sewa mitra lain.
 - Dokumen dan riwayat memakai snapshot identitas penerima agar arsip tidak berubah saat master diedit.
 - Rekonsiliasi legacy dilakukan Owner per kasus berdasarkan bukti, tidak membuat kas keluar historis baru, dan hasilnya masuk **Riwayat Lunas** dengan pintasan ke Kwitansi TBS.
 - Backlog yang belum selesai: lampiran bukti, batas pinjaman per pihak, laporan umur pinjaman, dan alokasi parsial Panjar Mitra ketika hak TBS tidak mencukupi.

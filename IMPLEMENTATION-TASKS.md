@@ -43,6 +43,10 @@ Referensi temuan dan alasan bisnis: `docs/page-flow-control-audit-2026-07-16.md`
 - [x] Perbaiki laporan Pendapatan Owner: nilai Bruto per mitra mengikuti Fee Owner + Sewa dan sorting tonase memakai Berat Dibayar.
 - [x] Hindari pemakaian Harga Pabrik terbaru untuk mencocokkan pembayaran periode lama; gunakan harga nota/snapshot periode.
 - [x] Cegah periode fee tumpang tindih dan rapikan 19 overlap pada 13 mitra. Verifikasi remote: overlap `0`.
+- [x] Pasangkan Panjar Mitra ke kelompok transaksi pemiliknya pada kwitansi single maupun gabungan; panjar tidak boleh membuat blok mitra kosong.
+- [x] Validasi potongan per mitra agar panjar/sewa suatu mitra tidak memakai hak pembayaran mitra lain dalam kwitansi gabungan.
+- [x] Lengkapi `master_mitra_id` pada snapshot panjar kwitansi legacy dan perkaya snapshot baru secara otomatis saat disimpan.
+- [x] Aktifkan migration `20260716120505_enforce_kwitansi_panjar_per_mitra.sql` dan `20260716121121_enrich_kwitansi_panjar_snapshot_on_write.sql`.
 
 ### P0-D - Kontrol Kas
 
