@@ -391,12 +391,18 @@ export default function KwitansiMitraPage() {
     const groups = new Map();
     const selectedOrder = new Map(selectedMitraIds.map((id, index) => [id, index]));
 
-    function ensureGroup(mitraId, label) {
+    function ensureGroup(row) {
+      const mitraId = getRowMitraId(row);
+      const selectedMitra = selectedMitras.find(mitra => mitra.id === mitraId);
+      const mitra = row?.master_mitra || row?.transaksi?.master_mitra || selectedMitra;
+      const label = getRowMitraLabel(row, selectedMitras);
       const safeId = mitraId || `unknown-${label || groups.size}`;
       if (!groups.has(safeId)) {
         groups.set(safeId, {
           mitraId: safeId,
           label: label || 'Mitra',
+          nama: mitra?.nama || '',
+          kodeLabel: compactJoin([mitra?.kode, mitra?.alamat]) || label || 'Mitra',
           rows: [],
           panjars: [],
           totalBeratNetto: 0,
@@ -404,14 +410,19 @@ export default function KwitansiMitraPage() {
           totalNilaiBersih: 0,
           totalPanjar: 0,
         });
+      } else {
+        const group = groups.get(safeId);
+        if (!group.nama && mitra?.nama) group.nama = mitra.nama;
+        if ((!group.kodeLabel || group.kodeLabel === group.label) && (mitra?.kode || mitra?.alamat)) {
+          group.kodeLabel = compactJoin([mitra?.kode, mitra?.alamat]);
+        }
       }
 
       return groups.get(safeId);
     }
 
     kwitansiRows.forEach((row) => {
-      const mitraId = getRowMitraId(row);
-      const group = ensureGroup(mitraId, getRowMitraLabel(row, selectedMitras));
+      const group = ensureGroup(row);
       const totalNilaiBersih = resolveTotalNilaiBersihMitra(row);
       const sewaArmada = resolveBiayaSewaArmada(row);
 
@@ -423,8 +434,7 @@ export default function KwitansiMitraPage() {
     });
 
     panjarRows.forEach((row) => {
-      const mitraId = getRowMitraId(row);
-      const group = ensureGroup(mitraId, getRowMitraLabel(row, selectedMitras));
+      const group = ensureGroup(row);
       const jumlah = toNumber(row.jumlah);
 
       group.panjars.push(row);
@@ -759,8 +769,11 @@ export default function KwitansiMitraPage() {
               {kwitansiGroups.map((group) => (
                 <section key={group.mitraId} className="kwitansi-group">
                   <div className="kwitansi-group-header" style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: '8px 16px', justifyContent: 'space-between', marginBottom: 12 }}>
-                    <div style={{ display: 'flex', alignItems: 'baseline', gap: 12, flexWrap: 'wrap' }}>
-                      <h3 style={{ margin: 0, fontSize: 14 }}>{group.label}</h3>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+                      <div>
+                        <h3 style={{ margin: 0, fontSize: 15 }}>{group.nama || 'Nama mitra belum diisi'}</h3>
+                        <div style={{ color: 'var(--text-secondary)', fontSize: 12, fontWeight: 700, marginTop: 2 }}>{group.kodeLabel}</div>
+                      </div>
                       <div style={{ color: 'var(--text-secondary)', fontSize: 12, fontWeight: 600 }}>Periode: {displayPeriode}</div>
                       <div style={{ color: 'var(--text-tertiary)', fontSize: 12 }}>{group.rows.length} transaksi, {formatNumber(group.totalBeratDibayar)} kg dibayar</div>
                     </div>
@@ -1341,7 +1354,8 @@ export default function KwitansiMitraPage() {
                   {kwitansiGroups.map(group => (
                     <div key={group.mitraId} style={{ display: 'flex', justifyContent: 'space-between', gap: 12, padding: 12, border: '1px solid var(--border-default)', borderRadius: 8 }}>
                       <div>
-                        <div style={{ fontWeight: 700 }}>{group.label}</div>
+                        <div style={{ fontWeight: 700 }}>{group.nama || 'Nama mitra belum diisi'}</div>
+                        <div style={{ color: 'var(--text-secondary)', fontSize: 12, fontWeight: 600 }}>{group.kodeLabel}</div>
                         <div style={{ color: 'var(--text-tertiary)', fontSize: 12 }}>
                           {group.rows.length} transaksi, panjar {formatRupiah(group.totalPanjar)}, sewa {formatRupiah(group.totalSewaArmada || 0)}
                         </div>
