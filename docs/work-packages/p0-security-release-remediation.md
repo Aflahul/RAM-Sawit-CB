@@ -51,7 +51,7 @@ Scope tidak masuk:
 | `TASK-SEC-001` Batasi pembacaan data sensitif | `AUD-SEC-20260717-001` | P0/KR3 | Data/Security Owner | R-SEC-01 | Verified (via 20260718171659_p0_secure_dto_views_and_read_revoke) |
 | `TASK-SEC-002` Kunci audit trail | `AUD-SEC-20260717-002` | P0/KR3 | Data/Security Owner | R-SEC-01 | Verified (via 20260718004159_p0_secure_audit_and_api) |
 | `TASK-SEC-003` Hardening privilege dan RPC | `AUD-SEC-20260717-003` | P0/KR3 | Data/Security Owner | R-SEC-01 | Verified (via 20260718000001_p0_revoke_direct_api_transaksi) |
-| `TASK-SEC-004` Auth dan role fail-closed | `AUD-SEC-20260717-004` | P0/KR3 | Data/Security Owner | R-SEC-01 | Draft/Blocked |
+| `TASK-SEC-004` Auth dan role fail-closed | `AUD-SEC-20260717-004` | P0/KR3 | Data/Security Owner | R-SEC-01 | Verified (via 20260718161015_p0_fail_closed_role) |
 | `TASK-SEC-005` Feature gate modul beku | `AUD-SEC-20260717-005` | P0/KR3 | Engineering Lead | R-SEC-01 | Verified (via 20260718010013_p0_feature_gate_coming_soon) |
 | `TASK-SEC-006` Snapshot transaksi dihitung server | `AUD-SEC-20260717-006` | P0/KR3 | Engineering + Data/Security | R-SEC-01 | Verified (via 20260718010011_p0_server_authoritative_snapshots) |
 | `TASK-BIZ-001` Maker-checker finansial | `AUD-BIZ-20260717-001` | P0/KR3 | Product Owner | R-SEC-01 | Blocked keputusan BDR |
