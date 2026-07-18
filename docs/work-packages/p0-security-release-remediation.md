@@ -48,7 +48,7 @@ Scope tidak masuk:
 
 | Task | Audit | Pri/KR | Accountable role | Target | Status |
 | --- | --- | --- | --- | --- | --- |
-| `TASK-SEC-001` Batasi pembacaan data sensitif | `AUD-SEC-20260717-001` | P0/KR3 | Data/Security Owner | R-SEC-01 | Verified containment (via 20260718004159_p0_secure_audit_and_api) |
+| `TASK-SEC-001` Batasi pembacaan data sensitif | `AUD-SEC-20260717-001` | P0/KR3 | Data/Security Owner | R-SEC-01 | Verified (via 20260718171659_p0_secure_dto_views_and_read_revoke) |
 | `TASK-SEC-002` Kunci audit trail | `AUD-SEC-20260717-002` | P0/KR3 | Data/Security Owner | R-SEC-01 | Verified (via 20260718004159_p0_secure_audit_and_api) |
 | `TASK-SEC-003` Hardening privilege dan RPC | `AUD-SEC-20260717-003` | P0/KR3 | Data/Security Owner | R-SEC-01 | Verified (via 20260718000001_p0_revoke_direct_api_transaksi) |
 | `TASK-SEC-004` Auth dan role fail-closed | `AUD-SEC-20260717-004` | P0/KR3 | Data/Security Owner | R-SEC-01 | Draft/Blocked |
