@@ -47,11 +47,11 @@ const emptyEditForm = {
   berat_netto: '',
   potongan_pabrik: '0',
   harga_dasar: 0,
-  fee_owner_history_id: '',
-  fee_owner_per_kg: 0,
+  
+  
   harga_harian: 0,
   total_kotor: 0,
-  total_fee_owner: 0,
+  
   total_nilai_bersih: 0,
   menggunakan_armada_cb_snapshot: false,
   pakai_sewa_armada_bl: false,
@@ -188,11 +188,11 @@ export default function AdminInputTimbangan() {
     setErrorMsg('');
 
     let transaksiQuery = supabase
-      .from('transaksi_mitra')
+      .from('v_transaksi_mitra_operasional')
       .select(`
         id, tanggal, sopir_id, mitra_id, plat_nomor, tonase, harga_harian, total_kotor,
-        harga_pabrik_per_kg, fee_owner_per_kg, harga_bersih_per_kg, total_fee_owner,
-        total_nilai_bersih, fee_owner_history_id,
+        harga_bersih_per_kg,
+        total_nilai_bersih,
         berat_netto_pabrik_kg, potongan_pabrik_kg, berat_dibayar_kg,
         menggunakan_armada_cb_snapshot, pakai_sewa_armada_bl,
         kenakan_sewa_armada_cb, catat_dana_operasional_trip,
@@ -231,7 +231,7 @@ export default function AdminInputTimbangan() {
     ] = await Promise.all([
       transaksiQuery,
       supabase
-        .from('master_mitra')
+        .from('v_master_mitra_operasional')
         .select('id, kode, alamat, nama, fee_per_kg, tarif_sewa_angkut_per_kg, dana_operasional_trip')
         .eq('aktif', true)
         .order('kode'),
@@ -242,12 +242,7 @@ export default function AdminInputTimbangan() {
           master_mitra ( id, kode, alamat, nama, fee_per_kg )
         `)
         .eq('aktif', true)
-        .order('nama'),
-      supabase
-        .from('fee_owner_mitra_history')
-        .select('id, master_mitra_id, fee_per_kg, tarif_sewa_angkut_per_kg, dana_operasional_trip, berlaku_mulai, berlaku_sampai, aktif, alasan_perubahan')
-        .eq('aktif', true)
-        .order('berlaku_mulai', { ascending: false }),
+        .order('nama')
     ]);
 
     const error = trxError || mitraError || sopirError;
@@ -383,7 +378,7 @@ export default function AdminInputTimbangan() {
         sewa_armada: acc.sewa_armada + resolveBiayaSewaArmada(row),
       }), { berat_netto: 0, berat_dibayar: 0, total: 0, sewa_armada: 0 });
   }, [filteredTransaksi]);
-  const editFeeOwner = toNumber(editForm.fee_owner_per_kg);
+  
   const editUsesArmadaCb = Boolean(editForm.menggunakan_armada_cb_snapshot);
 
   function handleSort(key) {
@@ -419,7 +414,7 @@ export default function AdminInputTimbangan() {
   }
 
   function recalculateTotals(nextForm) {
-    const feeOwner    = toNumber(nextForm.fee_owner_per_kg);
+    
     const hargaPabrik = toNumber(nextForm.harga_dasar);
     const hargaBersih = Math.max(hargaPabrik - feeOwner, 0);
     const beratNetto  = Math.max(0, parseFloat(nextForm.berat_netto) || 0);
@@ -434,7 +429,7 @@ export default function AdminInputTimbangan() {
       ...nextForm,
       harga_harian: hargaBersih,
       total_kotor:        Math.round(beratDibayar * hargaPabrik),
-      total_fee_owner:    Math.round(beratDibayar * feeOwner),
+      
       total_nilai_bersih: Math.round(beratDibayar * hargaBersih),
       biaya_sewa_armada_total: sewaArmadaTotal,
     };
@@ -444,7 +439,7 @@ export default function AdminInputTimbangan() {
     const isManual  = row.sopir_aktual_source === 'manual';
     const isDefault = !isManual && String(row.sopir_aktual_id || '') === String(row.sopir_default_id || row.sopir_id || '');
     const effectiveFee = getEffectiveFeeSnapshot(row.mitra_id, row.tanggal);
-    const fallbackFee  = toNumber(row.fee_owner_per_kg ?? effectiveFee.fee ?? row.master_mitra?.fee_per_kg);
+    
     const hargaDasar   = toNumber(row.harga_pabrik_per_kg ?? (toNumber(row.harga_harian) + fallbackFee));
     const beratNetto   = resolveBeratNettoPabrik(row);
     const potongan     = toNumber(row.potongan_pabrik_kg);
@@ -469,11 +464,11 @@ export default function AdminInputTimbangan() {
       berat_netto: String(beratNetto || ''),
       potongan_pabrik: String(potongan),
       harga_dasar: hargaDasar,
-      fee_owner_history_id: row.fee_owner_history_id || effectiveFee.historyId,
-      fee_owner_per_kg: fallbackFee,
+      
+      
       harga_harian: toNumber(row.harga_bersih_per_kg ?? row.harga_harian),
       total_kotor:        Math.round(beratDibayar * hargaDasar),
-      total_fee_owner:    toNumber(row.total_fee_owner),
+      
       total_nilai_bersih: toNumber(row.total_nilai_bersih ?? row.total_kotor),
       menggunakan_armada_cb_snapshot: menggunakanArmadaCb,
       pakai_sewa_armada_bl: pakaiSewa,
@@ -650,11 +645,11 @@ export default function AdminInputTimbangan() {
       berat_dibayar_kg:      beratDibayar,
       harga_harian:        toNumber(editForm.harga_dasar),
       harga_pabrik_per_kg: toNumber(editForm.harga_dasar),
-      fee_owner_per_kg:    toNumber(editForm.fee_owner_per_kg),
+      
       harga_bersih_per_kg: editForm.harga_harian,
-      fee_owner_history_id: editForm.fee_owner_history_id || null,
+      
       total_kotor:        editForm.total_kotor,
-      total_fee_owner:    editForm.total_fee_owner,
+      
       total_nilai_bersih: editForm.total_nilai_bersih,
       kenakan_sewa_armada_cb: editUsesArmadaCb && editForm.kenakan_sewa_armada_cb,
       catat_dana_operasional_trip: editUsesArmadaCb && editForm.catat_dana_operasional_trip,
