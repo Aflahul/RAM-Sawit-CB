@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import BrandMark from '@/components/branding/BrandMark';
 import { useBrandingSettings } from '@/lib/use-branding-settings';
-import { canManageBusinessSettings, canManageFinance, canViewProfit, getRoleLabel, isOperationalAdmin, normalizeRole } from '@/lib/roles';
+import { canManageBusinessSettings, canManageFinance, canViewProfit, canManageUsers, getRoleLabel, isOperationalAdmin, normalizeRole } from '@/lib/roles';
 import {
   LayoutDashboard, Truck, ReceiptText, Database, Store,
   Wallet, Calculator, FileText, Users, Box, TrendingUp, MapPin, Tag, ClipboardList, BadgeDollarSign, Settings, ChevronDown
@@ -62,12 +62,14 @@ const menuSections = [
   {
     title: 'Admin Sistem',
     items: [
+      { href: '/superadmin/users', icon: <Users size={20} />, label: 'Kelola Pengguna', superAdminOnly: true },
       { href: '/owner/pengaturan-web', icon: <Settings size={20} />, label: 'Pengaturan Web', settingsOnly: true },
     ],
   },
 ];
 
 function canSeeMenuItem(item, role) {
+  if (item.superAdminOnly) return canManageUsers(role);
   if (item.armadaReport) return canManageFinance(role) || canViewProfit(role);
   if (item.profitOnly) return canViewProfit(role);
   if (item.settingsOnly) return canManageBusinessSettings(role);
@@ -223,25 +225,37 @@ export default function Sidebar({ isOpen, onClose, user }) {
                 </button>
 
                 <div id={sectionId} className="sidebar-section-items" hidden={!isExpanded}>
-                  {section.items.map((item) => (
-                  <Link
-                    key={item.href}
-                    href={item.href}
-                    className={`sidebar-link ${isActivePath(pathname, item.href) ? 'active' : ''}`}
-                    onClick={handleNavigate}
-                  >
-                    <span className="sidebar-link-icon">{item.icon}</span>
-                    <span className="sidebar-link-label">{item.label}</span>
-                    {item.badge && (
-                      <span 
-                        className="sidebar-link-badge" 
-                        style={item.badge === 'comingsoon' || item.badge === 'shortcut' ? { fontSize: '0.65rem', fontStyle: 'italic', background: 'transparent', color: '#94a3b8', border: '1px solid #475569', padding: '2px 6px' } : {}}
+                  {section.items.map((item) => {
+                    const isComingSoon = item.badge === 'comingsoon';
+                    if (isComingSoon) return null; // HIDE COMING SOON MODULES
+
+                    const linkContent = (
+                      <>
+                        <span className="sidebar-link-icon">{item.icon}</span>
+                        <span className="sidebar-link-label">{item.label}</span>
+                        {item.badge && (
+                          <span
+                            className="sidebar-link-badge"
+                            style={item.badge === 'shortcut' ? { fontSize: '0.65rem', fontStyle: 'italic', background: 'transparent', color: '#94a3b8', border: '1px solid #475569', padding: '2px 6px' } : {}}
+                          >
+                            {item.badge}
+                          </span>
+                        )}
+                      </>
+                    );
+
+                    return (
+                      <Link
+                        key={item.href}
+                        href={item.href}
+                        className={`sidebar-link ${isActivePath(pathname, item.href) ? 'active' : ''}`}
+                        aria-current={isActivePath(pathname, item.href) ? 'page' : undefined}
+                        onClick={handleNavigate}
                       >
-                        {item.badge}
-                      </span>
-                    )}
-                  </Link>
-                  ))}
+                        {linkContent}
+                      </Link>
+                    );
+                  })}
                 </div>
               </div>
             );

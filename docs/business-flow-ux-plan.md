@@ -2,6 +2,8 @@
 
 Tanggal audit: 14 Juli 2026
 
+Status: **baseline strategi dan rencana historis**. Dokumen ini mempertahankan use case, activity user, keputusan, dan roadmap awal. Temuan aktif dipelihara terpisah di [Audit Flow Bisnis](page-flow-control-audit-2026-07-16.md) dan [Audit UX/UI Seluruh Halaman](ux-ui-audit.md) sesuai [Tata Kelola Audit](audit-governance.md). Jangan menambahkan temuan audit baru ke dokumen ini.
+
 Dokumen ini memetakan tujuan website, kondisi alur saat ini, use case, activity user, gap standar pencatatan, dan rencana perubahan menuju sistem business management yang lebih matang.
 
 ## 1. Ringkasan Eksekutif

@@ -20,6 +20,9 @@ export default function PengaturanWebPage() {
   const [message, setMessage] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
 
+  const [makerCheckerThreshold, setMakerCheckerThreshold] = useState('');
+  const [savingMakerChecker, setSavingMakerChecker] = useState(false);
+
   const checkRole = useCallback(async () => {
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) return;
@@ -42,6 +45,23 @@ export default function PengaturanWebPage() {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setForm(normalizeBranding(branding));
   }, [branding]);
+
+  useEffect(() => {
+    async function loadMakerCheckerConfig() {
+      const { data } = await supabase
+        .from('pengaturan_bisnis')
+        .select('value_json')
+        .eq('key', 'MAKER_CHECKER_CONFIG')
+        .eq('scope', 'global')
+        .eq('aktif', true)
+        .maybeSingle();
+
+      if (data && data.value_json && data.value_json.pinjaman_panjar_threshold !== undefined) {
+        setMakerCheckerThreshold(data.value_json.pinjaman_panjar_threshold === null ? '' : String(data.value_json.pinjaman_panjar_threshold));
+      }
+    }
+    loadMakerCheckerConfig();
+  }, []);
 
   async function handleLogoUpload(event, kind) {
     const file = event.target.files?.[0];
@@ -91,6 +111,32 @@ export default function PengaturanWebPage() {
       setErrorMsg(`Gagal menyimpan pengaturan: ${error.message}`);
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function handleSaveMakerChecker(event) {
+    event.preventDefault();
+    if (savingMakerChecker) return;
+
+    setSavingMakerChecker(true);
+    setMessage('');
+    setErrorMsg('');
+
+    try {
+      const thresholdValue = makerCheckerThreshold.trim() === '' ? null : Number(makerCheckerThreshold);
+      const { error } = await supabase
+        .from('pengaturan_bisnis')
+        .update({ value_json: { pinjaman_panjar_threshold: thresholdValue } })
+        .eq('key', 'MAKER_CHECKER_CONFIG')
+        .eq('scope', 'global')
+        .eq('aktif', true);
+
+      if (error) throw error;
+      setMessage('Pengaturan Maker-Checker berhasil disimpan.');
+    } catch (error) {
+      setErrorMsg(`Gagal menyimpan pengaturan Maker-Checker: ${error.message}`);
+    } finally {
+      setSavingMakerChecker(false);
     }
   }
 
@@ -271,6 +317,40 @@ export default function PengaturanWebPage() {
                 <div className="web-preview-receipt-line" />
               </div>
             </div>
+          </div>
+        </div>
+      </form>
+
+      <form onSubmit={handleSaveMakerChecker} className="web-settings-layout" style={{ marginTop: 'var(--space-2xl)' }}>
+        <div className="card web-settings-panel">
+          <h2 className="card-title" style={{ marginBottom: 'var(--space-md)' }}>Maker-Checker Panjar & Pinjaman</h2>
+          <p className="text-tertiary text-sm" style={{ marginBottom: 'var(--space-lg)' }}>
+            Atur batas nominal (Threshold) untuk fitur Maker-Checker. Pengajuan Panjar/Pinjaman oleh Admin yang nilainya mencapai atau melebihi batas ini akan tertahan (Menunggu Persetujuan Owner).
+          </p>
+
+          <div className="form-group">
+            <label className="form-label">Batas Nominal (Rp)</label>
+            <input
+              type="number"
+              className="form-input"
+              placeholder="Kosongkan jika tidak ingin memblokir nominal berapapun"
+              value={makerCheckerThreshold}
+              onChange={(e) => setMakerCheckerThreshold(e.target.value)}
+              min="0"
+              step="1000"
+            />
+            <div className="form-hint">
+              {makerCheckerThreshold === '' || makerCheckerThreshold === null
+                ? 'Semua pengajuan akan otomatis disetujui tanpa perlu persetujuan Owner (Threshold = Null).'
+                : `Pengajuan >= Rp ${Number(makerCheckerThreshold).toLocaleString('id-ID')} akan ditahan.`}
+            </div>
+          </div>
+
+          <div className="form-actions">
+            <button type="submit" className="btn btn-primary" disabled={savingMakerChecker}>
+              <Save size={16} />
+              {savingMakerChecker ? 'Menyimpan...' : 'Simpan Batas Maker-Checker'}
+            </button>
           </div>
         </div>
       </form>

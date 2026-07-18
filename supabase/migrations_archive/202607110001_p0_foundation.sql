@@ -7,6 +7,19 @@ BEGIN;
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
 -- ---------------------------------------------------------------------------
+-- Users and roles (Moved up for SQL function dependency)
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS public.users (
+  id uuid PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+  nama varchar(100) NOT NULL,
+  username varchar(50),
+  role text NOT NULL DEFAULT 'admin_operasional',
+  created_at timestamptz DEFAULT NOW(),
+  updated_at timestamptz DEFAULT NOW()
+);
+
+-- ---------------------------------------------------------------------------
 -- Helpers
 -- ---------------------------------------------------------------------------
 
@@ -56,19 +69,6 @@ BEGIN
   RETURN 'TBS-' || to_char(p_tanggal, 'YYYYMMDD') || '-' || lpad(next_value::text, 6, '0');
 END;
 $$;
-
--- ---------------------------------------------------------------------------
--- Users and roles
--- ---------------------------------------------------------------------------
-
-CREATE TABLE IF NOT EXISTS public.users (
-  id uuid PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
-  nama varchar(100) NOT NULL,
-  username varchar(50),
-  role text NOT NULL DEFAULT 'admin_operasional',
-  created_at timestamptz DEFAULT NOW(),
-  updated_at timestamptz DEFAULT NOW()
-);
 
 ALTER TABLE public.users
   ALTER COLUMN role TYPE text,
@@ -184,21 +184,26 @@ CREATE TABLE IF NOT EXISTS public.armada_perusahaan (
   updated_at timestamptz DEFAULT NOW()
 );
 
--- Copy kendaraan lama ke armada_perusahaan dengan id yang sama agar mapping aman.
-INSERT INTO public.armada_perusahaan (
-  id, plat_nomor, jenis_kendaraan, kapasitas_kg, kepemilikan, aktif, created_at
-)
-SELECT
-  k.id,
-  k.plat_nomor,
-  k.jenis,
-  COALESCE(k.kapasitas_ton, 0) * 1000,
-  k.kepemilikan,
-  k.aktif,
-  k.created_at
-FROM public.kendaraan k
-WHERE to_regclass('public.kendaraan') IS NOT NULL
-ON CONFLICT DO NOTHING;
+DO $$
+BEGIN
+  IF to_regclass('public.kendaraan') IS NOT NULL THEN
+    EXECUTE '
+      INSERT INTO public.armada_perusahaan (
+        id, plat_nomor, jenis_kendaraan, kapasitas_kg, kepemilikan, aktif, created_at
+      )
+      SELECT
+        k.id,
+        k.plat_nomor,
+        k.jenis,
+        COALESCE(k.kapasitas_ton, 0) * 1000,
+        k.kepemilikan,
+        k.aktif,
+        k.created_at
+      FROM public.kendaraan k
+      ON CONFLICT DO NOTHING;
+    ';
+  END IF;
+END $$;
 
 CREATE TABLE IF NOT EXISTS public.armada_mitra (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -214,11 +219,17 @@ ALTER TABLE IF EXISTS public.sopir
   ADD COLUMN IF NOT EXISTS armada_perusahaan_id uuid REFERENCES public.armada_perusahaan(id),
   ADD COLUMN IF NOT EXISTS updated_at timestamptz DEFAULT NOW();
 
-UPDATE public.sopir
-SET armada_perusahaan_id = kendaraan_id
-WHERE armada_perusahaan_id IS NULL
-  AND kendaraan_id IS NOT NULL
-  AND to_regclass('public.sopir') IS NOT NULL;
+DO $$
+BEGIN
+  IF to_regclass('public.sopir') IS NOT NULL THEN
+    EXECUTE '
+      UPDATE public.sopir
+      SET armada_perusahaan_id = kendaraan_id
+      WHERE armada_perusahaan_id IS NULL
+        AND kendaraan_id IS NOT NULL;
+    ';
+  END IF;
+END $$;
 
 -- ---------------------------------------------------------------------------
 -- Harga and business settings
@@ -240,19 +251,25 @@ CREATE TABLE IF NOT EXISTS public.harga_tbs_lokal (
   )
 );
 
-INSERT INTO public.harga_tbs_lokal (
-  harga_per_kg, berlaku_mulai, aktif, set_oleh, legacy_harga_tbs_id, created_at
-)
-SELECT
-  h.harga_per_kg,
-  h.tanggal::timestamp AT TIME ZONE 'Asia/Jakarta',
-  true,
-  h.set_oleh,
-  h.id,
-  h.created_at
-FROM public.harga_tbs h
-WHERE to_regclass('public.harga_tbs') IS NOT NULL
-ON CONFLICT (legacy_harga_tbs_id) DO NOTHING;
+DO $$
+BEGIN
+  IF to_regclass('public.harga_tbs') IS NOT NULL THEN
+    EXECUTE '
+      INSERT INTO public.harga_tbs_lokal (
+        harga_per_kg, berlaku_mulai, aktif, set_oleh, legacy_harga_tbs_id, created_at
+      )
+      SELECT
+        h.harga_per_kg,
+        h.tanggal::timestamp AT TIME ZONE ''Asia/Jakarta'',
+        true,
+        h.set_oleh,
+        h.id,
+        h.created_at
+      FROM public.harga_tbs h
+      ON CONFLICT (legacy_harga_tbs_id) DO NOTHING;
+    ';
+  END IF;
+END $$;
 
 CREATE TABLE IF NOT EXISTS public.fee_mitra_history (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -369,33 +386,39 @@ CREATE TABLE IF NOT EXISTS public.transaksi_beli_tbs (
   updated_at timestamptz DEFAULT NOW()
 );
 
-INSERT INTO public.transaksi_beli_tbs (
-  id, tanggal, petani_id, berat_kotor_kg, potongan_type, potongan_value,
-  berat_bersih_kg, harga_per_kg, total_harga, potongan_hutang,
-  total_bayar_tunai, no_struk, status, keterangan,
-  legacy_transaksi_beli_id, created_by, created_at
-)
-SELECT
-  t.id,
-  t.tanggal,
-  t.petani_id,
-  t.berat_kotor,
-  'percent',
-  COALESCE(t.persen_potongan, 0),
-  t.berat_bersih,
-  t.harga_per_kg,
-  t.total_harga,
-  COALESCE(t.potongan_hutang, 0),
-  t.total_bayar_tunai,
-  COALESCE(t.no_struk, public.next_no_struk_tbs(t.tanggal)),
-  'aktif',
-  t.keterangan,
-  t.id,
-  t.created_by,
-  t.created_at
-FROM public.transaksi_beli t
-WHERE to_regclass('public.transaksi_beli') IS NOT NULL
-ON CONFLICT DO NOTHING;
+DO $$
+BEGIN
+  IF to_regclass('public.transaksi_beli') IS NOT NULL THEN
+    EXECUTE '
+      INSERT INTO public.transaksi_beli_tbs (
+        id, tanggal, petani_id, berat_kotor_kg, potongan_type, potongan_value,
+        berat_bersih_kg, harga_per_kg, total_harga, potongan_hutang,
+        total_bayar_tunai, no_struk, status, keterangan,
+        legacy_transaksi_beli_id, created_by, created_at
+      )
+      SELECT
+        t.id,
+        t.tanggal,
+        t.petani_id,
+        t.berat_kotor,
+        ''percent'',
+        COALESCE(t.persen_potongan, 0),
+        t.berat_bersih,
+        t.harga_per_kg,
+        t.total_harga,
+        COALESCE(t.potongan_hutang, 0),
+        t.total_bayar_tunai,
+        COALESCE(t.no_struk, public.next_no_struk_tbs(t.tanggal)),
+        ''aktif'',
+        t.keterangan,
+        t.id,
+        t.created_by,
+        t.created_at
+      FROM public.transaksi_beli t
+      ON CONFLICT DO NOTHING;
+    ';
+  END IF;
+END $$;
 
 CREATE TABLE IF NOT EXISTS public.stok_tbs_lokal_ledger (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -468,45 +491,57 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_hutang_ledger_legacy
 ON public.hutang_ledger (legacy_source_table, legacy_source_id)
 WHERE legacy_source_table IS NOT NULL AND legacy_source_id IS NOT NULL;
 
-INSERT INTO public.hutang_ledger (
-  pihak_type, petani_id, tanggal, tipe, sumber, jumlah,
-  legacy_source_table, legacy_source_id, keterangan, created_by, created_at
-)
-SELECT
-  'petani',
-  h.petani_id,
-  h.tanggal,
-  'debit',
-  h.jenis,
-  h.jumlah,
-  'hutang',
-  h.id,
-  h.keterangan,
-  h.created_by,
-  h.created_at
-FROM public.hutang h
-WHERE to_regclass('public.hutang') IS NOT NULL
-ON CONFLICT DO NOTHING;
+DO $$
+BEGIN
+  IF to_regclass('public.hutang') IS NOT NULL THEN
+    EXECUTE '
+      INSERT INTO public.hutang_ledger (
+        pihak_type, petani_id, tanggal, tipe, sumber, jumlah,
+        legacy_source_table, legacy_source_id, keterangan, created_by, created_at
+      )
+      SELECT
+        ''petani'',
+        h.petani_id,
+        h.tanggal,
+        ''debit'',
+        h.jenis,
+        h.jumlah,
+        ''hutang'',
+        h.id,
+        h.keterangan,
+        h.created_by,
+        h.created_at
+      FROM public.hutang h
+      ON CONFLICT DO NOTHING;
+    ';
+  END IF;
+END $$;
 
-INSERT INTO public.hutang_ledger (
-  pihak_type, petani_id, tanggal, tipe, sumber, jumlah,
-  transaksi_beli_id, legacy_source_table, legacy_source_id, keterangan, created_at
-)
-SELECT
-  'petani',
-  l.petani_id,
-  l.tanggal,
-  'kredit',
-  l.sumber,
-  l.jumlah_bayar,
-  l.transaksi_beli_id,
-  'hutang_log',
-  l.id,
-  l.keterangan,
-  l.created_at
-FROM public.hutang_log l
-WHERE to_regclass('public.hutang_log') IS NOT NULL
-ON CONFLICT DO NOTHING;
+DO $$
+BEGIN
+  IF to_regclass('public.hutang_log') IS NOT NULL THEN
+    EXECUTE '
+      INSERT INTO public.hutang_ledger (
+        pihak_type, petani_id, tanggal, tipe, sumber, jumlah,
+        transaksi_beli_id, legacy_source_table, legacy_source_id, keterangan, created_at
+      )
+      SELECT
+        ''petani'',
+        l.petani_id,
+        l.tanggal,
+        ''kredit'',
+        l.sumber,
+        l.jumlah_bayar,
+        l.transaksi_beli_id,
+        ''hutang_log'',
+        l.id,
+        l.keterangan,
+        l.created_at
+      FROM public.hutang_log l
+      ON CONFLICT DO NOTHING;
+    ';
+  END IF;
+END $$;
 
 -- ---------------------------------------------------------------------------
 -- Pengiriman and factory payments

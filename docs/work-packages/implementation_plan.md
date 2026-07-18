@@ -2,6 +2,45 @@
 
 Dokumen ini adalah plan ringkas yang menyambungkan `PRD-final.md` dan `IMPLEMENTATION-TASKS.md`.
 
+## Tata Kelola Pengembangan - 17 Juli 2026
+
+Pengembangan berikutnya mengikuti struktur perusahaan/studio kecil yang terkontrol:
+
+1. Product Owner dan Business Analyst menetapkan kebutuhan, flow, formula, exception, dan acceptance criteria.
+2. UX/UI menilai task flow, informasi, konsistensi komponen, content, responsive, print, dan aksesibilitas.
+3. Engineering/Data/Security merancang kontrak teknis, migration, role/RLS, snapshot, ledger, serta rollback.
+4. Implementer bekerja melalui Work Package dengan ownership file yang jelas.
+5. Reviewer lintas fungsi memeriksa perubahan sesuai risikonya; implementer tidak menjadi satu-satunya verifier perubahan finansial/security.
+6. QA/Release menjalankan regression dan release checklist berbukti sebelum keputusan go/no-go.
+7. Setelah rilis, tim menjalankan smoke test, observasi, rekonsiliasi, dan retrospective.
+
+Sumber proses dan audit aktif:
+
+- `docs/development-sop.md`
+- `docs/documentation-index.md`
+- `docs/audit-governance.md`
+- `docs/ux-ui-audit.md`
+- `docs/page-flow-control-audit-2026-07-16.md`
+- `docs/ai-specialist-collaboration.md`
+
+Urutan implementasi fitur tetap mengikuti scope di bawah ini. Perubahan baru wajib memakai traceability `BR/FLOW/AC -> AUD/BDR/ADR -> TASK -> TEST -> commit/PR/migration -> release`.
+
+### Release Hold Security - 17 Juli 2026
+
+Audit independen menetapkan **NO-GO untuk rilis finansial baru**. Sebelum roadmap fitur dilanjutkan ke production, jalankan work package P0 berikut secara berurutan:
+
+1. Rehearsal lalu terapkan containment role gate dan audit trail append-only.
+2. Pindahkan pemilihan tarif, rumus, dan snapshot transaksi dari browser ke RPC/database; jangan menghitung ulang kwitansi historis.
+3. Migrasikan frontend ke DTO/RPC minimum, lalu cabut direct read/write data sensitif dari Admin.
+4. Rapikan final-state ACL/default privilege serta akses RPC `PUBLIC/anon`.
+5. Ubah role tidak dikenal/profile hilang menjadi fail-closed dan verifikasi hosted Auth.
+6. Tegakkan maker-checker untuk aksi finansial berisiko.
+7. Bangun negative authorization matrix melalui Data API/RPC.
+8. Aktifkan CI, deterministic staging test, migration rehearsal, backup/restore, dan release evidence.
+9. Jalankan review ulang Data/Security + QA dan putuskan `GO/NO-GO`.
+
+Temuan, bukti, acceptance target, dan anti-pattern tersedia di `docs/security-release-audit-2026-07-17.md`.
+
 ## Audit Lintas Halaman - 16 Juli 2026
 
 Audit lengkap tersedia di `docs/page-flow-control-audit-2026-07-16.md`. Audit mencakup route, role, tombol, query, RPC, snapshot, ledger, laporan, dan data remote.

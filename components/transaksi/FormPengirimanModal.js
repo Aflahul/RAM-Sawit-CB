@@ -493,57 +493,30 @@ export default function FormPengirimanModal({ open, onClose, onSuccess, initialD
         ? form.sopir_aktual_id
         : null;
 
-    const { error } = await supabase.from('transaksi_mitra').insert({
-      tanggal:            form.tanggal,
-      sopir_id:           form.sopir_id,
-      mitra_id:           form.mitra_id,
-      plat_nomor:         form.plat_nomor,
-      sopir_default_id:   form.sopir_id,
-      sopir_default_nama: form.sopir_default_nama,
-      sopir_aktual_id:    sopirAktualId,
-      sopir_aktual_nama:  sopirAktualNama,
-      sopir_aktual_no_hp: form.sopir_aktual_no_hp || null,
-      sopir_aktual_source: form.sopir_aktual_mode === SOPIR_AKTUAL_MANUAL ? 'manual' : 'master',
-      sopir_diganti_dari_default: sopirDiganti,
-      catatan_sopir:      form.catatan_sopir || null,
-
-      // Field berat (P0)
-      tonase:                 k.beratNetto,          // backward-compat: tonase = berat netto
-      berat_netto_pabrik_kg:  k.beratNetto,
-      potongan_pabrik_kg:     k.potongan,
-      berat_dibayar_kg:       k.beratDibayar,
-
-      // Snapshot harga
-      harga_harian:       k.hargaPabrik,
-      harga_pabrik_per_kg: k.hargaPabrik,
-      fee_owner_per_kg:    k.feeOwner,
-      harga_bersih_per_kg: k.hargaBersih,
-      fee_owner_history_id: form.fee_owner_history_id || null,
-
-      // Total nilai (semua basis berat_dibayar)
-      total_kotor:        k.totalKotor,
-      total_fee_owner:    k.totalFeeOwner,
-      total_nilai_bersih: k.totalNilaiBersih,
-
-      // Sewa armada CB
-      menggunakan_armada_cb_snapshot: isSelectedArmadaCB,
-      kenakan_sewa_armada_cb: form.kenakan_sewa_armada_cb,
-      catat_dana_operasional_trip: form.catat_dana_operasional_trip,
-      alasan_tanpa_sewa_armada_cb: form.kenakan_sewa_armada_cb ? null : form.alasan_tanpa_sewa_armada_cb.trim(),
-      alasan_tanpa_dana_operasional_trip: form.catat_dana_operasional_trip
-        ? null
-        : form.alasan_tanpa_dana_operasional_trip.trim(),
-      pakai_sewa_armada_bl:      form.kenakan_sewa_armada_cb,
-      tarif_sewa_angkut_per_kg_snapshot: form.kenakan_sewa_armada_cb ? form.tarif_sewa_angkut : 0,
-      nominal_perongkosan_snapshot:      0,
-      biaya_sewa_armada_kotor:           form.kenakan_sewa_armada_cb ? k.biayaSewaArmadaKotor : 0,
-      biaya_sewa_armada_total:           form.kenakan_sewa_armada_cb ? k.biayaSewaArmadaTotal : 0,
-
-      // Satu dana per trip; rinciannya dikelola sopir di luar sistem.
-      dana_operasional_trip_snapshot:      form.catat_dana_operasional_trip ? danaOperasionalTrip : 0,
-      upah_sopir_cb_snapshot:              0,
-      uang_jalan_sopir_cb_snapshot:        0,
-      total_biaya_sopir_cb_snapshot:       form.catat_dana_operasional_trip ? danaOperasionalTrip : 0,
+    const { error } = await supabase.rpc('save_transaksi_mitra_v2', {
+      payload: {
+        tanggal:            form.tanggal,
+        sopir_id:           form.sopir_id,
+        mitra_id:           form.mitra_id,
+        plat_nomor:         form.plat_nomor,
+        sopir_default_id:   form.sopir_id,
+        sopir_default_nama: form.sopir_default_nama,
+        sopir_aktual_id:    sopirAktualId,
+        sopir_aktual_nama:  sopirAktualNama,
+        sopir_aktual_no_hp: form.sopir_aktual_no_hp || null,
+        sopir_aktual_source: form.sopir_aktual_mode === SOPIR_AKTUAL_MANUAL ? 'manual' : 'master',
+        sopir_diganti_dari_default: sopirDiganti,
+        catatan_sopir:      form.catatan_sopir || null,
+        berat_netto_pabrik_kg:  k.beratNetto,
+        potongan_pabrik_kg:     k.potongan,
+        menggunakan_armada_cb_snapshot: isSelectedArmadaCB,
+        kenakan_sewa_armada_cb: form.kenakan_sewa_armada_cb,
+        catat_dana_operasional_trip: form.catat_dana_operasional_trip,
+        alasan_tanpa_sewa_armada_cb: form.kenakan_sewa_armada_cb ? null : form.alasan_tanpa_sewa_armada_cb.trim(),
+        alasan_tanpa_dana_operasional_trip: form.catat_dana_operasional_trip
+          ? null
+          : form.alasan_tanpa_dana_operasional_trip.trim()
+      }
     });
 
     if (error) {

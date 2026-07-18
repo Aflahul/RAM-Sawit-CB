@@ -26,6 +26,7 @@ import {
 } from '@/lib/transaksi-mitra-calculations';
 import { formatDateDisplay, formatRupiah, formatWaktu, getTimestampMs, getTodayISO } from '@/lib/utils';
 import { Ban, Pencil, ReceiptText, RefreshCw, Plus } from 'lucide-react';
+import { useUser } from '@/contexts/UserContext';
 
 const SOPIR_AKTUAL_DEFAULT = 'default';
 const SOPIR_AKTUAL_MASTER = 'master';
@@ -150,7 +151,10 @@ function getTransactionLockReason(row) {
   return '';
 }
 
-export default function RiwayatPengirimanMitraPage() {
+export default function AdminInputTimbangan() {
+  const user = useUser();
+  const isAdmin = user?.role === 'admin_operasional' || user?.role === 'admin_keuangan' || user?.role === 'admin';
+
   const [dateFrom, setDateFrom] = useState(getTodayISO);
   const [dateTo, setDateTo] = useState(getTodayISO);
   const [statusFilter, setStatusFilter] = useState('aktif');
@@ -422,7 +426,6 @@ export default function RiwayatPengirimanMitraPage() {
     const potongan    = Math.max(0, parseFloat(nextForm.potongan_pabrik) || 0);
     const beratDibayar = Math.max(0, beratNetto - potongan);
 
-    // Deteksi sewa armada dari form state (pakai_sewa_armada_bl sudah dihitung di openEdit)
     const sewaArmadaTotal = nextForm.menggunakan_armada_cb_snapshot && nextForm.kenakan_sewa_armada_cb
       ? Math.round(beratNetto * toNumber(nextForm.tarif_sewa_angkut_per_kg))
       : 0;
@@ -641,22 +644,18 @@ export default function RiwayatPengirimanMitraPage() {
       sopir_aktual_source: editForm.sopir_aktual_mode === SOPIR_AKTUAL_MANUAL ? 'manual' : 'master',
       sopir_diganti_dari_default: sopirDiganti,
       catatan_sopir: editForm.catatan_sopir || null,
-      // Field berat (P0) — tonase backward-compat
       tonase:                beratNetto,
       berat_netto_pabrik_kg: beratNetto,
       potongan_pabrik_kg:    potongan,
       berat_dibayar_kg:      beratDibayar,
-      // Snapshot harga
       harga_harian:        toNumber(editForm.harga_dasar),
       harga_pabrik_per_kg: toNumber(editForm.harga_dasar),
       fee_owner_per_kg:    toNumber(editForm.fee_owner_per_kg),
       harga_bersih_per_kg: editForm.harga_harian,
       fee_owner_history_id: editForm.fee_owner_history_id || null,
-      // Total nilai (basis berat_dibayar)
       total_kotor:        editForm.total_kotor,
       total_fee_owner:    editForm.total_fee_owner,
       total_nilai_bersih: editForm.total_nilai_bersih,
-      // Perjalanan Armada CB, potongan sewa, dan Dana Trip adalah keputusan terpisah.
       kenakan_sewa_armada_cb: editUsesArmadaCb && editForm.kenakan_sewa_armada_cb,
       catat_dana_operasional_trip: editUsesArmadaCb && editForm.catat_dana_operasional_trip,
       alasan_tanpa_sewa_armada_cb: editUsesArmadaCb && !editForm.kenakan_sewa_armada_cb
@@ -904,8 +903,8 @@ export default function RiwayatPengirimanMitraPage() {
                       <button
                         type="button"
                         className="btn btn-ghost btn-sm"
-                        title={lockReason || 'Edit transaksi'}
-                        disabled={row.status === 'dibatalkan' || Boolean(lockReason)}
+                        title={isAdmin ? 'Akses Dibatasi (Khusus Owner/Super Admin)' : lockReason || 'Edit transaksi'}
+                        disabled={row.status === 'dibatalkan' || Boolean(lockReason) || isAdmin}
                         onClick={() => openEdit(row)}
                       >
                         <Pencil size={16} />
@@ -913,8 +912,8 @@ export default function RiwayatPengirimanMitraPage() {
                       <button
                         type="button"
                         className="btn btn-ghost btn-sm"
-                        title={lockReason || 'Batalkan transaksi'}
-                        disabled={row.status === 'dibatalkan' || Boolean(lockReason)}
+                        title={isAdmin ? 'Akses Dibatasi (Khusus Owner/Super Admin)' : lockReason || 'Batalkan transaksi'}
+                        disabled={row.status === 'dibatalkan' || Boolean(lockReason) || isAdmin}
                         onClick={() => {
                           setCancelTarget(row);
                           setCancelReason('');
@@ -925,9 +924,8 @@ export default function RiwayatPengirimanMitraPage() {
                     </div>
                   </td>
                 </tr>
-                );
-              })
-            )}
+              );
+            }))}
           </tbody>
         </table>
         <TablePagination

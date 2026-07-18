@@ -9,6 +9,8 @@ import Header from '@/components/layout/Header';
 import BottomNav from '@/components/layout/BottomNav';
 import { motion, AnimatePresence } from 'motion/react';
 
+import { UserContext } from '@/contexts/UserContext';
+
 const COMING_SOON_PATHS = [
   '/transaksi/beli',
   '/master/petani',
@@ -39,11 +41,14 @@ export default function AppShell({ children, title, subtitle }) {
           .eq('id', session.user.id)
           .single();
 
-        setUser(
-          userData
-            ? { ...userData, role: normalizeRole(userData.role) }
-            : { nama: session.user.email, role: 'admin_operasional' }
-        );
+        if (!userData) {
+          console.error('User profile not found in database for:', session.user.id);
+          await supabase.auth.signOut();
+          router.push('/login?error=unauthorized');
+          return;
+        }
+
+        setUser({ ...userData, role: normalizeRole(userData.role) });
       } catch (err) {
         console.error('Error fetching user:', err);
         router.push('/login');
@@ -85,35 +90,35 @@ export default function AppShell({ children, title, subtitle }) {
   }
 
   return (
-    <div className="app-shell cinematic-bg">
-      <Sidebar
-        isOpen={sidebarOpen}
-        onClose={() => setSidebarOpen(false)}
-        user={user}
-      />
-      <div className="main-content">
-        <Header
-          title={title}
-          subtitle={subtitle}
-          onMenuToggle={() => setSidebarOpen(!sidebarOpen)}
+    <UserContext.Provider value={user}>
+      <div className="app-shell cinematic-bg">
+        <Sidebar
+          isOpen={sidebarOpen}
+          onClose={() => setSidebarOpen(false)}
+          user={user}
         />
-        <AnimatePresence mode="wait">
-          <motion.main
-            key={title}
-            className="page-content"
-            style={{ position: 'relative' }}
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
-          >
-            {(() => {
-              const isLocked = COMING_SOON_PATHS.some((p) => pathname?.startsWith(p));
-              
-              if (isLocked) {
-                return (
-                  <>
-                    <div style={{ position: 'absolute', inset: 0, zIndex: 50, background: 'rgba(2, 6, 23, 0.7)', backdropFilter: 'blur(3px)', display: 'flex', alignItems: 'flex-start', justifyContent: 'center', paddingTop: '15vh' }}>
+        <div className="main-content">
+          <Header
+            title={title}
+            subtitle={subtitle}
+            onMenuToggle={() => setSidebarOpen(!sidebarOpen)}
+          />
+          <AnimatePresence mode="wait">
+            <motion.main
+              key={title}
+              className="page-content"
+              style={{ position: 'relative' }}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
+            >
+              {(() => {
+                const isLocked = COMING_SOON_PATHS.some((p) => pathname?.startsWith(p));
+
+                if (isLocked) {
+                  return (
+                    <div style={{ position: 'absolute', inset: 0, zIndex: 50, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', paddingTop: '15vh' }}>
                       <div className="card" style={{ textAlign: 'center', border: '1px solid var(--color-gold-500)', boxShadow: 'var(--shadow-glow-gold)', maxWidth: 400, margin: '0 20px' }}>
                         <div style={{ color: 'var(--color-gold-500)', marginBottom: 12 }}>
                           <svg width="48" height="48" fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ margin: '0 auto' }}>
@@ -121,25 +126,21 @@ export default function AppShell({ children, title, subtitle }) {
                           </svg>
                         </div>
                         <h3 style={{ fontSize: 'var(--text-lg)', fontWeight: 700, color: 'var(--color-gold-400)', marginBottom: 8 }}>Coming Soon</h3>
-                        <p style={{ color: 'var(--text-secondary)', fontSize: 'var(--text-sm)', lineHeight: 1.5 }}>
-                          Modul lokal/petani sedang dibekukan sementara sampai alur pembelian,
-                          stok, dan laporan petani selesai. Data tetap bisa dilihat sebagai
-                          konteks, tetapi input dan aksi dinonaktifkan.
+                        <p style={{ color: 'var(--text-secondary)', fontSize: 'var(--text-sm)', lineHeight: 1.5 }} role="alert">
+                          Modul ini sedang dibekukan sementara untuk persiapan audit keamanan.
+                          Fitur akan tersedia kembali setelah rilis selesai.
                         </p>
                       </div>
                     </div>
-                    <div style={{ opacity: 0.2, pointerEvents: 'none', filter: 'grayscale(1)' }}>
-                      {children}
-                    </div>
-                  </>
-                );
-              }
-              return children;
-            })()}
-          </motion.main>
-        </AnimatePresence>
+                  );
+                }
+                return children;
+              })()}
+            </motion.main>
+          </AnimatePresence>
+        </div>
+        <BottomNav />
       </div>
-      <BottomNav />
-    </div>
+    </UserContext.Provider>
   );
 }

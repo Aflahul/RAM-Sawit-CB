@@ -2,6 +2,10 @@
 
 Tanggal audit: 16 Juli 2026
 
+Status: **baseline aktif audit flow bisnis dan kontrol**. Temuan UX, UI, content, responsive, dan aksesibilitas lintas halaman dikelola di [Audit UX/UI Seluruh Halaman](ux-ui-audit.md). Aturan pembagian audit dan format temuan mengikuti [Tata Kelola Audit](audit-governance.md).
+
+Audit ini menjawab apakah proses, angka, status, kewenangan, serta pencatatan sudah benar. Audit ini tidak menjadi sumber utama keputusan tampilan visual.
+
 ## 1. Tujuan dan Kesimpulan
 
 Audit ini memeriksa route Next.js, menu, pembatasan role, query Supabase, RPC, tombol yang mengubah data, snapshot, ledger, serta data remote yang sedang digunakan.
@@ -422,3 +426,13 @@ Tindak lanjut manusia/data legacy:
 
 - Kwitansi `3570425f-5f54-447b-ae4f-10e23ed977b0` tetap `perlu_review` karena memuat transaksi lama yang dibatalkan dengan alasan **Dobel**. Owner harus memutuskan pembatalan pembayaran dan penerbitan ulang.
 - Tujuh master Sopir/Armada ambigu berada dalam antrean `perlu_verifikasi`. Data lama tidak digabung atau dihapus otomatis agar transaksi historis tetap dapat ditelusuri.
+
+## 11. Addendum Assurance - 17 Juli 2026
+
+Pernyataan “selesai” pada Bagian 10 adalah bukti implementasi fungsional per 16 Juli, bukan security/release sign-off final. Review independen 17 Juli membuka kembali kontrol Data API, audit-log mutation, final-state privilege/RPC, Auth, CI, test, migration rehearsal, dan recovery. Status release terbaru mengikuti [Audit Security dan Kesiapan Rilis](security-release-audit-2026-07-17.md).
+
+Finding bisnis aktif:
+
+- `AUD-BIZ-20260717-001`: maker-checker Pinjaman dan tindakan finansial berisiko belum ditegakkan konsisten berdasarkan identitas manusia. Tindak lanjut: `TASK-BIZ-001` pada [Work Package P0](work-packages/p0-security-release-remediation.md).
+
+Finding ini tidak menghapus histori workflow yang sudah dibangun. Ia menahan klaim “siap rilis” sampai BDR, constraint/RPC, break-glass, dan test independen tersedia.

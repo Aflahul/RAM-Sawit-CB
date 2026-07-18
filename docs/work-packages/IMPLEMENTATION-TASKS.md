@@ -4,14 +4,62 @@ Dokumen ini menurunkan `PRD-final.md` menjadi task implementasi teknis berdasark
 
 ## Cara Membaca Status
 
-- Bagian teratas dan addendum bertanggal paling baru menjadi sumber status implementasi aktif.
-- Checklist roadmap lama tetap dipertahankan sebagai jejak perencanaan. Item lama yang sudah digantikan alur baru harus dibaca melalui bagian konsolidasi terbaru, bukan dianggap otomatis sebagai pekerjaan yang belum dilakukan.
+- Sumber kebenaran, status aktif/historis, serta aturan konflik dokumen mengikuti `docs/documentation-index.md`.
+- Bagian teratas menjadi backlog aktif sementara. Checklist roadmap lama dipertahankan sebagai jejak perencanaan dan tidak otomatis menjadi pekerjaan aktif.
+- Task dinyatakan selesai hanya jika acceptance criteria dan bukti verifikasinya lulus; urutan teks atau label `[x]` lama tidak boleh mengalahkan hasil release gate terbaru.
 - Istilah UI final adalah **Pinjaman & Panjar**. Nama `hutang_ledger`, `piutang_*`, dan enum `kasbon_*` hanya dipakai saat merujuk kontrak teknis/legacy database.
-- Konsolidasi terakhir: 16 Juli 2026, setelah workflow dokumen, persetujuan, pengembalian, reversal, rekonsiliasi legacy, dan arsip riwayat Pinjaman & Panjar aktif.
+- Konsolidasi terakhir: 17 Juli 2026, setelah tata kelola audit, dokumentasi, panel spesialis, dan SOP pengembangan disiapkan.
+
+## Tata Kelola Pengembangan - 17 Juli 2026
+
+- [x] Buat spesifikasi teknis profesional untuk stack, arsitektur, route, data, security, testing, dan deployment.
+- [x] Pisahkan audit Flow Bisnis dari audit UX/UI; tempatkan audit UI sebagai bagian dari audit UX/UI lintas halaman.
+- [x] Tetapkan manifest sumber kebenaran, status aktif/historis, ownership, cadence, severity, dan pola traceability.
+- [x] Tetapkan protokol panel spesialis Product/Business, UX/UI, Engineering/Data, Security, QA/Release, dan Dokumentasi.
+- [x] Sediakan template Work Package, BDR, ADR, Release Checklist, Exception, Incident, dan Pull Request.
+- [x] Siapkan audit UX/UI seluruh halaman dan pindahkan audit timbangan lama ke arsip; status tetap In Review sampai Product Owner menyetujui.
+- [x] Siapkan SOP pengembangan lengkap dan lakukan review silang Product/Business serta QA/Security/Release; status tetap Draft sampai approver manusia menyetujui.
+- [ ] Normalisasi `PRD-final.md` menjadi aturan aktif yang ringkas serta arsip keputusan historis (`DOC-001`, P1).
+- [ ] Arsipkan checklist lama per rilis agar backlog aktif tidak bercampur dengan histori (`DOC-002`, P1).
+- [x] Terapkan traceability ID `TASK/AC/TEST` pada Work Package Remediasi P0 (`DOC-004`).
+- [ ] Gunakan satu Release Checklist berbukti pada calon rilis berikutnya (`DOC-003`).
+- [ ] Tambahkan CI otomatis untuk lint, build, test, dan pemeriksaan migration setelah baseline pengujian disepakati.
+
+Referensi proses aktif:
+
+- `docs/documentation-index.md`
+- `docs/audit-governance.md`
+- `docs/ai-specialist-collaboration.md`
+- `docs/development-sop.md`
+- `docs/ux-ui-audit.md`
+
+## P0 Security dan Release Gate - 17 Juli 2026
+
+Status: **NO-GO untuk rilis finansial baru** sampai seluruh P0 di bawah lulus verifikasi independen. Referensi: `docs/security-release-audit-2026-07-17.md`.
+
+Work package dan kontrak acceptance/test: `docs/work-packages/p0-security-release-remediation.md`. Seluruh task masih `Draft/Blocked` sampai owner dan reviewer diisi dengan identitas manusia.
+
+- [ ] `TASK-SEC-001` / `AUD-SEC-20260717-001`: least-privilege pembacaan data sensitif.
+  Containment role gate untuk 37 tabel sudah disiapkan di migration lokal, tetapi DTO/RPC minimum dan pencabutan direct read Admin belum selesai.
+- [ ] `TASK-SEC-002` / `AUD-SEC-20260717-002`: audit trail append-only tanpa mutation client.
+  Migration, smoke test rollback, dan runbook restore sudah disiapkan; belum diterapkan dan belum direhearsal di staging.
+- [ ] `TASK-SEC-003` / `AUD-SEC-20260717-003`: default privilege, `TRUNCATE`, dan RPC `PUBLIC/anon` hardening.
+- [ ] `TASK-SEC-004` / `AUD-SEC-20260717-004`: hosted Auth, session, MFA, dan role fail-closed.
+- [x] `TASK-SEC-005` + `TASK-UX-001` / `AUD-SEC-20260717-005` + `AUD-UX-20260717-001`: feature gate serta keyboard/focus lock modul Coming Soon.
+- [ ] `TASK-SEC-006` / `AUD-SEC-20260717-006`: pindahkan pemilihan tarif, perhitungan, dan snapshot transaksi dari browser ke RPC/database; pertahankan snapshot kwitansi lama.
+- [ ] `TASK-BIZ-001` / `AUD-BIZ-20260717-001`: maker-checker dan break-glass finansial.
+- [ ] `TASK-QA-001` / `AUD-QA-20260717-001`: protected `main`, required CI, dan supply-chain gate.
+- [ ] `TASK-DATA-001` / `AUD-DATA-20260717-001`: clean/upgrade rehearsal, backfill, dan rekonsiliasi.
+- [ ] `TASK-QA-002` / `AUD-QA-20260717-002`: fixture staging dan deterministic financial/security test.
+- [ ] `TASK-QA-003` / `AUD-QA-20260717-003`: RPO/RTO, backup capability, dan restore drill terisolasi.
+- [ ] `TASK-QA-004` / `AUD-QA-20260717-004`: observability, incident operation, dan retensi evidence sesuai scope.
+- [ ] Lengkapi Closure Evidence Matrix dan lakukan keputusan `GO/NO-GO` independen.
 
 ## P0 Audit Lintas Halaman - 16 Juli 2026
 
 Referensi temuan dan alasan bisnis: `docs/page-flow-control-audit-2026-07-16.md`.
+
+Catatan: checkbox `[x]` di baseline 16 Juli menandakan implementasi/migration saat itu, bukan security sign-off final. Audit 17 Juli membuka kembali kontrol baca, audit trail, privilege, Auth, dan release evidence melalui task P0 di atas.
 
 ### P0-A - Hak Akses dan Audit Trail
 

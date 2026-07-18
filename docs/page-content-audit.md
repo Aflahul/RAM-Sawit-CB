@@ -2,6 +2,8 @@
 
 Tanggal audit: 14 Juli 2026
 
+Status: **arsip audit historis**. Keputusan yang masih berlaku harus dirujuk dari [Audit UX/UI Seluruh Halaman](ux-ui-audit.md) atau [Audit Flow Bisnis](page-flow-control-audit-2026-07-16.md). Dokumen ini tidak lagi menjadi tempat pencatatan temuan baru.
+
 Dokumen ini memetakan isi setiap halaman, potensi pengulangan data antar halaman, dan tindak lanjut UX yang disarankan. Fokus keputusan: user tidak boleh melihat banyak halaman yang seolah berbeda padahal isinya data yang sama tanpa tujuan kerja yang jelas.
 
 ## Prinsip Keputusan

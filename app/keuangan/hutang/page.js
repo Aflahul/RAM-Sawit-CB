@@ -225,16 +225,22 @@ export default function PinjamanPage() {
     await loadData();
   }
 
-  async function reviewDocument(document, action, note = null) {
+  const [approveTarget, setApproveTarget] = useState(null);
+  const [alasanDarurat, setAlasanDarurat] = useState('');
+
+  async function reviewDocument(document, action, note = null, darurat = null) {
     setSaving(true);
     const { error } = await supabase.rpc('review_piutang_request', {
       p_document_id: document.id,
       p_action: action,
       p_catatan: note,
+      p_alasan_darurat: darurat || null,
     });
     setSaving(false);
     if (error) return showToast(`Gagal memproses persetujuan: ${error.message}`);
     setRejectTarget(null);
+    setApproveTarget(null);
+    setAlasanDarurat('');
     showToast(action === 'setujui' ? 'Pengajuan disetujui dan siap diserahkan.' : 'Pengajuan ditolak.', 'success');
     await loadData();
   }
@@ -419,7 +425,14 @@ export default function PinjamanPage() {
                     <td><span className={`badge ${status.badge}`}>{status.label}</span>{document.tanggal_jatuh_tempo && <div className="text-tertiary text-xs">Target {formatDateDisplay(document.tanggal_jatuh_tempo)}</div>}</td>
                     <td className="table-mono" style={{ textAlign: 'right' }}><strong>{formatRupiah(document.jumlah)}</strong><div className={remaining > 0 ? 'text-warning text-xs' : 'text-success text-xs'}>Sisa {formatRupiah(remaining)}</div></td>
                     <td onClick={(event) => event.stopPropagation()}><div className="flex gap-xs" style={{ flexWrap: 'wrap' }}>
-                      {canApprove && document.status === 'menunggu_persetujuan' && <button className="btn btn-primary btn-sm" disabled={saving} onClick={() => reviewDocument(document, 'setujui')}><Check size={15} /> Setujui</button>}
+                      {canApprove && document.status === 'menunggu_persetujuan' && <button className="btn btn-primary btn-sm" disabled={saving} onClick={() => {
+                        if (userRole === 'super_admin') {
+                          setApproveTarget(document);
+                          setAlasanDarurat('');
+                        } else {
+                          reviewDocument(document, 'setujui');
+                        }
+                      }}><Check size={15} /> Setujui</button>}
                       {canApprove && document.status === 'menunggu_persetujuan' && <button className="btn btn-outline btn-sm" onClick={() => setRejectTarget(document)}>Tolak</button>}
                       {document.status === 'disetujui' && <button className="btn btn-primary btn-sm" onClick={() => openDisbursement(document)}><BanknoteArrowDown size={15} /> Serahkan</button>}
                       {document.status === 'diserahkan' && document.jenis_dokumen !== 'panjar_mitra' && <button className="btn btn-outline btn-sm" onClick={() => openRepayment(document)}><RotateCcw size={15} /> Pengembalian</button>}
