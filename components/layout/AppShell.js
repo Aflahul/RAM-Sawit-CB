@@ -48,7 +48,16 @@ export default function AppShell({ children, title, subtitle }) {
           return;
         }
 
-        setUser({ ...userData, role: normalizeRole(userData.role) });
+        const validRole = normalizeRole(userData.role);
+        
+        if (!validRole) {
+          console.error('Role tidak dikenali atau profil bermasalah untuk user:', session.user.id);
+          await supabase.auth.signOut();
+          router.push('/login?error=invalid_role');
+          return;
+        }
+
+        setUser({ ...userData, role: validRole });
       } catch (err) {
         console.error('Error fetching user:', err);
         router.push('/login');
