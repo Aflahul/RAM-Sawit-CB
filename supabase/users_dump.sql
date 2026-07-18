@@ -4983,7 +4983,7 @@ BEGIN
     pakai_sewa_armada_bl, tarif_sewa_angkut_per_kg_snapshot, nominal_perongkosan_snapshot,
     biaya_sewa_armada_kotor, biaya_sewa_armada_total,
     dana_operasional_trip_snapshot, upah_sopir_cb_snapshot, uang_jalan_sopir_cb_snapshot, total_biaya_sopir_cb_snapshot,
-    dibuat_oleh
+    created_by
   ) VALUES (
     v_tanggal, v_sopir_id, v_mitra_id, v_plat_nomor,
     v_sopir_default_id, v_sopir_default_nama,
