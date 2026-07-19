@@ -3,7 +3,7 @@
 | Field | Nilai |
 | --- | --- |
 | Status | Implemented, locally verified, and rehearsed on isolated staging; hosted Auth baseline hardened, while plan-dependent controls, MFA enforcement, restore drill, and independent review remain pending |
-| Branch / baseline SHA | `agent/p0-security-release-gates` / `6b2ac10880976869396422bf189556570f70378d` plus the Auth hardening changes documented here |
+| Branch / baseline SHA | `agent/p0-security-release-gates` / `2fbfebb8cdfa318ff7cd9983f1e0ad521e75d8c0` plus the final read-only infrastructure audit documented here |
 | Environment | Supabase CLI `2.109.1`, PostgreSQL 17 container lokal, Node.js `24.14.0` |
 | Data | Fixture sintetis di dalam transaction `BEGIN`/`ROLLBACK`; tidak memakai row production |
 | Hosted staging | `Aflahul's Project` / `mfxyeybmjpcdckajfjen`; migration lokal dan remote sejajar 13/13 |
@@ -32,6 +32,8 @@
 | Secret scan | Gitleaks `8.29.1`, seluruh riwayat lokal | 65 commit / sekitar 3.64 MB, tidak ada leak |
 | Diff hygiene | `git diff --check` | Tidak ada whitespace error; hanya peringatan line-ending Windows |
 | GitHub release gate | Draft PR #5 dan branch protection `main` | Seluruh checks hijau; strict required checks, PR, linear history, dan conversation resolution aktif |
+| Vercel preview isolation | GitHub/Vercel deployment metadata dan protected preview probe | Belum dapat dibuktikan; preview dilindungi Vercel SSO dan host ini tidak memiliki Vercel CLI/token. Regression mutating melalui preview diblokir |
+| Backup/PITR inventory | `supabase backups list --project-ref ... --output json` pada staging dan production | Keduanya melaporkan `backups: null`, `pitr_enabled: false`, dan `walg_enabled: true`; belum ada restore point yang dapat dijadikan bukti drill |
 
 Advisory residual: `npm audit` masih melaporkan dua temuan moderate yang berasal dari PostCSS di dependency Next.js. Saran otomatis npm adalah downgrade besar ke Next 9 dan tidak dipakai karena tidak aman/kompatibel. High advisory pada `xlsx` ditutup dengan mengganti kedua paket SheetJS lama menjadi `write-excel-file@4.1.1`; lint dan production build lulus setelah migrasi ekspor.
 
@@ -55,7 +57,8 @@ Bukti ini belum menutup:
 - implementasi dan enforcement MFA/AAL2 pada aplikasi;
 - rehearsal terhadap clone/snapshot production yang representatif dan rekonsiliasi data;
 - concurrency/retry/idempotency/reversal/print-export test di staging;
-- backup/PITR serta restore drill database dan Storage;
+- pemisahan environment Vercel Preview agar hanya memakai Supabase staging;
+- penyediaan backup/PITR yang dapat dipulihkan serta restore drill database dan Storage pada target terisolasi;
 - review manusia independen dan keputusan GO/NO-GO.
 
 Sampai semua item tersebut selesai, keputusan rilis tetap **NO-GO**.
