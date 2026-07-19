@@ -3,20 +3,21 @@
 import { createClient } from '@/utils/supabase/server';
 import { createAdminClient } from '@/utils/supabase/admin';
 import { canManageUsers } from '@/lib/roles';
+import { isStrongPassword, PASSWORD_REQUIREMENTS_MESSAGE } from '@/lib/password-policy.mjs';
 import { revalidatePath } from 'next/cache';
 
 async function verifySuperAdmin() {
   const supabase = await createClient();
-  const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+  const { data: { user }, error: userAuthError } = await supabase.auth.getUser();
   
-  if (sessionError || !session?.user) {
+  if (userAuthError || !user) {
     throw new Error('Unauthorized: No active session.');
   }
 
   const { data: userData, error: userError } = await supabase
     .from('users')
     .select('role')
-    .eq('id', session.user.id)
+    .eq('id', user.id)
     .single();
 
   if (userError || !userData) {
@@ -72,6 +73,10 @@ export async function createUserAction(formData) {
 
     if (!nama || !email || !password || !role) {
       throw new Error('Semua kolom wajib (Nama, Email, Password, Role) harus diisi.');
+    }
+
+    if (!isStrongPassword(password)) {
+      throw new Error(PASSWORD_REQUIREMENTS_MESSAGE);
     }
 
     const adminAuthClient = createAdminClient();

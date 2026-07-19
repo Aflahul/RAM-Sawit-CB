@@ -27,6 +27,7 @@ jobs:
           package-manager-cache: false
       - run: npm ci
       - run: npm run lint
+      - run: npm run test:password-policy
       - run: npm run build
         env:
           NEXT_PUBLIC_SUPABASE_URL: http://127.0.0.1:54321
