@@ -4,7 +4,7 @@
 | --- | --- |
 | Status | Implemented, locally verified, and rehearsed on isolated staging; hosted Auth baseline hardened, while plan-dependent controls, MFA enforcement, restore drill, and independent review remain pending |
 | Branch / baseline SHA | `agent/p0-security-release-gates` / `2fbfebb8cdfa318ff7cd9983f1e0ad521e75d8c0` plus the final read-only infrastructure audit documented here |
-| Environment | Supabase CLI `2.109.1`, PostgreSQL 17 container lokal, Node.js `24.14.0` |
+| Environment | Supabase CLI `2.109.1`, Vercel CLI `56.3.2`, PostgreSQL 17 container lokal, Node.js `24.14.0` |
 | Data | Fixture sintetis di dalam transaction `BEGIN`/`ROLLBACK`; tidak memakai row production |
 | Hosted staging | `Aflahul's Project` / `mfxyeybmjpcdckajfjen`; migration lokal dan remote sejajar 13/13 |
 | Production boundary | Project `sawit-cb` / `yavntiympbrjlouzkhnl` tidak menerima `db push`, DDL, DML, atau perubahan Auth |
@@ -32,7 +32,7 @@
 | Secret scan | Gitleaks `8.29.1`, seluruh riwayat lokal | 65 commit / sekitar 3.64 MB, tidak ada leak |
 | Diff hygiene | `git diff --check` | Tidak ada whitespace error; hanya peringatan line-ending Windows |
 | GitHub release gate | Draft PR #5 dan branch protection `main` | Seluruh checks hijau; strict required checks, PR, linear history, dan conversation resolution aktif |
-| Vercel preview isolation | GitHub/Vercel deployment metadata dan protected preview probe | Belum dapat dibuktikan; preview dilindungi Vercel SSO dan host ini tidak memiliki Vercel CLI/token. Regression mutating melalui preview diblokir |
+| Vercel preview isolation | Vercel environment metadata, explicit Preview redeploy, inspect, dan authenticated bundle probe | Lulus pada deployment `dpl_7776ywDcapAQQZ8VtrJK6uohmeSM`: target `preview`, status Ready; 10/10 aset JavaScript dapat dibaca, ref staging `mfxyeybmjpcdckajfjen` ditemukan, dan ref production `yavntiympbrjlouzkhnl` tidak ditemukan |
 | Backup/PITR inventory | `supabase backups list --project-ref ... --output json` pada staging dan production | Keduanya melaporkan `backups: null`, `pitr_enabled: false`, dan `walg_enabled: true`; belum ada restore point yang dapat dijadikan bukti drill |
 
 Advisory residual: `npm audit` masih melaporkan dua temuan moderate yang berasal dari PostCSS di dependency Next.js. Saran otomatis npm adalah downgrade besar ke Next 9 dan tidak dipakai karena tidak aman/kompatibel. High advisory pada `xlsx` ditutup dengan mengganti kedua paket SheetJS lama menjadi `write-excel-file@4.1.1`; lint dan production build lulus setelah migrasi ekspor.
@@ -51,13 +51,14 @@ Project staging sebelumnya berisi delapan tabel portfolio yang tidak terkait apl
 
 Auth staging diuji dengan akun sintetis yang langsung dihapus. Uji tersebut membuktikan endpoint Admin Supabase dapat melewati password policy hosted; karena itu validasi password kuat ditambahkan di server action aplikasi, bukan hanya atribut HTML, dan dijadikan CI gate. Otorisasi server action juga memvalidasi token lewat `auth.getUser()` sebelum memeriksa role. Hosted Auth mewajibkan panjang 12 serta lower/upper/digit, sementara server action juga mewajibkan simbol. Percobaan mengaktifkan leaked-password protection dan session timebox/inactivity timeout ditolak plan staging secara terpisah dan tidak mengubah konfigurasi. TOTP API aktif, tetapi aplikasi belum memiliki enrollment/challenge flow dan belum menegakkan AAL2.
 
+Environment Vercel dipisahkan per target sebelum redeploy: URL, publishable key, dan anon key staging hanya tersedia untuk Preview; service-role staging juga hanya tersedia untuk Preview dan tidak memakai prefix `NEXT_PUBLIC_`. Record URL dan kredensial Production tetap khusus Production/Development sesuai kebutuhan, tanpa record Supabase yang dibagi antara Production dan Preview. Deployment Production tidak diredeploy. Protected Preview kemudian diredeploy eksplisit dengan target Preview dan diverifikasi melalui request Vercel terautentikasi; hasil probe bundle membuktikan staging ref tertanam dan production ref tidak tertanam.
+
 Bukti ini belum menutup:
 
 - upgrade plan atau kontrol pengganti untuk leaked-password dan session timebox/inactivity timeout;
 - implementasi dan enforcement MFA/AAL2 pada aplikasi;
 - rehearsal terhadap clone/snapshot production yang representatif dan rekonsiliasi data;
 - concurrency/retry/idempotency/reversal/print-export test di staging;
-- pemisahan environment Vercel Preview agar hanya memakai Supabase staging;
 - penyediaan backup/PITR yang dapat dipulihkan serta restore drill database dan Storage pada target terisolasi;
 - review manusia independen dan keputusan GO/NO-GO.
 
