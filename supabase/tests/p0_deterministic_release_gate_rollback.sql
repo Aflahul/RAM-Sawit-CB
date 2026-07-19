@@ -26,7 +26,7 @@ INSERT INTO public.master_mitra (
   tarif_sewa_angkut_per_kg, dana_operasional_trip
 )
 VALUES (
-  '20000000-0000-0000-0000-000000000001',
+  '20000000-0000-4000-8000-000000000001',
   'QA Mitra', 'QA-M01', 'Alamat QA', '0800000000', 100, true, 'eksternal', 50, 100000
 );
 
@@ -35,7 +35,7 @@ INSERT INTO public.sopir (
 )
 VALUES (
   '30000000-0000-0000-0000-000000000001',
-  'QA Sopir', '0811111111', '20000000-0000-0000-0000-000000000001',
+  'QA Sopir', '0811111111', '20000000-0000-4000-8000-000000000001',
   'BM 1000 QA', false, true
 );
 
@@ -140,7 +140,7 @@ BEGIN
     PERFORM public.save_transaksi_mitra_operational(jsonb_build_object(
       'tanggal', '2026-01-02',
       'sopir_id', '30000000-0000-0000-0000-000000000001',
-      'mitra_id', '20000000-0000-0000-0000-000000000001',
+      'mitra_id', '20000000-0000-4000-8000-000000000001',
       'plat_nomor', 'BM 1000 QA',
       'sopir_default_id', '30000000-0000-0000-0000-000000000001',
       'sopir_default_nama', 'QA Sopir',
@@ -162,7 +162,7 @@ BEGIN
   SELECT public.save_transaksi_mitra_operational(jsonb_build_object(
     'tanggal', '2026-01-02',
     'sopir_id', '30000000-0000-0000-0000-000000000001',
-    'mitra_id', '20000000-0000-0000-0000-000000000001',
+    'mitra_id', '20000000-0000-4000-8000-000000000001',
     'plat_nomor', 'BM 1000 QA',
     'sopir_default_id', '30000000-0000-0000-0000-000000000001',
     'sopir_default_nama', 'QA Sopir',
@@ -283,6 +283,114 @@ BEGIN
   END;
 END;
 $server_snapshot_assertions$;
+
+SET LOCAL ROLE authenticated;
+SELECT set_config('request.jwt.claim.sub', '10000000-0000-0000-0000-000000000002', true);
+
+DO $payment_retry_and_reversal$
+DECLARE
+  v_payment public.pembayaran_mitra_kwitansi%ROWTYPE;
+  v_cancelled public.pembayaran_mitra_kwitansi%ROWTYPE;
+  v_original_cash public.kas_ledger%ROWTYPE;
+  v_reversal_cash public.kas_ledger%ROWTYPE;
+  v_item_count integer;
+  v_cancel_audit_count integer;
+BEGIN
+  SELECT *
+  INTO v_payment
+  FROM public.create_pembayaran_mitra_kwitansi(
+    '20000000-0000-4000-8000-000000000001',
+    DATE '2026-01-02', DATE '2026-01-02',
+    'tunai', 'Fixture retry dan reversal', NULL, NULL
+  );
+
+  SELECT * INTO v_payment
+  FROM public.pembayaran_mitra_kwitansi
+  WHERE id = v_payment.id;
+
+  IF v_payment.status <> 'dibayar'
+     OR v_payment.jumlah_transaksi <> 1
+     OR v_payment.total_nilai_bersih <> 2900000
+     OR v_payment.nominal_dibayar <> 2900000
+     OR v_payment.kas_ledger_id IS NULL THEN
+    RAISE EXCEPTION 'Kwitansi awal tidak merekonsiliasi snapshot transaksi: %', row_to_json(v_payment);
+  END IF;
+
+  BEGIN
+    PERFORM public.create_pembayaran_mitra_kwitansi(
+      '20000000-0000-4000-8000-000000000001',
+      DATE '2026-01-02', DATE '2026-01-02',
+      'tunai', 'Retry fixture yang sama', NULL, NULL
+    );
+    RAISE EXCEPTION 'sequential_payment_retry_was_not_denied';
+  EXCEPTION
+    WHEN SQLSTATE 'P0002' THEN NULL;
+  END;
+
+  SELECT *
+  INTO v_cancelled
+  FROM public.cancel_pembayaran_mitra_kwitansi(
+    v_payment.id,
+    'Fixture reversal deterministik'
+  );
+
+  IF v_cancelled.status <> 'dibatalkan'
+     OR v_cancelled.reversal_kas_ledger_id IS NULL
+     OR v_cancelled.dibatalkan_by <> auth.uid() THEN
+    RAISE EXCEPTION 'Pembatalan kwitansi tidak menghasilkan status/reversal yang benar.';
+  END IF;
+
+  BEGIN
+    PERFORM public.cancel_pembayaran_mitra_kwitansi(
+      v_payment.id,
+      'Retry pembatalan fixture'
+    );
+    RAISE EXCEPTION 'payment_reversal_retry_was_not_denied';
+  EXCEPTION
+    WHEN invalid_parameter_value THEN NULL;
+  END;
+
+  SELECT * INTO v_original_cash
+  FROM public.kas_ledger
+  WHERE id = v_payment.kas_ledger_id;
+
+  SELECT * INTO v_reversal_cash
+  FROM public.kas_ledger
+  WHERE id = v_cancelled.reversal_kas_ledger_id;
+
+  IF v_original_cash.tipe <> 'keluar'
+     OR v_original_cash.jumlah <> 2900000
+     OR v_original_cash.reversed_at IS NULL
+     OR v_reversal_cash.tipe <> 'masuk'
+     OR v_reversal_cash.status <> 'reversal'
+     OR v_reversal_cash.reversal_of_id <> v_original_cash.id
+     OR v_reversal_cash.jumlah <> v_original_cash.jumlah THEN
+    RAISE EXCEPTION 'Ledger asli dan reversal kwitansi tidak seimbang.';
+  END IF;
+
+  SELECT count(*) INTO v_item_count
+  FROM public.pembayaran_mitra_kwitansi_item
+  WHERE pembayaran_id = v_payment.id
+    AND transaksi_mitra_id = current_setting('qa.transaction_id')::uuid
+    AND total_nilai_bersih_snapshot = 2900000;
+
+  IF v_item_count <> 1 THEN
+    RAISE EXCEPTION 'Snapshot item kwitansi tidak tepat satu atau nilainya berubah.';
+  END IF;
+
+  SELECT count(*) INTO v_cancel_audit_count
+  FROM public.audit_log
+  WHERE entity_type = 'pembayaran_mitra_kwitansi'
+    AND entity_id = v_payment.id
+    AND action = 'cancel_payment';
+
+  IF v_cancel_audit_count <> 1 THEN
+    RAISE EXCEPTION 'Pembatalan kwitansi harus menghasilkan tepat satu audit event.';
+  END IF;
+END;
+$payment_retry_and_reversal$;
+
+RESET ROLE;
 
 SET LOCAL ROLE authenticated;
 SELECT set_config('request.jwt.claim.sub', '90000000-0000-0000-0000-000000000099', true);

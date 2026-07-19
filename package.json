@@ -8,6 +8,9 @@
     "start": "next start",
     "lint": "eslint",
     "check:migrations": "node scripts/check-migrations.mjs",
+    "test:p0:payment-concurrency": "node scripts/test-p0-payment-concurrency.mjs",
+    "test:p0:payment-concurrency:staging": "node scripts/test-p0-payment-concurrency-staging.mjs",
+    "test:p0:print-export:staging": "node scripts/test-p0-print-export.mjs",
     "test:password-policy": "node --test tests/password-policy.test.mjs"
   },
   "dependencies": {
@@ -24,6 +27,7 @@
   "devDependencies": {
     "eslint": "^9",
     "eslint-config-next": "16.2.10",
+    "playwright": "1.61.1",
     "supabase": "^2.109.1"
   }
 }
