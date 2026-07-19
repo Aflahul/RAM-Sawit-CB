@@ -1,15 +1,19 @@
 -- 20260718010012_p0_maker_checker_pinjaman_panjar.sql
 
 -- 1. Insert Konfigurasi Maker-Checker
-INSERT INTO public.pengaturan_bisnis (key, scope, scope_id, value_json, keterangan, updated_by)
-VALUES (
-  'MAKER_CHECKER_CONFIG', 
-  'global', 
-  '00000000-0000-0000-0000-000000000000', 
-  '{"pinjaman_panjar_threshold": null}', 
-  'Batas nominal Maker-Checker untuk Panjar dan Pinjaman. Jika null, sistem tidak akan memblokir/menahan persetujuan untuk nominal berapapun.', 
+INSERT INTO public.pengaturan_bisnis (key, scope, value_json, updated_by)
+SELECT
+  'MAKER_CHECKER_CONFIG',
+  'global',
+  '{"pinjaman_panjar_threshold": null}'::jsonb,
   NULL
-) ON CONFLICT (key, scope, scope_id) DO NOTHING;
+WHERE NOT EXISTS (
+  SELECT 1
+  FROM public.pengaturan_bisnis
+  WHERE key = 'MAKER_CHECKER_CONFIG'
+    AND scope = 'global'
+    AND aktif = true
+);
 
 -- 2. Tambah kolom alasan_darurat di piutang_dokumen
 ALTER TABLE public.piutang_dokumen ADD COLUMN IF NOT EXISTS alasan_darurat text;

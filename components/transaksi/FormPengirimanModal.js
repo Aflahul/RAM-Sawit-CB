@@ -12,12 +12,7 @@ import {
   getSopirArmadaSearchText,
 } from '@/lib/display-labels';
 import { supabase } from '@/lib/supabase';
-import {
-  hitungSewaArmadaCB,
-  kalkulasiTransaksiMitra,
-  resolveEffectiveMitraFeeSnapshot,
-} from '@/lib/transaksi-mitra-calculations';
-import { formatRupiah, getTodayISO } from '@/lib/utils';
+import { getTodayISO } from '@/lib/utils';
 
 const SOPIR_AKTUAL_DEFAULT = 'default';
 const SOPIR_AKTUAL_MASTER = 'master';
@@ -27,8 +22,6 @@ export default function FormPengirimanModal({ open, onClose, onSuccess, initialD
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [sopirs, setSopirs] = useState([]);
   const [mitras, setMitras] = useState([]);
-  const [feeHistories, setFeeHistories] = useState([]);
-  const [latestHarga, setLatestHarga] = useState(0);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [successMsg, setSuccessMsg] = useState('');
@@ -50,8 +43,6 @@ export default function FormPengirimanModal({ open, onClose, onSuccess, initialD
     plat_nomor: '',
     mitra_id: '',
     mitra_nama: '',
-    mitra_fee: 0,
-    fee_owner_history_id: '',
     sopir_default_nama: '',
     sopir_aktual_mode: SOPIR_AKTUAL_DEFAULT,
     sopir_aktual_id: '',
@@ -64,8 +55,6 @@ export default function FormPengirimanModal({ open, onClose, onSuccess, initialD
     catat_dana_operasional_trip: false,
     alasan_tanpa_sewa_armada_cb: '',
     alasan_tanpa_dana_operasional_trip: '',
-    tarif_sewa_angkut: 0,
-    dana_operasional_trip: 0,
   });
 
   useEffect(() => {
@@ -83,41 +72,26 @@ export default function FormPengirimanModal({ open, onClose, onSuccess, initialD
     const [
       { data: sopirData },
       { data: mitraData },
-      { data: hargaData },
-      { data: feeHistoryData, error: feeHistoryError },
     ] = await Promise.all([
       supabase
         .from('sopir')
-        .select(`
-          id, nama, no_hp, plat_nomor, mitra_id, is_armada_cb,
-          master_mitra ( id, kode, nama, alamat, fee_per_kg )
-        `)
+        .select('id, nama, no_hp, plat_nomor, mitra_id, is_armada_cb')
         .eq('aktif', true)
         .order('nama'),
       supabase
-        .from('master_mitra')
-        .select('id, kode, nama, alamat, fee_per_kg, tarif_sewa_angkut_per_kg, dana_operasional_trip')
+        .from('v_master_mitra_operasional')
+        .select('id, kode, nama, alamat, no_hp, tipe_mitra')
         .eq('aktif', true)
         .order('kode'),
-      supabase
-        .from('harga_tbs')
-        .select('harga_per_kg')
-        .order('tanggal', { ascending: false })
-        .limit(1),
-      supabase
-        .from('fee_owner_mitra_history')
-        .select('id, master_mitra_id, fee_per_kg, tarif_sewa_angkut_per_kg, dana_operasional_trip, berlaku_mulai, berlaku_sampai, aktif, alasan_perubahan')
-        .eq('aktif', true)
-        .order('berlaku_mulai', { ascending: false }),
     ]);
 
-    setSopirs(sopirData || []);
-    setMitras(mitraData || []);
-    setFeeHistories(feeHistoryError ? [] : feeHistoryData || []);
-
-    if (hargaData && hargaData.length > 0) {
-      setLatestHarga(hargaData[0].harga_per_kg);
-    }
+    const nextMitras = mitraData || [];
+    const mitraMap = new Map(nextMitras.map((mitra) => [mitra.id, mitra]));
+    setSopirs((sopirData || []).map((sopir) => ({
+      ...sopir,
+      master_mitra: mitraMap.get(sopir.mitra_id) || null,
+    })));
+    setMitras(nextMitras);
 
     setLoading(false);
   }, []);
@@ -167,9 +141,6 @@ export default function FormPengirimanModal({ open, onClose, onSuccess, initialD
     && selectedDefaultSopir.mitra_id !== form.mitra_id
   );
   const isSelectedArmadaCB = Boolean(selectedDefaultSopir?.is_armada_cb);
-  const danaOperasionalTrip = isSelectedArmadaCB && form.catat_dana_operasional_trip
-    ? Number(form.dana_operasional_trip || 0)
-    : 0;
 
   /** Kalkulasi real-time berdasarkan input form saat ini */
   const kalkulasi = useMemo(() => {
@@ -177,42 +148,12 @@ export default function FormPengirimanModal({ open, onClose, onSuccess, initialD
     const potongan   = parseFloat(form.potongan_pabrik) || 0;
     const beratDibayar = Math.max(0, beratNetto - potongan);
 
-    const hargaPabrik = latestHarga;
-    const feeOwner    = form.mitra_fee;
-    const hargaBersih = Math.max(0, hargaPabrik - feeOwner);
-
-    const totalKotor        = Math.round(beratDibayar * hargaPabrik);
-    const totalFeeOwner     = Math.round(beratDibayar * feeOwner);
-    const totalNilaiBersih  = Math.round(beratDibayar * hargaBersih);
-
-    const pakaiSewaArmada = isSelectedArmadaCB && form.kenakan_sewa_armada_cb;
-    const isSewa = hitungSewaArmadaCB({ 
-      isArmadaCB: pakaiSewaArmada, 
-      beratNettoPabrikKg: beratNetto,
-      tarifSewaAngkut: form.tarif_sewa_angkut,
-    });
-    const sewaArmada = {
-      pakaiSewaArmada: isSewa.pakaiSewaArmada,
-      biayaSewaArmadaKotor: isSewa.biayaSewaArmadaKotor,
-      biayaSewaArmadaTotal: isSewa.biayaSewaArmadaTotal,
-    };
-
-    const totalBersihMitra = totalNilaiBersih - sewaArmada.biayaSewaArmadaTotal;
-
     return {
       beratNetto,
       potongan,
       beratDibayar,
-      hargaPabrik,
-      feeOwner,
-      hargaBersih,
-      totalKotor,
-      totalFeeOwner,
-      totalNilaiBersih,
-      totalBersihMitra,
-      ...sewaArmada,
     };
-  }, [form.berat_netto, form.potongan_pabrik, form.mitra_fee, form.kenakan_sewa_armada_cb, form.tarif_sewa_angkut, isSelectedArmadaCB, latestHarga]);
+  }, [form.berat_netto, form.potongan_pabrik]);
 
   const beratNettoNum = kalkulasi.beratNetto;
   const potonganNum = kalkulasi.potongan;
@@ -223,33 +164,18 @@ export default function FormPengirimanModal({ open, onClose, onSuccess, initialD
   // Helpers mitra/sopir
   // ---------------------------------------------------------------------------
 
-  function getEffectiveFeeSnapshot(mitraId, tanggal) {
-    return resolveEffectiveMitraFeeSnapshot({
-      mitraId,
-      tanggal: tanggal || getTodayISO(),
-      mitras,
-      feeHistories,
-    });
-  }
-
-  function applyMitraSnapshot(nextForm, mitraId = nextForm.mitra_id, tanggal = nextForm.tanggal) {
+  function applyMitraSelection(nextForm, mitraId = nextForm.mitra_id) {
     const mitra = mitras.find(m => m.id === mitraId);
-    const feeSnapshot = getEffectiveFeeSnapshot(mitraId, tanggal);
 
     return {
       ...nextForm,
       mitra_id: mitraId,
       mitra_nama: formatMitraLabel(mitra),
-      mitra_fee: feeSnapshot.fee,
-      tarif_sewa_angkut: feeSnapshot.tarifSewaAngkut || 0,
-      dana_operasional_trip: feeSnapshot.danaOperasionalTrip || 0,
-      fee_owner_history_id: feeSnapshot.historyId,
     };
   }
 
   function handleTanggalChange(tanggal) {
-    const nextForm = { ...form, tanggal };
-    setForm(form.mitra_id ? applyMitraSnapshot(nextForm, form.mitra_id, tanggal) : nextForm);
+    setForm({ ...form, tanggal });
   }
 
   function handleSopirChange(selectedId) {
@@ -277,7 +203,7 @@ export default function FormPengirimanModal({ open, onClose, onSuccess, initialD
       const nextMitraId = form.mitra_id || sopir.mitra_id || '';
       
       const isCb = Boolean(sopir.is_armada_cb);
-      setForm(applyMitraSnapshot({
+      setForm(applyMitraSelection({
         ...form,
         sopir_id: sopir.id,
         plat_nomor: sopir.plat_nomor || '-',
@@ -292,20 +218,20 @@ export default function FormPengirimanModal({ open, onClose, onSuccess, initialD
         catat_dana_operasional_trip: isCb,
         alasan_tanpa_sewa_armada_cb: '',
         alasan_tanpa_dana_operasional_trip: '',
-      }, nextMitraId, form.tanggal));
+      }, nextMitraId));
     }
   }
 
   function handleMitraChange(selectedId) {
     if (!selectedId) {
-      setForm(applyMitraSnapshot({
+      setForm(applyMitraSelection({
         ...form,
         berat_netto: '',
         potongan_pabrik: '0',
-      }, '', form.tanggal));
+      }, ''));
       return;
     }
-    setForm(applyMitraSnapshot({ ...form }, selectedId, form.tanggal));
+    setForm(applyMitraSelection({ ...form }, selectedId));
   }
 
   function handleSopirAktualModeChange(mode) {
@@ -396,7 +322,7 @@ export default function FormPengirimanModal({ open, onClose, onSuccess, initialD
     setSopirs(prev => [...prev, selectableArmada]);
     
     const nextMitraId = savedArmada.mitra_id || '';
-    setForm(applyMitraSnapshot({
+    setForm(applyMitraSelection({
       ...form,
       sopir_id: savedArmada.id,
       plat_nomor: savedArmada.plat_nomor || '-',
@@ -411,7 +337,7 @@ export default function FormPengirimanModal({ open, onClose, onSuccess, initialD
       catat_dana_operasional_trip: Boolean(savedArmada.is_armada_cb),
       alasan_tanpa_sewa_armada_cb: '',
       alasan_tanpa_dana_operasional_trip: '',
-    }, nextMitraId, form.tanggal));
+    }, nextMitraId));
 
     setFormArmadaCepat({ nama: '', plat_nomor: '', no_hp: '', mitra_id: '', is_armada_cb: false });
     setShowQuickAddArmada(false);
@@ -453,18 +379,6 @@ export default function FormPengirimanModal({ open, onClose, onSuccess, initialD
       return;
     }
 
-    if (isSelectedArmadaCB && form.kenakan_sewa_armada_cb && Number(form.tarif_sewa_angkut || 0) <= 0) {
-      showToast('Tarif sewa Armada CB untuk mitra ini belum diatur. Lengkapi tarif di menu Mitra.');
-      setSaving(false);
-      return;
-    }
-
-    if (isSelectedArmadaCB && form.catat_dana_operasional_trip && danaOperasionalTrip <= 0) {
-      showToast('Dana Operasional Trip untuk mitra ini belum diatur. Lengkapi tarif di menu Mitra.');
-      setSaving(false);
-      return;
-    }
-
     if (isSelectedArmadaCB && !form.kenakan_sewa_armada_cb && !form.alasan_tanpa_sewa_armada_cb.trim()) {
       showToast('Isi alasan mengapa sewa Armada CB tidak dipotong dari mitra.');
       setSaving(false);
@@ -493,7 +407,7 @@ export default function FormPengirimanModal({ open, onClose, onSuccess, initialD
         ? form.sopir_aktual_id
         : null;
 
-    const { error } = await supabase.rpc('save_transaksi_mitra_v2', {
+    const { error } = await supabase.rpc('save_transaksi_mitra_operational', {
       payload: {
         tanggal:            form.tanggal,
         sopir_id:           form.sopir_id,
@@ -524,9 +438,8 @@ export default function FormPengirimanModal({ open, onClose, onSuccess, initialD
     } else {
       const infoSopir   = sopirDiganti ? `, sopir aktual: ${sopirAktualNama}` : '';
       const infoPotongan = k.potongan > 0 ? `, potongan ${k.potongan.toLocaleString('id-ID')} kg` : '';
-      const infoSewa     = k.pakaiSewaArmada ? `, sewa armada ${formatRupiah(k.biayaSewaArmadaTotal)}` : '';
       setSuccessMsg(
-        `Berhasil menyimpan ${k.beratNetto.toLocaleString('id-ID')} kg (berat dibayar ${k.beratDibayar.toLocaleString('id-ID')} kg)${infoPotongan} untuk armada ${form.plat_nomor}${infoSopir}${infoSewa} (Mitra: ${form.mitra_nama}).`
+        `Berhasil menyimpan ${k.beratNetto.toLocaleString('id-ID')} kg (berat dibayar ${k.beratDibayar.toLocaleString('id-ID')} kg)${infoPotongan} untuk armada ${form.plat_nomor}${infoSopir} (Mitra: ${form.mitra_nama}). Nilai finansial dihitung dan dikunci oleh database.`
       );
       if (onSuccess) onSuccess();
       setShowAdvanced(false);
@@ -537,8 +450,6 @@ export default function FormPengirimanModal({ open, onClose, onSuccess, initialD
         plat_nomor: '',
         mitra_id: '',
         mitra_nama: '',
-        mitra_fee: 0,
-        fee_owner_history_id: '',
         sopir_default_nama: '',
         sopir_aktual_mode: SOPIR_AKTUAL_DEFAULT,
         sopir_aktual_id: '',
@@ -551,8 +462,6 @@ export default function FormPengirimanModal({ open, onClose, onSuccess, initialD
         catat_dana_operasional_trip: false,
         alasan_tanpa_sewa_armada_cb: '',
         alasan_tanpa_dana_operasional_trip: '',
-        tarif_sewa_angkut: 0,
-        dana_operasional_trip: 0,
       });
     }
 
@@ -760,7 +669,7 @@ export default function FormPengirimanModal({ open, onClose, onSuccess, initialD
               <span>
                 <strong>Potong sewa dari pembayaran mitra</strong>
                 <span className="text-sm text-tertiary" style={{ display: 'block' }}>
-                  {formatRupiah(form.tarif_sewa_angkut)}/kg dari Berat Netto Pabrik
+                  Tarif aktif dipilih dan dihitung oleh database saat disimpan
                 </span>
               </span>
             </label>
@@ -798,7 +707,7 @@ export default function FormPengirimanModal({ open, onClose, onSuccess, initialD
               <span>
                 <strong>Buat Dana Operasional Trip</strong>
                 <span className="text-sm text-tertiary" style={{ display: 'block' }}>
-                  {formatRupiah(form.dana_operasional_trip)} untuk satu kali jalan
+                  Nominal aktif dipilih dan dikunci oleh database
                 </span>
               </span>
             </label>
@@ -945,46 +854,9 @@ export default function FormPengirimanModal({ open, onClose, onSuccess, initialD
               <span style={{ fontWeight: 700 }}>{beratDibayarNum.toLocaleString('id-ID')} kg</span>
             </div>
 
-            {/* Uang */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, marginBottom: 6 }}>
-              <span style={{ color: 'var(--text-tertiary)', fontSize: 14 }}>Hasil Kotor (Pabrik):</span>
-              <span style={{ fontWeight: 600, textAlign: 'right' }}>
-                {formatRupiah(kalkulasi.totalKotor)}
-                <div style={{ fontSize: 12, color: 'var(--text-tertiary)', fontWeight: 400 }}>({formatRupiah(latestHarga)}/kg)</div>
-              </span>
-            </div>
-
-            {kalkulasi.totalFeeOwner > 0 && (
-              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, marginBottom: 6 }}>
-                <span style={{ color: 'var(--text-tertiary)', fontSize: 14 }}>Potongan Fee Owner:</span>
-                <span style={{ fontWeight: 600, color: 'var(--color-warning)', textAlign: 'right' }}>
-                  - {formatRupiah(kalkulasi.totalFeeOwner)}
-                  <div style={{ fontSize: 12, color: 'var(--text-tertiary)', fontWeight: 400 }}>({formatRupiah(form.mitra_fee)}/kg)</div>
-                </span>
-              </div>
-            )}
-
-            {kalkulasi.pakaiSewaArmada && (
-              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, marginBottom: 6 }}>
-                <span style={{ color: 'var(--text-tertiary)', fontSize: 14 }}>Sewa Armada CB:</span>
-                <span style={{ fontWeight: 600, color: 'var(--color-danger)', textAlign: 'right' }}>
-                  - {formatRupiah(kalkulasi.biayaSewaArmadaTotal)}
-                  <div style={{ fontSize: 12, color: 'var(--text-tertiary)', fontWeight: 400 }}>
-                    ({formatRupiah(form.tarif_sewa_angkut)}/kg netto)
-                  </div>
-                </span>
-              </div>
-            )}
-
             {isSelectedArmadaCB && form.catat_dana_operasional_trip && (
-              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, marginBottom: 6 }}>
-                <span style={{ color: 'var(--text-tertiary)', fontSize: 14 }}>Dana Operasional Trip:</span>
-                <span style={{ fontWeight: 600, textAlign: 'right' }}>
-                  {formatRupiah(danaOperasionalTrip)}
-                  <div style={{ fontSize: 12, color: 'var(--text-tertiary)', fontWeight: 400 }}>
-                    Dibayar satu kali jalan; sudah termasuk solar, makan, dan bagian sopir
-                  </div>
-                </span>
+              <div className="alert alert-info" style={{ marginTop: 10, marginBottom: 0 }}>
+                Dana Operasional Trip akan dihitung memakai konfigurasi aktif di database.
               </div>
             )}
 
@@ -1000,15 +872,8 @@ export default function FormPengirimanModal({ open, onClose, onSuccess, initialD
               </div>
             )}
 
-            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, marginTop: 12, borderTop: '1px solid var(--border-default)', paddingTop: 12 }}>
-              <span style={{ color: 'var(--color-success)', fontSize: 16, fontWeight: 700 }}>Nilai Bersih Mitra:</span>
-              <span style={{ fontWeight: 800, color: 'var(--color-success)', fontSize: 18, textAlign: 'right' }}>
-                {formatRupiah(kalkulasi.totalBersihMitra)}
-                <div style={{ fontSize: 13, fontWeight: 500 }}>
-                  ({formatRupiah(kalkulasi.hargaBersih)}/kg bersih
-                  {kalkulasi.pakaiSewaArmada ? ' dipotong armada' : ''})
-                </div>
-              </span>
+            <div className="alert alert-info" style={{ marginTop: 12, marginBottom: 0 }}>
+              Harga, fee, sewa, dan total transaksi dihitung server-side setelah validasi input operasional.
             </div>
           </div>
         )}

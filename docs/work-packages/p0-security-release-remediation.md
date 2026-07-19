@@ -48,19 +48,21 @@ Scope tidak masuk:
 
 | Task | Audit | Pri/KR | Accountable role | Target | Status |
 | --- | --- | --- | --- | --- | --- |
-| `TASK-SEC-001` Batasi pembacaan data sensitif | `AUD-SEC-20260717-001` | P0/KR3 | Data/Security Owner | R-SEC-01 | Verified (via 20260718171659_p0_secure_dto_views_and_read_revoke) |
-| `TASK-SEC-002` Kunci audit trail | `AUD-SEC-20260717-002` | P0/KR3 | Data/Security Owner | R-SEC-01 | Verified (via 20260718004159_p0_secure_audit_and_api) |
-| `TASK-SEC-003` Hardening privilege dan RPC | `AUD-SEC-20260717-003` | P0/KR3 | Data/Security Owner | R-SEC-01 | Verified (via 20260718000001_p0_revoke_direct_api_transaksi) |
-| `TASK-SEC-004` Auth dan role fail-closed | `AUD-SEC-20260717-004` | P0/KR3 | Data/Security Owner | R-SEC-01 | Verified (via 20260718161015_p0_fail_closed_role) |
-| `TASK-SEC-005` Feature gate modul beku | `AUD-SEC-20260717-005` | P0/KR3 | Engineering Lead | R-SEC-01 | Verified (via 20260718010013_p0_feature_gate_coming_soon) |
-| `TASK-SEC-006` Snapshot transaksi dihitung server | `AUD-SEC-20260717-006` | P0/KR3 | Engineering + Data/Security | R-SEC-01 | Verified (via 20260718010011_p0_server_authoritative_snapshots) |
-| `TASK-BIZ-001` Maker-checker finansial | `AUD-BIZ-20260717-001` | P0/KR3 | Product Owner | R-SEC-01 | Blocked keputusan BDR |
-| `TASK-QA-001` Required CI dan supply chain | `AUD-QA-20260717-001` | P0/KR3 | QA/Release Owner | R-SEC-01 | Draft/Blocked |
-| `TASK-DATA-001` Upgrade rehearsal dan backfill proof | `AUD-DATA-20260717-001` | P0/KR3-4 | Data Owner | R-SEC-01 | Verified (via perbaikan baseline Docker lokal) |
-| `TASK-QA-002` Deterministic financial/security test | `AUD-QA-20260717-002` | P0/KR3 | QA Owner | R-SEC-01 | Draft/Blocked |
+| `TASK-SEC-001` Batasi pembacaan data sensitif | `AUD-SEC-20260717-001` | P0/KR3 | Data/Security Owner | R-SEC-01 | Implemented locally; staging + reviewer pending |
+| `TASK-SEC-002` Kunci audit trail | `AUD-SEC-20260717-002` | P0/KR3 | Data/Security Owner | R-SEC-01 | Implemented locally; staging + reviewer pending |
+| `TASK-SEC-003` Hardening privilege dan RPC | `AUD-SEC-20260717-003` | P0/KR3 | Data/Security Owner | R-SEC-01 | Implemented locally; staging + reviewer pending |
+| `TASK-SEC-004` Auth dan role fail-closed | `AUD-SEC-20260717-004` | P0/KR3 | Data/Security Owner | R-SEC-01 | DB/client implemented locally; hosted Auth pending |
+| `TASK-SEC-005` Feature gate modul beku | `AUD-SEC-20260717-005` | P0/KR3 | Engineering Lead | R-SEC-01 | Implemented locally; staging + reviewer pending |
+| `TASK-SEC-006` Snapshot transaksi dihitung server | `AUD-SEC-20260717-006` | P0/KR3 | Engineering + Data/Security | R-SEC-01 | Implemented locally; staging + reviewer pending |
+| `TASK-BIZ-001` Maker-checker finansial | `AUD-BIZ-20260717-001` | P0/KR3 | Product Owner | R-SEC-01 | Implemented locally per BDR; named approval + staging pending |
+| `TASK-QA-001` Required CI dan supply chain | `AUD-QA-20260717-001` | P0/KR3 | QA/Release Owner | R-SEC-01 | Workflow implemented locally; hosted run + branch protection pending |
+| `TASK-DATA-001` Upgrade rehearsal dan backfill proof | `AUD-DATA-20260717-001` | P0/KR3-4 | Data Owner | R-SEC-01 | Clean install passed locally; clone upgrade proof pending |
+| `TASK-QA-002` Deterministic financial/security test | `AUD-QA-20260717-002` | P0/KR3 | QA Owner | R-SEC-01 | Deterministic local core passed; extended staging matrix pending |
 | `TASK-QA-003` RPO/RTO dan restore drill | `AUD-QA-20260717-003` | P0/KR3 | QA/Release + Data Owner | R-SEC-01 | Blocked capability/approval |
 | `TASK-QA-004` Observability, incident, retention | `AUD-QA-20260717-004` | P1/KR2-3 | Engineering Lead | Setelah containment; scope-dependent | Draft |
-| `TASK-UX-001` UX lock route Coming Soon | `AUD-UX-20260717-001` | P0/KR3 | UX/UI Reviewer | Bersama TASK-SEC-005 | Verified (Navigasi disembunyikan) |
+| `TASK-UX-001` UX lock route Coming Soon | `AUD-UX-20260717-001` | P0/KR3 | UX/UI Reviewer | Bersama TASK-SEC-005 | Implemented locally; accessibility reviewer pending |
+
+Evidence implementasi lokal saat ini: [Rehearsal Lokal P0 19 Juli 2026](../evidence/p0-local-rehearsal-2026-07-19.md). Status `Verified` tetap hanya dapat diberikan reviewer independen setelah bukti staging/hosted tersedia.
 
 ## 4. Acceptance dan Test Contract
 

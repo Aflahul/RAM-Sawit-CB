@@ -293,17 +293,19 @@ Temuan tidak boleh dipindahkan dari `Open` ke `Verified` hanya karena kode atau 
 
 | AUD ID | Fix commit/PR | Migration/artefak | Environment | Before evidence | Negative/positive test | After evidence | Implementer | Independent verifier | Status/tanggal |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `AUD-SEC-20260717-001` |  | 20260718004159_p0_secure_audit_and_api.sql | Lokal Docker | ACL/RLS/Data API matrix | `TEST-SEC-*` | Policy restrict baca diterapkan via DB | AI Specialist | Data/Security + QA | Verified (Containment) |
-| `AUD-SEC-20260717-002` |  | 20260718004159_p0_secure_audit_and_api.sql | Lokal Docker | Audit mutation attempt | `TEST-SEC-*` | Audit mutation ditolak permanen; writer siap | AI Specialist | Data/Security + QA | Verified |
-| `AUD-SEC-20260717-003` |  | 20260718000001_p0_revoke_direct_api_transaksi | Lokal Docker | Final-state privilege/RPC matrix | `TEST-SEC-*` | Default privilege dan execute minimum tercapai | AI Specialist | Data/Security + QA | Verified |
+| `AUD-SEC-20260717-001` |  | 20260718171659 + 20260718234335 | Lokal Docker | ACL/RLS/Data API matrix | deterministic P0 suite | DTO minimum dan direct read sensitif diuji lokal | AI Specialist |  | Open; implemented locally, staging review pending |
+| `AUD-SEC-20260717-002` |  | 20260718004159 + 20260718235718 | Lokal Docker | Audit mutation attempt | deterministic P0 suite | Audit mutation ditolak dan internal writer menghasilkan event | AI Specialist |  | Open; implemented locally, staging review pending |
+| `AUD-SEC-20260717-003` |  | 20260718004159 + 20260718010013 + 20260718234335 | Lokal Docker | Final-state privilege/RPC matrix | deterministic P0 suite | Legacy execute ditolak dan wrapper minimum diuji lokal | AI Specialist |  | Open; staging review pending |
 | `AUD-SEC-20260717-005` |  |  |  | Route mount/query/write behavior | `TEST-SEC-*` + `TEST-UX-*` | Child tidak mount; direct write dan keyboard action ditolak |  | Security + UX + QA | Open |
-| `AUD-SEC-20260717-006` | | 20260718010011_p0_server_authoritative_snapshots.sql | Lokal Docker | Payload create/update dan hasil snapshot | `TEST-SEC-*` + `TEST-QA-*` | Payload manipulatif ditolak; hasil database deterministik; snapshot dibayar tetap | AI Specialist | Data/Security + QA | Verified |
-| `AUD-BIZ-20260717-001` |  |  |  | Maker-checker behavior | `TEST-BIZ-*` | Self-approval ditolak/break-glass diaudit |  | Product/BA + QA | Open |
-| `AUD-QA-20260717-001` |  |  |  | Branch/check configuration | `TEST-QA-*` | Required checks memblokir failure |  | QA/Release | Open |
-| `AUD-DATA-20260717-001` |  | 00000000000000_baseline.sql | Lokal Docker | Clone/version/row count | `TEST-DATA-*` | Sinkronisasi remote baseline dengan lokal berhasil | AI Specialist | Data + QA | Verified |
-| `AUD-QA-20260717-002` |  |  |  | Test inventory | `TEST-QA-*` | Fixture deterministik dan regression lulus |  | QA/Release | Open |
+| `AUD-SEC-20260717-006` | | 20260718010011 + 20260718234335 | Lokal Docker | Payload create/update dan hasil snapshot | deterministic P0 suite | Payload finansial manipulatif ditolak dan snapshot dihitung database | AI Specialist |  | Open; extended staging regression pending |
+| `AUD-BIZ-20260717-001` |  | 20260718010012 + 20260718234330 | Lokal Docker | Maker-checker behavior | deterministic P0 suite | Admin self-approval ditolak; Owner berbeda berhasil | AI Specialist |  | Open; named approval + staging pending |
+| `AUD-QA-20260717-001` |  | `.github/workflows/p0-release-gates.yml` | Lokal / workflow belum diaktifkan | Dependency dan source scan lokal | lint/build/audit/Gitleaks | Workflow required gates dibuat; branch protection belum aktif | AI Specialist |  | Open |
+| `AUD-DATA-20260717-001` |  | baseline + ordered migrations | Lokal Docker | Clean database | reset + deterministic suite | Clean install lokal lulus; remote history masih kosong | AI Specialist |  | Open; clone upgrade proof pending |
+| `AUD-QA-20260717-002` |  | `p0_deterministic_release_gate_rollback.sql` | Lokal Docker | Test inventory | repeated clean-fixture run | Core security/financial fixture deterministik lulus | AI Specialist |  | Open; extended staging matrix pending |
 | `AUD-SEC-20260717-004` |  |  |  | Hosted Auth attestation | `TEST-SEC-*` | Actor/session negative matrix lulus |  | Security + QA | Open |
 | `AUD-QA-20260717-003` |  |  |  | RPO/RTO dan recovery baseline | `TEST-REC-*` | Restore DB/Storage terisolasi dan rekonsiliasi lulus |  | QA/Release + PO | Open |
 | `AUD-QA-20260717-004` |  |  |  | Observability/incident/retention baseline | `TEST-OPS-*` | Alert/tabletop/evidence policy lulus |  | QA/Release + PO | Open |
 
 Evidence minimal menyimpan commit SHA, target project/environment, waktu UTC, executor, reviewer, perintah/skenario, expected, actual, dan lokasi raw output yang aksesnya dikendalikan. Perubahan setelah approval membatalkan approval yang terdampak dan membutuhkan verifikasi ulang.
+
+Evidence rehearsal lokal terbaru: [P0 Local Rehearsal 19 Juli 2026](evidence/p0-local-rehearsal-2026-07-19.md).

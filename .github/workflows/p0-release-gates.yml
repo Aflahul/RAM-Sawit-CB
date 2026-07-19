@@ -1,0 +1,82 @@
+name: P0 Release Gates
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: p0-release-gates-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  application:
+    name: Application lint, build, and dependencies
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+          package-manager-cache: false
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run build
+      - name: Block critical and high dependency advisories
+        run: npm audit --audit-level=high
+
+  database:
+    name: Clean migration, deterministic DB test, and advisors
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+          package-manager-cache: false
+      - run: npm ci
+      - run: npm run check:migrations
+      - name: Start isolated Supabase services
+        run: npx supabase start -x analytics,edge-runtime,functions,imgproxy,inbucket,realtime,storage,studio,vector
+      - name: Rebuild database from migration history
+        run: npx supabase db reset --local --no-seed
+      - name: Run deterministic P0 rollback suite
+        run: docker exec -i supabase_db_RAM-Sawit-CB psql -U postgres -d postgres -v ON_ERROR_STOP=1 -f - < supabase/tests/p0_deterministic_release_gate_rollback.sql
+      - name: Lint database schema
+        run: npx supabase db lint --local --level error --fail-on error
+      - name: Block Supabase security advisor findings
+        run: npx supabase db advisors --local --type security --level warn --fail-on warn
+
+  secrets:
+    name: Secret scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - name: Scan full history with pinned Gitleaks image
+        run: >-
+          docker run --rm -v "$PWD:/repo"
+          zricethezav/gitleaks@sha256:aa036a2f4bdfe3cc3c55fa4326308efabb4a6be498c883c864fd1d0d5585438a
+          detect --source /repo --no-banner --redact --exit-code 1
+
+  codeql:
+    name: CodeQL JavaScript analysis
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+      packages: read
+    steps:
+      - uses: actions/checkout@v6
+      - uses: github/codeql-action/init@v4
+        with:
+          languages: javascript-typescript
+      - uses: github/codeql-action/analyze@v4
