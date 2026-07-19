@@ -85,6 +85,17 @@ BEGIN
     RAISE EXCEPTION 'RPC operasional belum diberikan ke authenticated.';
   END IF;
 
+  IF has_function_privilege('anon', 'public.create_pengiriman_lokal(date,uuid,numeric,text,uuid,uuid)', 'EXECUTE') THEN
+    RAISE EXCEPTION 'anon masih dapat memanggil create_pengiriman_lokal.';
+  END IF;
+
+  IF has_function_privilege('anon', 'public.enforce_kwitansi_aggregates()', 'EXECUTE')
+     OR has_function_privilege('authenticated', 'public.enforce_kwitansi_aggregates()', 'EXECUTE')
+     OR has_function_privilege('anon', 'public.enforce_tbs_snapshot_calculation()', 'EXECUTE')
+     OR has_function_privilege('authenticated', 'public.enforce_tbs_snapshot_calculation()', 'EXECUTE') THEN
+    RAISE EXCEPTION 'Fungsi trigger masih dapat dipanggil langsung oleh role aplikasi.';
+  END IF;
+
   IF has_table_privilege('authenticated', 'public.audit_log', 'INSERT')
      OR has_table_privilege('authenticated', 'public.audit_log', 'UPDATE')
      OR has_table_privilege('authenticated', 'public.audit_log', 'DELETE')
