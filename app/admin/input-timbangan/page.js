@@ -18,6 +18,7 @@ import { paginateRows } from '@/lib/pagination-utils';
 import { getNextSort, sortRows } from '@/lib/sort-utils';
 import { supabase } from '@/lib/supabase';
 import {
+  isDanaOperasionalDibayarMitra,
   resolveBeratDibayar,
   resolveBeratNettoPabrik,
   resolveBiayaSewaArmada,
@@ -146,7 +147,7 @@ function getTransactionLockReason(row) {
   if (row.pembayaran_pabrik_status) {
     return 'Sudah dicocokkan dengan pembayaran pabrik. Batalkan pembayaran pabrik terlebih dahulu.';
   }
-  if (row.biaya_sopir_dibayar_at) {
+  if (row.biaya_sopir_dibayar_at && !isDanaOperasionalDibayarMitra(row)) {
     return 'Dana Operasional Trip sudah dibayar. Koreksi pembayaran Dana Trip terlebih dahulu.';
   }
   return '';
@@ -203,7 +204,8 @@ export default function AdminInputTimbangan() {
         biaya_sewa_armada_per_kg, biaya_sewa_armada_total,
         tarif_sewa_angkut_per_kg_snapshot, biaya_sewa_armada_kotor,
         dana_operasional_trip_snapshot, upah_sopir_cb_snapshot, uang_jalan_sopir_cb_snapshot, total_biaya_sopir_cb_snapshot,
-        tagihan_sopir_ledger_id, biaya_sopir_operasional_id, biaya_sopir_dibayar_at,
+        dana_operasional_dibayar_mitra,
+        tagihan_sopir_ledger_id, tagihan_sopir_bayar_ledger_id, biaya_sopir_operasional_id, biaya_sopir_dibayar_at,
         status, created_at, updated_at, updated_by, alasan_edit, dibatalkan_at, dibatalkan_by, alasan_batal,
         sopir_default_id, sopir_default_nama, sopir_aktual_id, sopir_aktual_nama,
         sopir_aktual_no_hp, sopir_aktual_source, sopir_diganti_dari_default, catatan_sopir,

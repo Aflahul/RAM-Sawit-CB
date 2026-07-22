@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 
 import {
   kalkulasiTransaksiMitra,
+  resolveBiayaSewaArmada,
   resolveDanaOperasionalTrip,
 } from '../lib/transaksi-mitra-calculations.js';
 
@@ -55,6 +56,32 @@ assert.equal(
   calculation.totalBersihSetelahSewaArmada,
   calculation.totalNilaiBersih - calculation.sewaArmadaTotal,
   'Kwitansi hanya boleh mengurangi potongan akhir sewa, bukan sewa kotor.',
+);
+
+assert.equal(
+  resolveBiayaSewaArmada({
+    ...transaction,
+    biaya_sewa_armada_kotor: 1_639_500,
+    biaya_sewa_armada_total: 1_639_500,
+    dana_operasional_dibayar_mitra: null,
+    biaya_sopir_dibayar_at: '2026-07-22T16:42:52.347183Z',
+    status: 'aktif',
+  }),
+  889_500,
+  'Transaksi aktif mengikuti keputusan Owner: Dana Operasional selalu sudah dibayar Mitra sebelum berangkat.',
+);
+
+assert.equal(
+  resolveBiayaSewaArmada({
+    ...transaction,
+    biaya_sewa_armada_kotor: 1_639_500,
+    biaya_sewa_armada_total: 1_639_500,
+    dana_operasional_dibayar_mitra_snapshot: false,
+    metode_sewa_armada_snapshot: 'legacy_snapshot',
+    is_kwitansi_snapshot: true,
+  }),
+  1_639_500,
+  'Kwitansi historis yang sudah terbit tetap memakai snapshot sumber dana saat diterbitkan.',
 );
 
 const calculationWithLargeOperationalFund = kalkulasiTransaksiMitra({
