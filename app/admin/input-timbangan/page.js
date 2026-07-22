@@ -488,7 +488,9 @@ export default function AdminInputTimbangan() {
         && Boolean(row.catat_dana_operasional_trip ?? toNumber(row.dana_operasional_trip_snapshot) > 0),
       alasan_tanpa_sewa_armada_cb: row.alasan_tanpa_sewa_armada_cb || '',
       alasan_tanpa_dana_operasional_trip: row.alasan_tanpa_dana_operasional_trip || '',
-      dana_operasional_trip: toNumber(row.dana_operasional_trip_snapshot ?? effectiveFee.danaOperasionalTrip),
+      dana_operasional_trip: toNumber(row.dana_operasional_trip_snapshot) > 0
+        ? toNumber(row.dana_operasional_trip_snapshot)
+        : toNumber(effectiveFee.danaOperasionalTrip),
       tarif_sewa_angkut_per_kg: tarifSewa,
       biaya_sewa_armada_total: sewaTotal,
       alasan_edit: '',
@@ -1201,7 +1203,15 @@ export default function AdminInputTimbangan() {
                           {editUsesArmadaCb && editForm.kenakan_sewa_armada_cb && (
                             <span style={{ fontSize: 13 }}>Sewa Armada CB: <strong style={{ color: 'var(--color-warning)' }}>{formatRupiah(editForm.biaya_sewa_armada_total)}</strong></span>
                           )}
+                          {editUsesArmadaCb && editForm.catat_dana_operasional_trip && (
+                            <span style={{ fontSize: 13 }}>Dana Operasional Trip: <strong style={{ color: 'var(--color-info)' }}>{formatRupiah(editForm.dana_operasional_trip)}</strong></span>
+                          )}
                         </div>
+                        {editUsesArmadaCb && editForm.kenakan_sewa_armada_cb && editForm.catat_dana_operasional_trip && (
+                          <div style={{ display: 'flex', justifyContent: 'flex-end', fontSize: 12, color: 'var(--text-tertiary)' }}>
+                            Margin armada setelah Dana Trip: {formatRupiah(editForm.biaya_sewa_armada_total - editForm.dana_operasional_trip)}
+                          </div>
+                        )}
                       </div>
                     );
                   })()}

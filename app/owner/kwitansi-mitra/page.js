@@ -13,6 +13,7 @@ import {
   resolveBeratDibayar,
   resolveBeratNettoPabrik,
   resolveBiayaSewaArmada,
+  resolveDanaOperasionalTrip,
   resolveHargaBersihPerKg,
   resolveTotalNilaiBersihMitra,
 } from '@/lib/transaksi-mitra-calculations';
@@ -71,6 +72,9 @@ function mapPaymentItemToRow(item) {
     pakai_sewa_armada_bl: item.pakai_sewa_armada_snapshot ?? false,
     biaya_sewa_armada_total: sewaSnapshot,
     biaya_sewa_armada_kotor: sewaSnapshot,
+    menggunakan_armada_cb_snapshot: Boolean(item.dana_operasional_trip_snapshot) || Boolean(item.pakai_sewa_armada_snapshot),
+    catat_dana_operasional_trip: toNumber(item.dana_operasional_trip_snapshot) > 0,
+    dana_operasional_trip_snapshot: item.dana_operasional_trip_snapshot ?? 0,
     tarif_sewa_angkut_per_kg_snapshot: item.tarif_sewa_angkut_per_kg_snapshot ?? 0,
     biaya_sewa_armada_standar_snapshot: item.biaya_sewa_armada_standar_snapshot ?? sewaSnapshot,
     selisih_sewa_armada_historis_snapshot: item.selisih_sewa_armada_historis_snapshot ?? 0,
@@ -244,6 +248,8 @@ export default function KwitansiMitraPage() {
           berat_netto_pabrik_kg, potongan_pabrik_kg, berat_dibayar_kg,
           pakai_sewa_armada_bl, biaya_sewa_armada_total,
           biaya_sewa_armada_kotor, tarif_sewa_angkut_per_kg_snapshot,
+          menggunakan_armada_cb_snapshot, catat_dana_operasional_trip,
+          dana_operasional_trip_snapshot, total_biaya_sopir_cb_snapshot,
           sopir_default_nama, sopir_aktual_nama, sopir_diganti_dari_default, catatan_sopir,
           master_mitra ( id, kode, alamat, nama, fee_per_kg )
         `)
@@ -286,6 +292,7 @@ export default function KwitansiMitraPage() {
             total_nilai_bersih_snapshot, status_transaksi_snapshot,
             berat_netto_snapshot, potongan_snapshot, berat_dibayar_snapshot,
             pakai_sewa_armada_snapshot, biaya_sewa_armada_snapshot,
+            dana_operasional_trip_snapshot,
             tarif_sewa_angkut_per_kg_snapshot, biaya_sewa_armada_standar_snapshot,
             selisih_sewa_armada_historis_snapshot, metode_sewa_armada_snapshot,
             transaksi:transaksi_mitra (
@@ -424,6 +431,7 @@ export default function KwitansiMitraPage() {
           totalBeratDibayar: 0,
           totalNilaiBersih: 0,
           totalPanjar: 0,
+          totalDanaOperasionalTrip: 0,
         });
       } else {
         const group = groups.get(safeId);
@@ -440,12 +448,14 @@ export default function KwitansiMitraPage() {
       const group = ensureGroup(row);
       const totalNilaiBersih = resolveTotalNilaiBersihMitra(row);
       const sewaArmada = resolveBiayaSewaArmada(row);
+      const danaOperasionalTrip = resolveDanaOperasionalTrip(row);
 
       group.rows.push(row);
       group.totalBeratNetto += resolveBeratNettoPabrik(row);
       group.totalBeratDibayar += resolveBeratDibayar(row);
       group.totalNilaiBersih += totalNilaiBersih;
       group.totalSewaArmada = (group.totalSewaArmada || 0) + sewaArmada;
+      group.totalDanaOperasionalTrip += danaOperasionalTrip;
     });
 
     panjarRows.forEach((row) => {
@@ -484,6 +494,10 @@ export default function KwitansiMitraPage() {
   const currentTotalNilaiBersih = kwitansiGroups.reduce((sum, group) => sum + group.totalNilaiBersih, 0);
   const currentTotalPanjar = kwitansiGroups.reduce((sum, group) => sum + group.totalPanjar, 0);
   const currentTotalSewaArmada = kwitansiGroups.reduce((sum, group) => sum + (group.totalSewaArmada || 0), 0);
+  const displayTotalDanaOperasionalTrip = kwitansiGroups.reduce(
+    (sum, group) => sum + (group.totalDanaOperasionalTrip || 0),
+    0,
+  );
   const displayTotalBeratNetto = isShowingPaidSnapshot
     ? toNumber(payment?.total_berat_netto ?? payment?.total_tonase)
     : currentTotalBeratNetto;
@@ -972,6 +986,29 @@ export default function KwitansiMitraPage() {
                       : <div>
                           <span>Potongan Panjar Mitra</span>
                           <strong className="table-mono danger-text">- {formatRupiah(displayTotalPanjar)}</strong>
+                        </div>
+                  )}
+                  {displayTotalDanaOperasionalTrip > 0 && (
+                    kwitansiGroups.length > 1
+                      ? kwitansiGroups.filter(g => (g.totalDanaOperasionalTrip || 0) > 0).map(g => (
+                          <div key={g.mitraId}>
+                            <span>
+                              Dana Operasional Trip
+                              <span style={{ fontSize: 10, color: 'var(--text-tertiary)', display: 'block', fontWeight: 400 }}>
+                                {g.label} · biaya CB, dibayar terpisah
+                              </span>
+                            </span>
+                            <strong className="table-mono">{formatRupiah(g.totalDanaOperasionalTrip)}</strong>
+                          </div>
+                        ))
+                      : <div>
+                          <span>
+                            Dana Operasional Trip
+                            <span style={{ fontSize: 10, color: 'var(--text-tertiary)', display: 'block', fontWeight: 400 }}>
+                              Biaya CB, dibayar terpisah; bukan potongan tambahan mitra
+                            </span>
+                          </span>
+                          <strong className="table-mono">{formatRupiah(displayTotalDanaOperasionalTrip)}</strong>
                         </div>
                   )}
                   <div className="kwitansi-total-divider"></div>
