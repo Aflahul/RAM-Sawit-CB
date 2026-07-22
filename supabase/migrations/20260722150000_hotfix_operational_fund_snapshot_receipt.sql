@@ -116,4 +116,3 @@ CREATE TRIGGER zz_snapshot_kwitansi_operational_fund
 BEFORE INSERT ON public.pembayaran_mitra_kwitansi_item
 FOR EACH ROW
 EXECUTE FUNCTION public.snapshot_kwitansi_operational_fund();
-
