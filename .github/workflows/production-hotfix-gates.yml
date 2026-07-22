@@ -2,7 +2,9 @@ name: Production Hotfix Gates
 
 on:
   push:
-    branches: [hotfix/production-mitra-history]
+    branches:
+      - hotfix/production-mitra-history
+      - chore/sync-production-hotfix-to-dev
   workflow_dispatch:
 
 concurrency:
