@@ -2,9 +2,10 @@ name: P0 Release Gates
 
 on:
   pull_request:
-    branches: [main]
+    branches: [main, dev]
   push:
-    branches: [main]
+    # Bootstrap the first protected dev PR before this workflow exists on dev.
+    branches: [main, dev, agent/p0-security-release-gates]
   workflow_dispatch:
 
 concurrency:

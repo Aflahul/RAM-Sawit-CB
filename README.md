@@ -121,7 +121,7 @@ proxy.js               Session refresh dan route-level access guard
 
 ## Quality Gate
 
-Sebelum perubahan dinaikkan ke `main`, ikuti gate berdasarkan kelas risiko pada [SOP Pengembangan](docs/development-sop.md). Pemeriksaan minimum repository:
+Pekerjaan normal masuk melalui PR ke `dev`; hanya kandidat yang selesai dan siap rilis dipromosikan melalui PR `dev` ke `main`. Hotfix production dibuat dari `main`, kembali ke `main`, lalu disinkronkan ke `dev`. Ikuti gate berdasarkan kelas risiko pada [SOP Pengembangan](docs/development-sop.md). Pemeriksaan minimum repository:
 
 1. Jalankan `npm run lint`.
 2. Jalankan `npm run build`.
