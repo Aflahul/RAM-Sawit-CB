@@ -93,12 +93,19 @@ function mapPaymentItemToRow(item) {
   };
 }
 
-function getSewaFormulaLabel(rows) {
-  const sewaRows = rows.filter(row => resolveBiayaSewaArmada(row) > 0);
-  if (sewaRows.length === 0) return '';
+function getSewaFormulaDetails(rows) {
+  const sewaRows = rows.filter(row => resolveBiayaSewaArmadaKotor(row) > 0);
+  if (sewaRows.length === 0) return null;
+
+  const totalSewaKotor = sewaRows.reduce((sum, row) => sum + resolveBiayaSewaArmadaKotor(row), 0);
+  const totalDanaOperasional = sewaRows.reduce((sum, row) => sum + resolveDanaOperasionalTrip(row), 0);
 
   if (sewaRows.some(row => row.metode_sewa_armada_snapshot === 'legacy_snapshot')) {
-    return 'Nominal sesuai kwitansi saat diterbitkan';
+    return {
+      formula: 'Nominal sewa sesuai snapshot saat kwitansi diterbitkan',
+      nominalFormula: formatRupiah(totalSewaKotor),
+      totalDanaOperasional: 0,
+    };
   }
 
   const tariffs = [...new Set(
@@ -113,11 +120,18 @@ function getSewaFormulaLabel(rows) {
       (sum, row) => sum + toNumber(resolveBeratNettoPabrik(row) || row.berat_netto_pabrik_kg || row.tonase),
       0
     );
-    const hasDirectFund = sewaRows.some(row => row.dana_operasional_dibayar_mitra_snapshot || row.dana_operasional_dibayar_mitra);
-    return `${formatNumber(totalBeratNetto)} kg x ${formatRupiah(Number(tariffs[0]))}/kg${hasDirectFund ? ' - Dana Operasional' : ''}`;
+    return {
+      formula: '(Berat netto × tarif sewa Mitra/kg) − Dana Operasional',
+      nominalFormula: `(${formatNumber(totalBeratNetto)} kg × ${formatRupiah(Number(tariffs[0]))}/kg) − ${formatRupiah(totalDanaOperasional)}`,
+      totalDanaOperasional,
+    };
   }
 
-  return `Total ${sewaRows.length} transaksi sesuai tarif masing-masing`;
+  return {
+    formula: '(Total sewa kotor tiap transaksi) − Dana Operasional',
+    nominalFormula: `${formatRupiah(totalSewaKotor)} − ${formatRupiah(totalDanaOperasional)}`,
+    totalDanaOperasional,
+  };
 }
 
 function buildWhatsappCaption({ appName, recipientLabel, dateFrom, dateTo, totalBeratNetto, totalBeratDibayar, totalNilaiBersih, totalPanjar, totalSewaArmadaKotor, totalDanaOperasional, totalSewaArmada, sisaBersih }) {
@@ -129,13 +143,14 @@ function buildWhatsappCaption({ appName, recipientLabel, dateFrom, dateTo, total
     `Total Berat Dibayar: ${formatNumber(totalBeratDibayar)} Kg`,
     `Total Nilai Bersih TBS: ${formatRupiah(totalNilaiBersih)}`,
     `Potongan Panjar Mitra: ${formatRupiah(totalPanjar)}`,
-    `Sewa Armada Kotor: ${formatRupiah(totalSewaArmadaKotor)}`,
-    `Dana Operasional dibayar Mitra ke Sopir: ${formatRupiah(totalDanaOperasional)}`,
-    `Potongan Akhir Sewa Armada: ${formatRupiah(totalSewaArmada)}`,
+    `Potongan Sewa Armada: (${formatRupiah(totalSewaArmadaKotor)} - ${formatRupiah(totalDanaOperasional)}) = ${formatRupiah(totalSewaArmada)}`,
+    totalDanaOperasional > 0
+      ? `Catatan: Dana Operasional ${formatRupiah(totalDanaOperasional)} sudah dibayar Mitra kepada sopir.`
+      : '',
     `Sisa Dibayar ke Mitra: ${formatRupiah(sisaBersih)}`,
     '',
     'Mohon dicek. PDF kwitansi pembayaran terlampir.',
-  ].join('\n');
+  ].filter(Boolean).join('\n');
 }
 
 export default function KwitansiMitraPage() {
@@ -956,54 +971,52 @@ export default function KwitansiMitraPage() {
                     <strong className="table-mono">{formatRupiah(displayTotalNilaiBersih)}</strong>
                   </div>
                   {displayTotalSewaArmadaKotor > 0 && (
-                    <div>
-                      <span>
-                        Sewa Armada Kotor
-                        <span style={{ display: 'block', fontSize: 10, color: 'var(--text-tertiary)', marginTop: 2, fontWeight: 'normal', border: 'none', padding: 0, background: 'transparent' }}>
-                          Berat netto x tarif sewa Mitra/kg
-                        </span>
-                      </span>
-                      <strong className="table-mono">{formatRupiah(displayTotalSewaArmadaKotor)}</strong>
-                    </div>
-                  )}
-                  {displayTotalDanaOperasionalTrip > 0 && (
-                    <div>
-                      <span>
-                        Dana Operasional Dibayar Mitra ke Sopir
-                        <span style={{ display: 'block', fontSize: 10, color: 'var(--text-tertiary)', marginTop: 2, fontWeight: 'normal', border: 'none', padding: 0, background: 'transparent' }}>
-                          Sudah diserahkan sebelum berangkat; tidak keluar dari kas CB
-                        </span>
-                      </span>
-                      <strong className="table-mono">- {formatRupiah(displayTotalDanaOperasionalTrip)}</strong>
-                    </div>
-                  )}
-                  {displayTotalSewaArmada > 0 && (
                     kwitansiGroups.length > 1
-                      ? kwitansiGroups.filter(g => (g.totalSewaArmada || 0) > 0).map(g => {
+                      ? kwitansiGroups.filter(g => (g.totalSewaArmadaKotor || 0) > 0).map(g => {
+                          const formula = getSewaFormulaDetails(g.rows);
                           return (
                             <div key={g.mitraId}>
                               <span>
-                                Potongan Akhir Sewa Armada CB
+                                Potongan Sewa Armada CB
                                 <span style={{ fontSize: 10, color: 'var(--text-tertiary)', display: 'block', fontWeight: 400 }}>{g.label}</span>
                                 <span style={{ display: 'block', fontSize: 10, color: 'var(--text-tertiary)', marginTop: 2, fontWeight: 'normal', border: 'none', padding: 0, background: 'transparent' }}>
-                                  {getSewaFormulaLabel(g.rows)}
+                                  {formula?.formula}
                                 </span>
+                                <span className="table-mono" style={{ display: 'block', fontSize: 10, marginTop: 2, fontWeight: 600, border: 'none', padding: 0, background: 'transparent' }}>
+                                  {formula?.nominalFormula}
+                                </span>
+                                {formula?.totalDanaOperasional > 0 && (
+                                  <span style={{ display: 'block', fontSize: 9, color: 'var(--text-tertiary)', marginTop: 3, fontWeight: 'normal', fontStyle: 'italic', border: 'none', padding: 0, background: 'transparent' }}>
+                                    Dana Operasional {formatRupiah(formula.totalDanaOperasional)} sudah dibayar Mitra kepada sopir.
+                                  </span>
+                                )}
                               </span>
                               <strong className="table-mono danger-text">- {formatRupiah(g.totalSewaArmada || 0)}</strong>
                             </div>
                           );
                         })
-                      : (
+                      : (() => {
+                          const formula = getSewaFormulaDetails(kwitansiRows);
+                          return (
                             <div>
                               <span>
-                                Potongan Akhir Sewa Armada CB
+                                Potongan Sewa Armada CB
                                 <span style={{ display: 'block', fontSize: 10, color: 'var(--text-tertiary)', marginTop: 2, fontWeight: 'normal', border: 'none', padding: 0, background: 'transparent' }}>
-                                  {getSewaFormulaLabel(kwitansiRows)}
+                                  {formula?.formula}
                                 </span>
+                                <span className="table-mono" style={{ display: 'block', fontSize: 10, marginTop: 2, fontWeight: 600, border: 'none', padding: 0, background: 'transparent' }}>
+                                  {formula?.nominalFormula}
+                                </span>
+                                {formula?.totalDanaOperasional > 0 && (
+                                  <span style={{ display: 'block', fontSize: 9, color: 'var(--text-tertiary)', marginTop: 3, fontWeight: 'normal', fontStyle: 'italic', border: 'none', padding: 0, background: 'transparent' }}>
+                                    Dana Operasional {formatRupiah(formula.totalDanaOperasional)} sudah dibayar Mitra kepada sopir.
+                                  </span>
+                                )}
                               </span>
                               <strong className="table-mono danger-text">- {formatRupiah(displayTotalSewaArmada)}</strong>
                             </div>
-                        )
+                          );
+                        })()
                   )}
                   {displayTotalPanjar > 0 && (
                     kwitansiGroups.length > 1
@@ -1445,7 +1458,7 @@ export default function KwitansiMitraPage() {
                     <div className="table-mono" style={{ fontWeight: 800, color: 'var(--color-danger)' }}>{formatRupiah(displayTotalPanjar)}</div>
                   </div>
                   <div className="card" style={{ padding: 14, borderRadius: 8 }}>
-                    <div className="text-tertiary" style={{ fontSize: 12 }}>Potongan Akhir Sewa Armada</div>
+                    <div className="text-tertiary" style={{ fontSize: 12 }}>Potongan Sewa Armada</div>
                     <div className="table-mono" style={{ fontWeight: 800, color: 'var(--color-danger)' }}>{formatRupiah(displayTotalSewaArmada)}</div>
                   </div>
                   <div className="card" style={{ padding: 14, borderRadius: 8 }}>
