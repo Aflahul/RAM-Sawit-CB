@@ -2,8 +2,8 @@
 
 | Field | Nilai |
 | --- | --- |
-| Status | Implemented, locally verified, and rehearsed on isolated staging; hosted Auth baseline hardened, while plan-dependent controls, MFA enforcement, restore drill, and independent review remain pending |
-| Branch / baseline SHA | `agent/p0-security-release-gates` / `f26adc3` sebelum increment regression gate ini |
+| Status | Baseline `cc96dbb` independently reviewed; candidate increment local environment/dependency 22 Juli 2026 lulus gate lokal tetapi belum direview ulang. Release tetap No-Go selama review increment, Auth/MFA-AAL2, production-like upgrade rehearsal, dan zero-cost recovery proof belum selesai |
+| Branch / baseline SHA | `agent/p0-security-release-gates` / reviewed baseline `cc96dbb27ba192e790391c09e96244efeadf5a4d`; candidate increment berada setelah baseline tersebut |
 | Environment | Supabase CLI `2.109.1`, Vercel CLI `56.3.2`, PostgreSQL 17 container lokal, Node.js `24.14.0` |
 | Data | Fixture sintetis rollback atau committed-sementara dengan cleanup terverifikasi; tidak memakai row production |
 | Hosted staging | `Aflahul's Project` / `mfxyeybmjpcdckajfjen`; migration lokal dan remote sejajar 15/15 |
@@ -30,16 +30,19 @@
 | Application password gate | `npm run test:password-policy` | Validator server menerima strong fixture dan menolak null, pendek, grup karakter tidak lengkap, spasi, serta emoji sebagai simbol |
 | Application lint | `npm run lint` | Lulus |
 | Production build | `npm run build` | Lulus; 29 static pages generated |
-| Dependency gate | `npm audit --audit-level=high` | Lulus; 0 critical, 0 high |
+| Dependency gate | `npm ci`, `npm audit --audit-level=high`, dan production build | Lulus 22 Juli 2026; Next/ESLint config `16.2.11`, override terkunci `brace-expansion@1.1.16`, `postcss@8.5.10`, dan `sharp@0.35.0`; audit 0 vulnerability dan build 29/29 page lulus |
 | Secret scan | Gitleaks `8.29.1`, seluruh riwayat lokal | 65 commit / sekitar 3.64 MB, tidak ada leak |
 | Diff hygiene | `git diff --check` | Tidak ada whitespace error; hanya peringatan line-ending Windows |
-| GitHub release gate | Draft PR #5 dan branch protection `main` | Seluruh checks hijau; strict required checks, PR, linear history, dan conversation resolution aktif |
+| Local environment isolation | `npm run test:local-env`, blocked `npm run dev`, `npm run dev:local -- --help`, dan `npm run test:local-app` | Provisional local observation pada candidate increment 22 Juli 2026: 8/8 unit test lulus; URL hosted ditolak, URL loopback diterima, credential proses/file dikosongkan dan secret aktif ditolak, launcher memilih loopback, `/login` 200 serta root redirect 307. Wajib rerun pada candidate SHA melalui CI dan lampirkan raw output sebelum closure |
+| GitHub release gate | [PR #5](https://github.com/Aflahul/RAM-Sawit-CB/pull/5) dan branch protection `main` | PR non-draft berstatus `CLEAN`/`MERGEABLE`; seluruh required checks hijau; strict required checks, PR, linear history, dan conversation resolution aktif |
+| Independent code review | GitHub review pada reviewed baseline | `afikafiranti` memberikan `APPROVED` pada commit `cc96dbb` tanggal 20 Juli 2026; approval tidak mencakup candidate increment 22 Juli 2026 dan review ulang wajib setelah candidate commit dibuat |
 | Vercel preview isolation | Vercel environment metadata, explicit Preview redeploy, inspect, dan authenticated bundle probe | Lulus dan diverifikasi ulang pada deployment HEAD `dpl_4ySoiRQH7ke9vn9odWrxY41Ajvnf`: target `preview`, status Ready; 10/10 aset JavaScript dapat dibaca, ref staging `mfxyeybmjpcdckajfjen` ditemukan, dan ref production `yavntiympbrjlouzkhnl` tidak ditemukan |
 | Staging UI smoke | Aplikasi lokal dengan environment staging process-only, akun Super Admin sintetis, dan Chrome headless | Login salah ditolak; login valid redirect ke dashboard; `/dashboard`, `/superadmin/users`, `/owner/master-data`, `/owner/panjar-mitra`, dan `/laporan/harian` seluruhnya HTTP 200 tanpa page/server error; akun dibersihkan dan total Auth user kembali 0 |
 | Staging print/export gate | `npm run test:p0:print-export:staging` setelah dua migration diterapkan | `window.print` terpanggil, PDF valid 147.697 byte, XLSX valid 3.700 byte, tanpa HTTP 500/page error; cleanup residue 0 |
 | Backup/PITR inventory | `supabase backups list --project-ref ... --output json` pada staging dan production | Keduanya melaporkan `backups: null`, `pitr_enabled: false`, dan `walg_enabled: true`; belum ada restore point yang dapat dijadikan bukti drill |
+| Local scoped restore drill | `powershell -NoProfile -ExecutionPolicy Bypass -File scripts/test-p0-local-audit-restore.ps1` | Lulus dan diverifikasi ulang 22 Juli 2026: 1 audit fixture, signature source/target identik, kedua trigger aktif, mutation ditolak, durasi 12,56 detik, cleanup database/dump sementara terverifikasi; bukan pengganti hosted restore proof |
 
-Advisory residual: `npm audit` masih melaporkan dua temuan moderate yang berasal dari PostCSS di dependency Next.js. Saran otomatis npm adalah downgrade besar ke Next 9 dan tidak dipakai karena tidak aman/kompatibel. High advisory pada `xlsx` ditutup dengan mengganti kedua paket SheetJS lama menjadi `write-excel-file@4.1.1`; lint dan production build lulus setelah migrasi ekspor.
+Advisory dependency yang ditemukan ulang pada 22 Juli 2026 ditutup tanpa memakai downgrade besar otomatis npm: Next dan ESLint config dinaikkan ke patch `16.2.11`, lalu versi transitif aman dikunci melalui `overrides`. `npm ci`, `npm audit`, lint, dan production build lulus pada dependency aktual. High advisory lama pada `xlsx` tetap ditutup dengan `write-excel-file@4.1.1`.
 
 ## Cakupan Tes Deterministik
 
@@ -64,7 +67,7 @@ Bukti ini belum menutup:
 - upgrade plan atau kontrol pengganti untuk leaked-password dan session timebox/inactivity timeout;
 - implementasi dan enforcement MFA/AAL2 pada aplikasi;
 - rehearsal terhadap clone/snapshot production yang representatif dan rekonsiliasi data;
-- penyediaan backup/PITR yang dapat dipulihkan serta restore drill database dan Storage pada target terisolasi;
-- review manusia independen dan keputusan GO/NO-GO.
+- logical backup production terenkripsi, salinan off-site/Storage, dan restore drill database serta Storage pada clone Docker terisolasi dengan actual RPO/RTO; PITR tidak tersedia dan di luar jalur biaya nol;
+- approval final Product Owner/Data-Security/QA-Release yang berlaku untuk keputusan GO/NO-GO.
 
 Sampai semua item tersebut selesai, keputusan rilis tetap **NO-GO**.

@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
+    "dev:local": "node scripts/dev-local.mjs",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
@@ -11,14 +12,16 @@
     "test:p0:payment-concurrency": "node scripts/test-p0-payment-concurrency.mjs",
     "test:p0:payment-concurrency:staging": "node scripts/test-p0-payment-concurrency-staging.mjs",
     "test:p0:print-export:staging": "node scripts/test-p0-print-export.mjs",
-    "test:password-policy": "node --test tests/password-policy.test.mjs"
+    "test:password-policy": "node --test tests/password-policy.test.mjs",
+    "test:local-env": "node --test tests/local-supabase-environment.test.mjs",
+    "test:local-app": "node scripts/test-local-app-smoke.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.0",
     "@supabase/supabase-js": "^2.110.2",
     "lucide-react": "^1.24.0",
     "motion": "^12.42.2",
-    "next": "16.2.10",
+    "next": "16.2.11",
     "react": "19.2.4",
     "react-dom": "19.2.4",
     "recharts": "^3.9.2",
@@ -26,8 +29,15 @@
   },
   "devDependencies": {
     "eslint": "^9",
-    "eslint-config-next": "16.2.10",
+    "eslint-config-next": "16.2.11",
     "playwright": "1.61.1",
     "supabase": "^2.109.1"
+  },
+  "overrides": {
+    "brace-expansion@<1.1.16": "1.1.16",
+    "next": {
+      "postcss": "8.5.10",
+      "sharp": "0.35.0"
+    }
   }
 }

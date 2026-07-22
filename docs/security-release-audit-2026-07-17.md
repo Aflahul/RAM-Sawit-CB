@@ -3,7 +3,7 @@
 | Metadata | Nilai |
 | --- | --- |
 | Tanggal baseline | 17 Juli 2026 |
-| Terakhir diperbarui | 18 Juli 2026 |
+| Terakhir diperbarui | 20 Juli 2026; status kandidat rilis ditautkan tanpa menghapus baseline historis |
 | Status | **NO-GO untuk rilis finansial baru** |
 | Metode | Review kode/migration, introspeksi remote read-only, ACL/RLS/RPC review, dependency audit, dan pemeriksaan quality gate |
 | Reviewer | QA, Security, Data, dan Release independen |
@@ -46,17 +46,17 @@ Catatan batas:
 
 | ID | Severity | Prioritas | Gate | Release blocker | Exception | Ringkasan | Status |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| `AUD-SEC-20260717-001` | S0 | P0 | G2 | Ya | Tidak | Akun login dapat membaca data sensitif langsung melalui Data API karena policy baca terlalu luas | Open; containment siap, DTO/RPC belum |
-| `AUD-SEC-20260717-002` | S0 | P0 | G2 | Ya | Tidak | Pengguna login masih dapat menulis/mengubah baris audit dan memalsukan isi audit trail | Open; implementasi siap, verifikasi staging belum |
-| `AUD-SEC-20260717-003` | S1 | P0 | G2 | Ya | Tidak | Revoke privilege tidak persisten untuk tabel/fungsi baru; masih ada risiko `TRUNCATE` dan RPC mutation untuk `anon/PUBLIC` | Open |
-| `AUD-SEC-20260717-004` | S1 | P0 | G2 | Ya | Tidak | Baseline hosted Auth, MFA, session, dan role fail-closed belum dibuktikan | Open |
-| `AUD-SEC-20260717-005` | S1, confidence statis | P0 | G2/G3 | Ya | Tidak | Route Coming Soon masih me-mount child/query/action; backend write denial dan keyboard lock belum dibuktikan | Open |
-| `AUD-SEC-20260717-006` | S0 | P0 | G2/G3 | Ya | Tidak | Browser dapat mengirim nilai snapshot keuangan transaksi sehingga angka strategis belum sepenuhnya dihitung dan dikunci oleh database | Open |
-| `AUD-BIZ-20260717-001` | S1 | P0 | G0/G3/G5 | Ya | Tidak | Maker-checker Pinjaman belum ditegakkan sepenuhnya di database | Open |
-| `AUD-QA-20260717-001` | S1 | P0 | G1/G4 | Ya | Tidak | Gate CI/supply chain belum enforced dan dependency audit belum lulus | Open |
-| `AUD-DATA-20260717-001` | S1 | P0 | G2/G4 | Ya | Tidak | Migration/backfill belum memiliki rehearsal dan rollback evidence yang reproducible | Open |
-| `AUD-QA-20260717-002` | S1 | P0 | G3 | Ya | Tidak | Test finansial terlalu tipis dan memakai data bisnis yang tersedia secara nondeterministik | Open |
-| `AUD-QA-20260717-003` | S1 | P0 | G2 | Ya | Tidak | Target RPO/RTO, backup capability, dan restore drill terisolasi belum dibuktikan | Open |
+| `AUD-SEC-20260717-001` | S0 | P0 | G2 | Ya | Tidak | Akun login dapat membaca data sensitif langsung melalui Data API karena policy baca terlalu luas | Remediated on staging; per-finding closure pending |
+| `AUD-SEC-20260717-002` | S0 | P0 | G2 | Ya | Tidak | Pengguna login masih dapat menulis/mengubah baris audit dan memalsukan isi audit trail | Remediated on staging; per-finding closure pending |
+| `AUD-SEC-20260717-003` | S1 | P0 | G2 | Ya | Tidak | Revoke privilege tidak persisten untuk tabel/fungsi baru; masih ada risiko `TRUNCATE` dan RPC mutation untuk `anon/PUBLIC` | Remediated on staging; per-finding closure pending |
+| `AUD-SEC-20260717-004` | S1 | P0 | G2 | Ya | Tidak | Baseline hosted Auth, MFA, session, dan role fail-closed belum dibuktikan | Partial; MFA/AAL2 and plan-dependent session controls remain open |
+| `AUD-SEC-20260717-005` | S1, confidence statis | P0 | G2/G3 | Ya | Tidak | Route Coming Soon masih me-mount child/query/action; backend write denial dan keyboard lock belum dibuktikan | Implemented; security/UX/accessibility closure pending |
+| `AUD-SEC-20260717-006` | S0 | P0 | G2/G3 | Ya | Tidak | Browser dapat mengirim nilai snapshot keuangan transaksi sehingga angka strategis belum sepenuhnya dihitung dan dikunci oleh database | Remediated on staging; per-finding closure pending |
+| `AUD-BIZ-20260717-001` | S1 | P0 | G0/G3/G5 | Ya | Tidak | Maker-checker Pinjaman belum ditegakkan sepenuhnya di database | Remediated on staging; Product Owner/UAT closure pending |
+| `AUD-QA-20260717-001` | S1 | P0 | G1/G4 | Ya | Tidak | Gate CI/supply chain belum enforced dan dependency audit belum lulus | Technical controls pass at `cc96dbb`; formal closure pending |
+| `AUD-DATA-20260717-001` | S1 | P0 | G2/G4 | Ya | Tidak | Migration/backfill belum memiliki rehearsal dan rollback evidence yang reproducible | Partial; clean/fresh staging pass, production-like clone pending |
+| `AUD-QA-20260717-002` | S1 | P0 | G3 | Ya | Tidak | Test finansial terlalu tipis dan memakai data bisnis yang tersedia secara nondeterministik | Deterministic local/staging gates pass; formal QA closure pending |
+| `AUD-QA-20260717-003` | S1 | P0 | G2 | Ya | Tidak | Target RPO/RTO, backup capability, dan restore drill terisolasi belum dibuktikan | Partial; local scoped restore passes, hosted recovery proof remains open |
 | `AUD-QA-20260717-004` | S1 | P1 | G4/G6 | Sesuai scope | Ya, S1 non-P0 | Observability, incident operation, dan evidence retention belum operasional | Open |
 
 ## 4. Temuan Kritis
@@ -73,7 +73,7 @@ Catatan batas:
 - `supabase/migrations/20260716100224_add_piutang_document_approval_workflow.sql` pada policy baca dokumen Pinjaman.
 
 **Containment yang telah disiapkan, belum diterapkan:** migration
-[`20260717045357_p0_secure_data_api_and_audit_log.sql`](../supabase/migrations/20260717045357_p0_secure_data_api_and_audit_log.sql)
+[`20260718004159_p0_secure_audit_and_api.sql`](../supabase/migrations/20260718004159_p0_secure_audit_and_api.sql)
 menambahkan role gate restriktif pada 37 tabel agar akun tanpa profile atau role
 yang tidak dikenal tidak dapat memakai policy permissive lain. Ini belum memenuhi
 least-privilege kolom untuk Admin; DTO/RPC minimum dan pencabutan direct read
@@ -249,15 +249,15 @@ Kontrol target:
 
 Definisi normatif dan applicability `G0-G6` hanya berada pada [SOP Pengembangan Bagian 16](development-sop.md). Audit ini mengagregasi status blocker:
 
-| Gate | Status baseline | Finding utama |
-| --- | --- | --- |
-| `G0 Scope` | Blocked | `AUD-BIZ-20260717-001`; work package/AC belum lengkap |
-| `G1 Code/Supply Chain` | Blocked | `AUD-QA-20260717-001` |
-| `G2 Database/Security` | Blocked | `AUD-SEC-20260717-001` sampai `AUD-SEC-20260717-006`, `AUD-DATA-20260717-001`, `AUD-QA-20260717-003` |
-| `G3 Functional QA` | Blocked | `AUD-BIZ-20260717-001`, `AUD-QA-20260717-002`, `AUD-SEC-20260717-005`, `AUD-SEC-20260717-006` |
-| `G4 Release Readiness` | Blocked | `AUD-QA-20260717-001`, `AUD-DATA-20260717-001`, `AUD-QA-20260717-004` sesuai scope |
-| `G5 Approval` | Blocked | `AUD-BIZ-20260717-001`; identitas reviewer/approver belum dibuktikan |
-| `G6 Post-deploy` | Belum dapat dinilai | Release baru belum boleh dimulai |
+| Gate | Status baseline 17 Juli | Status kandidat 20 Juli | Finding/keterangan utama |
+| --- | --- | --- | --- |
+| `G0 Scope` | Blocked | Partial/Blocked | Scope/AC tersedia; named owner dan Product Owner/UAT belum lengkap |
+| `G1 Code/Supply Chain` | Blocked | Pass | Required CI, dependency, secret scan, CodeQL, build, dan strict branch protection lulus pada `cc96dbb` |
+| `G2 Database/Security` | Blocked | Partial/Blocked | Staging 15/15 dan security matrix lulus; MFA/AAL2, clone upgrade, backup/restore tetap blocker |
+| `G3 Functional QA` | Blocked | Partial | Deterministic, concurrency, UI smoke, print/export lulus; formal QA/UX closure belum lengkap |
+| `G4 Release Readiness` | Blocked | Blocked | Recovery capability, restore drill, observability, dan production sequencing belum lengkap |
+| `G5 Approval` | Blocked | Partial | `afikafiranti` menyetujui commit final; approval release lintas peran belum lengkap |
+| `G6 Post-deploy` | Belum dapat dinilai | Not started | Production deployment belum boleh dimulai |
 
 ## 7. Urutan Remediasi
 
@@ -293,19 +293,21 @@ Temuan tidak boleh dipindahkan dari `Open` ke `Verified` hanya karena kode atau 
 
 | AUD ID | Fix commit/PR | Migration/artefak | Environment | Before evidence | Negative/positive test | After evidence | Implementer | Independent verifier | Status/tanggal |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `AUD-SEC-20260717-001` |  | 20260718171659 + 20260718234335 | Lokal Docker | ACL/RLS/Data API matrix | deterministic P0 suite | DTO minimum dan direct read sensitif diuji lokal | AI Specialist |  | Open; implemented locally, staging review pending |
-| `AUD-SEC-20260717-002` |  | 20260718004159 + 20260718235718 | Lokal Docker | Audit mutation attempt | deterministic P0 suite | Audit mutation ditolak dan internal writer menghasilkan event | AI Specialist |  | Open; implemented locally, staging review pending |
-| `AUD-SEC-20260717-003` |  | 20260718004159 + 20260718010013 + 20260718234335 | Lokal Docker | Final-state privilege/RPC matrix | deterministic P0 suite | Legacy execute ditolak dan wrapper minimum diuji lokal | AI Specialist |  | Open; staging review pending |
+| `AUD-SEC-20260717-001` | [PR #5 / `cc96dbb`](https://github.com/Aflahul/RAM-Sawit-CB/pull/5) | 20260718171659 + 20260718234335 | Lokal Docker + staging | ACL/RLS/Data API matrix | deterministic P0 suite | DTO minimum dan direct read sensitif diuji lokal/staging | AI Specialist | `afikafiranti` (PR approval) | Ready for domain closure; 2026-07-20 |
+| `AUD-SEC-20260717-002` | [PR #5 / `cc96dbb`](https://github.com/Aflahul/RAM-Sawit-CB/pull/5) | 20260718004159 + 20260718235718 | Lokal Docker + staging | Audit mutation attempt | deterministic P0 suite | Audit mutation ditolak dan internal writer menghasilkan event | AI Specialist | `afikafiranti` (PR approval) | Ready for domain closure; 2026-07-20 |
+| `AUD-SEC-20260717-003` | [PR #5 / `cc96dbb`](https://github.com/Aflahul/RAM-Sawit-CB/pull/5) | 20260718004159 + 20260718010013 + 20260718234335 | Lokal Docker + staging | Final-state privilege/RPC matrix | deterministic P0 suite | Legacy execute ditolak dan wrapper minimum diuji lokal/staging | AI Specialist | `afikafiranti` (PR approval) | Ready for domain closure; 2026-07-20 |
 | `AUD-SEC-20260717-005` |  |  |  | Route mount/query/write behavior | `TEST-SEC-*` + `TEST-UX-*` | Child tidak mount; direct write dan keyboard action ditolak |  | Security + UX + QA | Open |
-| `AUD-SEC-20260717-006` | | 20260718010011 + 20260718234335 | Lokal Docker | Payload create/update dan hasil snapshot | deterministic P0 suite | Payload finansial manipulatif ditolak dan snapshot dihitung database | AI Specialist |  | Open; extended staging regression pending |
-| `AUD-BIZ-20260717-001` |  | 20260718010012 + 20260718234330 | Lokal Docker | Maker-checker behavior | deterministic P0 suite | Admin self-approval ditolak; Owner berbeda berhasil | AI Specialist |  | Open; named approval + staging pending |
-| `AUD-QA-20260717-001` |  | `.github/workflows/p0-release-gates.yml` | Lokal / workflow belum diaktifkan | Dependency dan source scan lokal | lint/build/audit/Gitleaks | Workflow required gates dibuat; branch protection belum aktif | AI Specialist |  | Open |
-| `AUD-DATA-20260717-001` |  | baseline + ordered migrations | Lokal Docker | Clean database | reset + deterministic suite | Clean install lokal lulus; remote history masih kosong | AI Specialist |  | Open; clone upgrade proof pending |
-| `AUD-QA-20260717-002` |  | `p0_deterministic_release_gate_rollback.sql` | Lokal Docker | Test inventory | repeated clean-fixture run | Core security/financial fixture deterministik lulus | AI Specialist |  | Open; extended staging matrix pending |
+| `AUD-SEC-20260717-006` | [PR #5 / `cc96dbb`](https://github.com/Aflahul/RAM-Sawit-CB/pull/5) | 20260718010011 + 20260718234335 | Lokal Docker + staging | Payload create/update dan hasil snapshot | deterministic P0 suite | Payload manipulatif ditolak dan snapshot dihitung database | AI Specialist | `afikafiranti` (PR approval) | Ready for domain closure; 2026-07-20 |
+| `AUD-BIZ-20260717-001` | [PR #5 / `cc96dbb`](https://github.com/Aflahul/RAM-Sawit-CB/pull/5) | 20260718010012 + 20260718234330 | Lokal Docker + staging | Maker-checker behavior | deterministic P0 suite | Admin self-approval ditolak; Owner berbeda berhasil | AI Specialist | `afikafiranti` (PR approval) | Product Owner/UAT closure pending |
+| `AUD-QA-20260717-001` | [PR #5 / `cc96dbb`](https://github.com/Aflahul/RAM-Sawit-CB/pull/5) | `.github/workflows/p0-release-gates.yml` | GitHub Actions + branch protection | Dependency dan source scan | required lint/build/audit/Gitleaks/CodeQL/DB gate | Seluruh checks sukses dan strict required contexts aktif | AI Specialist | `afikafiranti` (PR approval) | Technical controls pass; formal QA closure pending |
+| `AUD-DATA-20260717-001` | [PR #5 / `cc96dbb`](https://github.com/Aflahul/RAM-Sawit-CB/pull/5) | baseline + ordered migrations | Lokal Docker + fresh staging | Clean database | reset + deterministic suite | Clean install dan fresh staging 15/15 lulus; production ledger 0/15 | AI Specialist | `afikafiranti` (PR approval) | Partial; representative clone upgrade pending |
+| `AUD-QA-20260717-002` | [PR #5 / `cc96dbb`](https://github.com/Aflahul/RAM-Sawit-CB/pull/5) | `p0_deterministic_release_gate_rollback.sql` | Lokal Docker + staging | Test inventory | deterministic + concurrency + print/export | Core security/financial fixture deterministik lulus | AI Specialist | `afikafiranti` (PR approval) | Formal QA closure pending |
 | `AUD-SEC-20260717-004` |  |  |  | Hosted Auth attestation | `TEST-SEC-*` | Actor/session negative matrix lulus |  | Security + QA | Open |
-| `AUD-QA-20260717-003` |  |  |  | RPO/RTO dan recovery baseline | `TEST-REC-*` | Restore DB/Storage terisolasi dan rekonsiliasi lulus |  | QA/Release + PO | Open |
+| `AUD-QA-20260717-003` | local working tree after `cc96dbb` | `scripts/test-p0-local-audit-restore.ps1` | Supabase Docker lokal | Scoped logical backup/restore | audit fixture restore + checksum + trigger + negative mutation | Source/target signature identik; mutation ditolak; temporary artifacts dibersihkan | AI Specialist |  | Partial 2026-07-20; hosted DB/Storage restore and RPO/RTO pending |
 | `AUD-QA-20260717-004` |  |  |  | Observability/incident/retention baseline | `TEST-OPS-*` | Alert/tabletop/evidence policy lulus |  | QA/Release + PO | Open |
 
 Evidence minimal menyimpan commit SHA, target project/environment, waktu UTC, executor, reviewer, perintah/skenario, expected, actual, dan lokasi raw output yang aksesnya dikendalikan. Perubahan setelah approval membatalkan approval yang terdampak dan membutuhkan verifikasi ulang.
 
 Evidence rehearsal lokal terbaru: [P0 Local Rehearsal 19 Juli 2026](evidence/p0-local-rehearsal-2026-07-19.md).
+
+Status kandidat rilis terpadu: [Release Checklist R-SEC-01 20 Juli 2026](releases/R-SEC-01-2026-07-20.md).

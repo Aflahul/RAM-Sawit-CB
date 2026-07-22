@@ -59,7 +59,7 @@ Pola aplikasi saat ini adalah frontend Next.js yang mengakses Supabase secara la
 
 | Komponen | Versi | Fungsi |
 | --- | --- | --- |
-| Next.js | `16.2.10` | Framework web, App Router, build dan routing |
+| Next.js | `16.2.11` | Framework web, App Router, build dan routing |
 | React | `19.2.4` | UI component runtime |
 | React DOM | `19.2.4` | Rendering DOM |
 | JavaScript/JSX | ES Modules | Bahasa implementasi aplikasi; TypeScript belum digunakan |
@@ -138,6 +138,19 @@ Aturan keamanan:
 - Jangan menaruh `service_role`, database password, atau secret key pada `NEXT_PUBLIC_*`.
 - Kredensial pengguna tidak boleh ditulis pada dokumentasi, source code, migration, atau test yang dikomit.
 - Environment production dikelola melalui pengaturan deployment platform.
+- `next dev` fail-closed bila `NEXT_PUBLIC_SUPABASE_URL` bukan loopback. Development harian memakai `npm run dev:local` setelah Supabase Docker aktif.
+- Launcher lokal membaca output JSON `supabase status`, memvalidasi API URL loopback, dan hanya mengambil API URL serta publishable/anon key lokal dari status tersebut. Credential sensitif pada environment proses dan nama variabel non-public pada file environment Next.js dikosongkan sebelum child process dimulai; config guard menghentikan development bila nilai sensitif masih aktif.
+
+Perintah development lokal:
+
+```bash
+npx supabase start
+npm run dev:local
+npm run test:local-env
+npm run test:local-app
+```
+
+Guard ini melindungi flow development interaktif. Smoke lokal memverifikasi halaman login dan redirect pengguna tanpa sesi terhadap stack loopback. Staging gate tetap memakai environment process-only yang menyebut target staging secara eksplisit; production build/deployment menggunakan environment platform dan release checklist.
 
 ## 6. Struktur Repository
 
@@ -153,6 +166,7 @@ Aturan keamanan:
 | `proxy.js` | Refresh sesi dan pembatasan route berdasarkan role |
 | `supabase/migrations/` | Migration SQL berurutan; 54 file pada baseline dokumen |
 | `supabase/tests/` | Smoke test SQL rollback untuk kontrol finansial dan Armada CB |
+| `scripts/dev-local.mjs` | Launcher Next.js yang hanya mengambil environment publik Supabase lokal |
 | `docs/` | Spesifikasi, audit flow, dan dokumentasi UX |
 | `public/` | Aset statis |
 
@@ -336,12 +350,12 @@ Smoke test menggunakan pola transaksi/rollback agar data uji tidak menetap. Peng
 
 ### Batas Testing Saat Ini
 
-- Belum ada test runner unit/integration JavaScript pada `package.json`.
-- Belum ada automated browser/E2E suite yang dikomit.
-- Belum ada GitHub Actions/CI pipeline.
-- Role dan workflow finansial kritis masih memerlukan smoke test manual selain lint/build.
+- Node test runner tersedia untuk password policy, tetapi unit/integration suite aplikasi secara umum belum tersedia.
+- Playwright tersedia untuk gate print/export staging; automated E2E lintas role dan workflow bisnis secara menyeluruh belum dikomit.
+- GitHub Actions menjalankan required lint/build/dependency, password policy, migration/database regression, advisor, Gitleaks, dan CodeQL.
+- Role dan workflow finansial di luar deterministic P0, concurrency, UI smoke, dan print/export gate masih memerlukan pengujian tambahan sesuai scope.
 
-Rekomendasi berikutnya adalah menambahkan Vitest atau Jest untuk kalkulasi bisnis, Playwright untuk alur login/pengiriman/kwitansi, dan GitHub Actions untuk lint, build, serta test non-production.
+Rekomendasi berikutnya adalah memperluas unit/integration test kalkulasi bisnis dan Playwright untuk alur login/pengiriman/kwitansi lintas role, error path, accessibility, dan viewport utama.
 
 ## 14. Build dan Deployment
 
@@ -365,7 +379,7 @@ Repository tidak memiliki `vercel.json`; deployment memakai default integrasi Ne
 
 ### Release Checklist
 
-Checklist normatif mengikuti [SOP Pengembangan](development-sop.md) dan [template release](templates/release-checklist-template.md). Ringkasannya:
+Checklist normatif mengikuti [SOP Pengembangan](development-sop.md), [template release](templates/release-checklist-template.md), dan instance aktif [R-SEC-01](releases/R-SEC-01-2026-07-20.md). Ringkasannya:
 
 1. Selesaikan requirement, risk class, review, test plan, rollback, serta bukti staging pada branch/PR.
 2. Jalankan lint, build, test, secret/dependency check, migration rehearsal, DB lint, dan dry-run sesuai risiko.
@@ -386,7 +400,7 @@ Belum tersedia:
 - application performance monitoring;
 - centralized log dashboard milik aplikasi;
 - health check endpoint khusus;
-- automated backup/restore drill di repository.
+- hosted backup/PITR dan restore drill database + Storage; repository baru memiliki scoped local audit restore drill.
 
 Untuk penggunaan produksi jangka panjang, tambahkan error tracking, alert kegagalan RPC, monitoring deployment, backup terjadwal, dan latihan restore berkala.
 
@@ -409,11 +423,11 @@ Route guard dan penyembunyian menu bukan kontrol keamanan data. Akses langsung m
 | Area | Kondisi saat ini |
 | --- | --- |
 | Akuntansi | Ringkasan Arus Kas tersedia; laba/rugi akrual penuh belum tersedia |
-| Testing | Lint, build, DB lint, dan SQL smoke test tersedia; unit/E2E automation belum tersedia |
-| CI/CD | Deployment GitHub/Vercel digunakan, tetapi workflow GitHub Actions belum ada |
+| Testing | Lint, build, Node password-policy test, DB lint/regression, concurrency, staging UI smoke, dan Playwright print/export tersedia; cakupan unit/E2E menyeluruh belum tersedia |
+| CI/CD | Deployment GitHub/Vercel dan required GitHub Actions P0 aktif; promotion production tetap manual dan tunduk pada release checklist |
 | Storage bukti | Infrastruktur tersedia; flow lampiran bukti belum selesai |
 | Observability | Mengandalkan platform logs; error tracking/APM khusus belum ada |
-| Backup | Perlu SOP dan latihan restore yang terdokumentasi |
+| Backup | Scoped local audit restore drill tersedia; hosted backup/PITR, DB + Storage rehearsal, dan actual RPO/RTO belum tersedia |
 | Container | Tidak ada Dockerfile aplikasi; Docker hanya untuk Supabase local stack |
 | Lisensi | Belum ada file lisensi publik; repository diperlakukan private/internal |
 | Type safety | JavaScript/JSX; TypeScript dan generated database types belum digunakan |
@@ -432,9 +446,9 @@ Route guard dan penyembunyian menu bukan kontrol keamanan data. Akses langsung m
 
 - [README](../README.md): onboarding dan perintah utama.
 - [Indeks Dokumentasi](documentation-index.md): sumber kebenaran, status aktif/historis, owner, dan cadence.
-- [PRD Final dan Addendum](../PRD-final.md): tujuan produk dan aturan bisnis.
-- [Implementation Plan](../implementation_plan.md): urutan serta status implementasi.
-- [Implementation Tasks](../IMPLEMENTATION-TASKS.md): checklist teknis.
+- [PRD Final dan Addendum](work-packages/PRD-final.md): tujuan produk dan aturan bisnis.
+- [Implementation Plan](work-packages/implementation_plan.md): urutan serta status implementasi.
+- [Implementation Tasks](work-packages/IMPLEMENTATION-TASKS.md): checklist teknis.
 - [SOP Pengembangan](development-sop.md): lifecycle, metode, RACI, quality gate, release, rollback, dan incident.
 - [Tata Kelola Audit](audit-governance.md): taxonomy, severity, format temuan, dan traceability.
 - [Audit Flow Bisnis](page-flow-control-audit-2026-07-16.md): audit halaman, tombol, data, role, dan tindak lanjut.

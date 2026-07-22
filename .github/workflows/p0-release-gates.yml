@@ -28,6 +28,7 @@ jobs:
       - run: npm ci
       - run: npm run lint
       - run: npm run test:password-policy
+      - run: npm run test:local-env
       - run: npm run build
         env:
           NEXT_PUBLIC_SUPABASE_URL: http://127.0.0.1:54321
@@ -51,6 +52,8 @@ jobs:
         run: npx supabase start -x analytics,edge-runtime,functions,imgproxy,inbucket,realtime,storage,studio,vector
       - name: Rebuild database from migration history
         run: npx supabase db reset --local --no-seed
+      - name: Smoke local login and unauthenticated redirect flow
+        run: npm run test:local-app
       - name: Run deterministic P0 rollback suite
         run: docker exec -i supabase_db_RAM-Sawit-CB psql -U postgres -d postgres -v ON_ERROR_STOP=1 -f - < supabase/tests/p0_deterministic_release_gate_rollback.sql
       - name: Run concurrent payment and retry gate

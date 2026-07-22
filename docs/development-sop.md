@@ -730,7 +730,7 @@ Keduanya hanya dijalankan pada staging/linked database yang dipilih secara ekspl
 
 Smoke test baseline memilih data bisnis yang tersedia secara nondeterministik. Karena itu keduanya belum menjadi fixture deterministik dan tidak boleh menjadi satu-satunya bukti release. Work package finansial harus menambahkan fixture staging terisolasi, negative Data API/RPC test, concurrency/retry/idempotency, formula batas, serta rekonsiliasi ledger/snapshot sesuai scope.
 
-Repository belum memiliki test runner unit/integration JavaScript, automated E2E, atau GitHub Actions pada baseline SOP. Sampai otomatisasi tersedia:
+Repository memiliki Node test runner, Playwright staging gate, serta GitHub Actions untuk lint/build/dependency/security/database gate. Automated E2E lintas role dan workflow bisnis secara menyeluruh belum tersedia. Untuk test manual atau scope yang belum terotomasi:
 
 - hasil manual wajib menyimpan raw output dengan `TEST-*`, commit SHA, waktu UTC, environment, executor, role/data, expected, actual, dan reviewer independen;
 - ketiadaan pipeline bukan alasan melewati lint/build/test;
@@ -1028,12 +1028,12 @@ Metric delivery pendukung: lead time, cycle time, throughput, blocked time, reop
 
 SOP ini disusun dari baseline repository 17 Juli 2026:
 
-- aplikasi internal Next.js 16.2.10, React 19.2.4, JavaScript/JSX, Supabase JS 2.110.2, `@supabase/ssr` 0.12.0, dan Supabase CLI 2.109.1;
+- aplikasi internal Next.js 16.2.11, React 19.2.4, JavaScript/JSX, Supabase JS 2.110.2, `@supabase/ssr` 0.12.0, dan Supabase CLI 2.109.1;
 - `npm` dengan `package-lock.json`; `main` adalah branch rilis;
 - Vercel dan Supabase hosted adalah target deployment menurut spesifikasi teknis;
 - model database memakai 54 imperative migration dan dua SQL smoke test rollback;
 - PostgreSQL lokal major 17; Data API mengekspos `public`/`graphql_public` dengan limit lokal 1.000 row;
-- repository belum memiliki CI, test runner unit JavaScript, automated E2E, atau observability khusus;
+- repository memiliki required CI, Node test runner, dan Playwright staging gate; automated E2E menyeluruh dan observability khusus belum tersedia;
 - `supabase/seed.sql` belum ada walaupun seeding aktif pada konfigurasi lokal;
 - audit security/release 17 Juli 2026 berstatus NO-GO untuk fitur finansial baru dan memiliki temuan `P0`/`S0-S1` Open; status tersebut hanya berubah melalui bukti verifikasi dan release checklist baru;
 - dua SQL smoke test rollback saat ini memakai pemilihan data yang nondeterministik dan hanya boleh menjadi bukti tambahan di staging;
