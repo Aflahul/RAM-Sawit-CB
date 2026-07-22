@@ -61,6 +61,7 @@ const emptyEditForm = {
   alasan_tanpa_dana_operasional_trip: '',
   dana_operasional_trip: 0,
   tarif_sewa_angkut_per_kg: 0,
+  biaya_sewa_armada_kotor: 0,
   biaya_sewa_armada_total: 0,
   alasan_edit: '',
 };
@@ -432,9 +433,13 @@ export default function AdminInputTimbangan() {
     const potongan    = Math.max(0, parseFloat(nextForm.potongan_pabrik) || 0);
     const beratDibayar = Math.max(0, beratNetto - potongan);
 
-    const sewaArmadaTotal = nextForm.menggunakan_armada_cb_snapshot && nextForm.kenakan_sewa_armada_cb
+    const sewaArmadaKotor = nextForm.menggunakan_armada_cb_snapshot && nextForm.kenakan_sewa_armada_cb
       ? Math.round(beratNetto * toNumber(nextForm.tarif_sewa_angkut_per_kg))
       : 0;
+    const danaOperasional = nextForm.menggunakan_armada_cb_snapshot && nextForm.catat_dana_operasional_trip
+      ? toNumber(nextForm.dana_operasional_trip)
+      : 0;
+    const sewaArmadaTotal = Math.max(0, sewaArmadaKotor - danaOperasional);
 
     return {
       ...nextForm,
@@ -442,6 +447,7 @@ export default function AdminInputTimbangan() {
       total_kotor:        Math.round(beratDibayar * hargaPabrik),
       total_fee_owner:    Math.round(beratDibayar * feeOwner),
       total_nilai_bersih: Math.round(beratDibayar * hargaBersih),
+      biaya_sewa_armada_kotor: sewaArmadaKotor,
       biaya_sewa_armada_total: sewaArmadaTotal,
     };
   }
@@ -458,7 +464,11 @@ export default function AdminInputTimbangan() {
     const menggunakanArmadaCb = Boolean(row.menggunakan_armada_cb_snapshot ?? row.pakai_sewa_armada_bl);
     const pakaiSewa    = menggunakanArmadaCb && Boolean(row.kenakan_sewa_armada_cb ?? row.pakai_sewa_armada_bl);
     const tarifSewa    = toNumber(row.tarif_sewa_angkut_per_kg_snapshot ?? row.biaya_sewa_armada_per_kg);
-    const sewaTotal    = pakaiSewa ? Math.round(beratNetto * tarifSewa) : 0;
+    const sewaKotor    = pakaiSewa ? Math.round(beratNetto * tarifSewa) : 0;
+    const danaOperasional = toNumber(row.dana_operasional_trip_snapshot) > 0
+      ? toNumber(row.dana_operasional_trip_snapshot)
+      : toNumber(effectiveFee.danaOperasionalTrip);
+    const sewaTotal = Math.max(0, sewaKotor - (menggunakanArmadaCb && row.catat_dana_operasional_trip !== false ? danaOperasional : 0));
 
     setEditTarget(row);
     setEditForm({
@@ -488,8 +498,9 @@ export default function AdminInputTimbangan() {
         && Boolean(row.catat_dana_operasional_trip ?? toNumber(row.dana_operasional_trip_snapshot) > 0),
       alasan_tanpa_sewa_armada_cb: row.alasan_tanpa_sewa_armada_cb || '',
       alasan_tanpa_dana_operasional_trip: row.alasan_tanpa_dana_operasional_trip || '',
-      dana_operasional_trip: toNumber(row.dana_operasional_trip_snapshot ?? effectiveFee.danaOperasionalTrip),
+      dana_operasional_trip: danaOperasional,
       tarif_sewa_angkut_per_kg: tarifSewa,
+      biaya_sewa_armada_kotor: sewaKotor,
       biaya_sewa_armada_total: sewaTotal,
       alasan_edit: '',
     });
@@ -673,7 +684,7 @@ export default function AdminInputTimbangan() {
       pakai_sewa_armada_bl: editUsesArmadaCb && editForm.kenakan_sewa_armada_cb,
       biaya_sewa_armada_per_kg: editUsesArmadaCb && editForm.kenakan_sewa_armada_cb ? editForm.tarif_sewa_angkut_per_kg : 0,
       tarif_sewa_angkut_per_kg_snapshot: editUsesArmadaCb && editForm.kenakan_sewa_armada_cb ? editForm.tarif_sewa_angkut_per_kg : 0,
-      biaya_sewa_armada_kotor:  editForm.biaya_sewa_armada_total,
+      biaya_sewa_armada_kotor:  editForm.biaya_sewa_armada_kotor,
       biaya_sewa_armada_total:  editForm.biaya_sewa_armada_total,
     };
 
@@ -1088,17 +1099,17 @@ export default function AdminInputTimbangan() {
                       <input
                         type="checkbox"
                         checked={editForm.catat_dana_operasional_trip}
-                        onChange={event => setEditForm({
+                        onChange={event => setEditForm(recalculateTotals({
                           ...editForm,
                           catat_dana_operasional_trip: event.target.checked,
                           alasan_tanpa_dana_operasional_trip: event.target.checked ? '' : editForm.alasan_tanpa_dana_operasional_trip,
-                        })}
+                        }))}
                         style={{ marginTop: 3 }}
                       />
                       <span>
-                        <strong>Buat Dana Operasional Trip</strong>
+                        <strong>Dana Operasional Dibayar Mitra ke Sopir</strong>
                         <span className="text-sm text-tertiary" style={{ display: 'block' }}>
-                          {formatRupiah(editForm.dana_operasional_trip)} untuk satu kali jalan
+                          {formatRupiah(editForm.dana_operasional_trip)} diserahkan sebelum armada berangkat
                         </span>
                       </span>
                     </label>
@@ -1199,9 +1210,17 @@ export default function AdminInputTimbangan() {
                           <span style={{ fontSize: 13 }}>Total Kotor: <strong>{formatRupiah(editForm.total_kotor)}</strong></span>
                           <span style={{ fontSize: 13 }}>Nilai Bersih Mitra: <strong style={{ color: 'var(--color-success)' }}>{formatRupiah(editForm.total_nilai_bersih)}</strong></span>
                           {editUsesArmadaCb && editForm.kenakan_sewa_armada_cb && (
-                            <span style={{ fontSize: 13 }}>Sewa Armada CB: <strong style={{ color: 'var(--color-warning)' }}>{formatRupiah(editForm.biaya_sewa_armada_total)}</strong></span>
+                            <span style={{ fontSize: 13 }}>Sewa Armada Kotor: <strong>{formatRupiah(editForm.biaya_sewa_armada_kotor)}</strong></span>
+                          )}
+                          {editUsesArmadaCb && editForm.catat_dana_operasional_trip && (
+                            <span style={{ fontSize: 13 }}>Dana Dibayar Mitra ke Sopir: <strong style={{ color: 'var(--color-info)' }}>- {formatRupiah(editForm.dana_operasional_trip)}</strong></span>
                           )}
                         </div>
+                        {editUsesArmadaCb && editForm.kenakan_sewa_armada_cb && (
+                          <div style={{ display: 'flex', justifyContent: 'flex-end', fontSize: 12, color: 'var(--text-tertiary)' }}>
+                            Potongan akhir sewa pada kwitansi: <strong style={{ marginLeft: 4, color: 'var(--color-warning)' }}>{formatRupiah(editForm.biaya_sewa_armada_total)}</strong>
+                          </div>
+                        )}
                       </div>
                     );
                   })()}
