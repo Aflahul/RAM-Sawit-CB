@@ -328,3 +328,15 @@ Status verifikasi:
 - Rekonsiliasi legacy Owner-only sudah aktif dan hasilnya dapat dibuka dari **Riwayat Lunas** menuju Kwitansi TBS terkait.
 - Kas hanya bergerak saat uang benar-benar diserahkan atau dikembalikan; rekonsiliasi saldo awal legacy tidak membuat mutasi kas baru.
 - Backlog lanjutan: lampiran bukti, batas pinjaman per pihak, laporan umur pinjaman, dan alokasi parsial Panjar Mitra ketika hak TBS tidak mencukupi.
+
+## Hotfix Alur Armada - Keputusan 22 Juli 2026
+
+Rencana Dana Trip lama yang membuat tagihan lalu dibayar dari Kas CB tidak berlaku untuk transaksi baru. Sumber kebenaran terbaru adalah [`BDR-20260722-002`](../decisions/business/BDR-20260722-002-dana-operasional-dibayar-mitra.md).
+
+1. Form mengambil tarif sewa dan Dana Operasional dari Mitra Transaksi.
+2. Mitra menyerahkan Dana Operasional langsung kepada sopir sebelum berangkat.
+3. Sistem menyimpan sewa kotor, Dana Operasional, sumber dana, dan potongan akhir.
+4. Kwitansi memotong hanya `Sewa Kotor − Dana Operasional` dari hak Mitra.
+5. Kas CB tidak membuat mutasi khusus Dana Operasional; kas hanya keluar sebesar pembayaran akhir Mitra.
+6. Laporan Armada merekonsiliasi Sewa Kotor, Dana dari Mitra, Sewa Bersih CB, biaya CB lain, dan margin.
+7. Snapshot pembayaran lama tetap beku; koreksi dokumen lama tetap melalui reversal.

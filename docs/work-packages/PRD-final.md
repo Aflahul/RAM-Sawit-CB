@@ -2198,3 +2198,15 @@ Tarif berlaku mulai 15 Juli 2026:
 | BL/ML | Rp180 | Rp900.000 |
 
 Field `upah_sopir_cb_snapshot`, `uang_jalan_sopir_cb_snapshot`, dan pengaturan global/override lama dipertahankan hanya untuk kompatibilitas data historis. Transaksi baru memakai `dana_operasional_trip_snapshot` sebagai sumber kebenaran.
+
+## ADDENDUM KEPUTUSAN OWNER - Sumber Dana Operasional (22 Juli 2026)
+
+Bagian sebelumnya yang menyatakan Dana Operasional sebagai biaya/tagihan CB digantikan oleh [`BDR-20260722-002`](../decisions/business/BDR-20260722-002-dana-operasional-dibayar-mitra.md).
+
+- Mitra menyerahkan Dana Operasional langsung kepada sopir sebelum armada berangkat.
+- Sewa kotor tetap `Berat Netto Pabrik × Tarif Sewa Mitra/kg`.
+- Potongan akhir pada Kwitansi Mitra adalah `max(Sewa Kotor − Dana Operasional, 0)`.
+- Dana Operasional langsung tidak membuat utang, biaya operasional, atau kas keluar CB.
+- Kwitansi wajib menampilkan Sewa Kotor, Dana Dibayar Mitra ke Sopir, dan Potongan Akhir Sewa.
+- Laporan Armada wajib menampilkan Sewa Bersih CB sebagai `Sewa Kotor − Dana Operasional`; margin mengurangi hanya biaya lain yang benar-benar ditanggung CB.
+- Kwitansi lama yang sudah terbit tetap memakai snapshot historis dan tidak dihitung ulang otomatis.
