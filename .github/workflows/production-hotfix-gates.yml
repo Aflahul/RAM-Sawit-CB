@@ -2,7 +2,9 @@ name: Production Hotfix Gates
 
 on:
   push:
-    branches: [hotfix/production-mitra-history]
+    branches:
+      - hotfix/production-mitra-history
+      - hotfix/production-operational-fund-receipt
   workflow_dispatch:
 
 concurrency:
@@ -25,6 +27,7 @@ jobs:
           package-manager-cache: false
       - run: npm ci
       - run: npm run lint
+      - run: npm run test:operational-fund-hotfix
       - run: npm run build
         env:
           NEXT_PUBLIC_SUPABASE_URL: http://127.0.0.1:54321
@@ -45,10 +48,29 @@ jobs:
           cache: npm
           package-manager-cache: false
       - run: npm ci
-      - name: Assert the application-only hotfix has no Supabase changes
+      - name: Assert the database hotfix stays inside the approved scope
+        shell: bash
         run: |
           git fetch --no-tags origin main
-          git diff --exit-code origin/main...HEAD -- supabase/
+          mapfile -t changed_files < <(git diff --name-only origin/main...HEAD -- supabase/)
+          expected_files=(
+            "supabase/migrations/20260722150000_hotfix_operational_fund_snapshot_receipt.sql"
+            "supabase/tests/operational_fund_edit_regression_rollback.sql"
+          )
+
+          for changed_file in "${changed_files[@]}"; do
+            if [[ ! " ${expected_files[*]} " =~ " ${changed_file} " ]]; then
+              echo "Unexpected Supabase change: ${changed_file}" >&2
+              exit 1
+            fi
+          done
+
+          for expected_file in "${expected_files[@]}"; do
+            test -f "$expected_file" || {
+              echo "Required hotfix file is missing: ${expected_file}" >&2
+              exit 1
+            }
+          done
       - name: Start isolated Supabase services
         id: start
         shell: bash
@@ -66,7 +88,7 @@ jobs:
 
           if grep -Fq '20260718010012_p0_maker_checker_pinjaman_panjar.sql' /tmp/supabase-start.log && \
              grep -Fq 'column "keterangan" of relation "pengaturan_bisnis" does not exist' /tmp/supabase-start.log; then
-            echo "::warning::Known origin/main migration bootstrap blocker reproduced. This hotfix has no Supabase diff; full remediation remains isolated in PR #5."
+            echo "::warning::Known origin/main migration bootstrap blocker reproduced. The hotfix migration will be tested explicitly against the successfully applied production baseline; full replay remediation remains isolated in PR #5."
             echo "ready=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
@@ -89,24 +111,43 @@ jobs:
 
           if grep -Fq '20260718010012_p0_maker_checker_pinjaman_panjar.sql' /tmp/db-reset.log && \
              grep -Fq 'column "keterangan" of relation "pengaturan_bisnis" does not exist' /tmp/db-reset.log; then
-            echo "::warning::Known origin/main migration replay blocker reproduced. This hotfix has no Supabase diff; full remediation remains isolated in PR #5."
+            echo "::warning::Known origin/main migration replay blocker reproduced. The hotfix migration will be tested explicitly against the successfully applied production baseline; full replay remediation remains isolated in PR #5."
             echo "ready=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
           exit "$reset_status"
-      - name: Run existing rollback regression tests
+      - name: Rehearse hotfix from the verified production baseline
+        if: steps.start.outputs.ready == 'false'
+        run: |
+          mkdir -p /tmp/production-hotfix/supabase/migrations
+          cp supabase/config.toml /tmp/production-hotfix/supabase/config.toml
+          cp supabase/migrations/00000000000000_baseline.sql \
+            /tmp/production-hotfix/supabase/migrations/
+          cp supabase/migrations/20260722150000_hotfix_operational_fund_snapshot_receipt.sql \
+            /tmp/production-hotfix/supabase/migrations/
+          npx supabase start \
+            --workdir /tmp/production-hotfix \
+            -x edge-runtime,imgproxy,logflare,mailpit,realtime,storage-api,studio,vector
+          docker exec supabase_db_RAM-Sawit-CB \
+            psql -U postgres -d postgres -v ON_ERROR_STOP=1 -Atc \
+            "select dana_operasional_trip_snapshot from public.pembayaran_mitra_kwitansi_item limit 0;"
+      - name: Run rollback regression tests
         if: steps.reset.outputs.ready == 'true'
         run: |
           for test_file in supabase/tests/*_rollback.sql; do
             docker exec -i supabase_db_RAM-Sawit-CB \
               psql -U postgres -d postgres -v ON_ERROR_STOP=1 -f - < "$test_file"
           done
+      - name: Run targeted rollback regression after the known main replay blocker
+        if: steps.start.outputs.ready == 'false'
+        run: |
+          docker exec -i supabase_db_RAM-Sawit-CB \
+            psql -U postgres -d postgres -v ON_ERROR_STOP=1 -f - \
+            < supabase/tests/operational_fund_edit_regression_rollback.sql
       - name: Lint database schema
-        if: steps.reset.outputs.ready == 'true'
         run: npx supabase db lint --local --level error --fail-on error
       - name: Block Supabase security advisor errors
-        if: steps.reset.outputs.ready == 'true'
         run: npx supabase db advisors --local --type security --level error --fail-on error
 
   secrets:

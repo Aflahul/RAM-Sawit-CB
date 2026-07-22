@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test:mitra-history:staging": "node scripts/repro-mitra-history-staging.mjs"
+    "test:mitra-history:staging": "node scripts/repro-mitra-history-staging.mjs",
+    "test:operational-fund-hotfix": "node scripts/test-operational-fund-hotfix.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.0",

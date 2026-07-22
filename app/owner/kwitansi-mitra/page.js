@@ -13,6 +13,8 @@ import {
   resolveBeratDibayar,
   resolveBeratNettoPabrik,
   resolveBiayaSewaArmada,
+  resolveBiayaSewaArmadaKotor,
+  resolveDanaOperasionalTrip,
   resolveHargaBersihPerKg,
   resolveTotalNilaiBersihMitra,
 } from '@/lib/transaksi-mitra-calculations';
@@ -70,7 +72,11 @@ function mapPaymentItemToRow(item) {
     berat_dibayar_kg: item.berat_dibayar_snapshot ?? item.tonase_snapshot,
     pakai_sewa_armada_bl: item.pakai_sewa_armada_snapshot ?? false,
     biaya_sewa_armada_total: sewaSnapshot,
-    biaya_sewa_armada_kotor: sewaSnapshot,
+    biaya_sewa_armada_kotor: item.biaya_sewa_armada_standar_snapshot ?? sewaSnapshot,
+    menggunakan_armada_cb_snapshot: Boolean(item.dana_operasional_trip_snapshot) || Boolean(item.pakai_sewa_armada_snapshot),
+    catat_dana_operasional_trip: toNumber(item.dana_operasional_trip_snapshot) > 0,
+    dana_operasional_trip_snapshot: item.dana_operasional_trip_snapshot ?? 0,
+    dana_operasional_dibayar_mitra_snapshot: item.dana_operasional_dibayar_mitra_snapshot ?? false,
     tarif_sewa_angkut_per_kg_snapshot: item.tarif_sewa_angkut_per_kg_snapshot ?? 0,
     biaya_sewa_armada_standar_snapshot: item.biaya_sewa_armada_standar_snapshot ?? sewaSnapshot,
     selisih_sewa_armada_historis_snapshot: item.selisih_sewa_armada_historis_snapshot ?? 0,
@@ -107,13 +113,14 @@ function getSewaFormulaLabel(rows) {
       (sum, row) => sum + toNumber(resolveBeratNettoPabrik(row) || row.berat_netto_pabrik_kg || row.tonase),
       0
     );
-    return `${formatNumber(totalBeratNetto)} kg x ${formatRupiah(Number(tariffs[0]))}/kg`;
+    const hasDirectFund = sewaRows.some(row => row.dana_operasional_dibayar_mitra_snapshot || row.dana_operasional_dibayar_mitra);
+    return `${formatNumber(totalBeratNetto)} kg x ${formatRupiah(Number(tariffs[0]))}/kg${hasDirectFund ? ' - Dana Operasional' : ''}`;
   }
 
   return `Total ${sewaRows.length} transaksi sesuai tarif masing-masing`;
 }
 
-function buildWhatsappCaption({ appName, recipientLabel, dateFrom, dateTo, totalBeratNetto, totalBeratDibayar, totalNilaiBersih, totalPanjar, totalSewaArmada, sisaBersih }) {
+function buildWhatsappCaption({ appName, recipientLabel, dateFrom, dateTo, totalBeratNetto, totalBeratDibayar, totalNilaiBersih, totalPanjar, totalSewaArmadaKotor, totalDanaOperasional, totalSewaArmada, sisaBersih }) {
   return [
     `Kwitansi Pembayaran ${appName}`,
     `Mitra: ${recipientLabel || '-'}`,
@@ -122,7 +129,9 @@ function buildWhatsappCaption({ appName, recipientLabel, dateFrom, dateTo, total
     `Total Berat Dibayar: ${formatNumber(totalBeratDibayar)} Kg`,
     `Total Nilai Bersih TBS: ${formatRupiah(totalNilaiBersih)}`,
     `Potongan Panjar Mitra: ${formatRupiah(totalPanjar)}`,
-    `Potongan Sewa Armada CB: ${formatRupiah(totalSewaArmada)}`,
+    `Sewa Armada Kotor: ${formatRupiah(totalSewaArmadaKotor)}`,
+    `Dana Operasional dibayar Mitra ke Sopir: ${formatRupiah(totalDanaOperasional)}`,
+    `Potongan Akhir Sewa Armada: ${formatRupiah(totalSewaArmada)}`,
     `Sisa Dibayar ke Mitra: ${formatRupiah(sisaBersih)}`,
     '',
     'Mohon dicek. PDF kwitansi pembayaran terlampir.',
@@ -244,6 +253,9 @@ export default function KwitansiMitraPage() {
           berat_netto_pabrik_kg, potongan_pabrik_kg, berat_dibayar_kg,
           pakai_sewa_armada_bl, biaya_sewa_armada_total,
           biaya_sewa_armada_kotor, tarif_sewa_angkut_per_kg_snapshot,
+          menggunakan_armada_cb_snapshot, catat_dana_operasional_trip,
+          dana_operasional_trip_snapshot, dana_operasional_dibayar_mitra,
+          total_biaya_sopir_cb_snapshot, biaya_sopir_dibayar_at,
           sopir_default_nama, sopir_aktual_nama, sopir_diganti_dari_default, catatan_sopir,
           master_mitra ( id, kode, alamat, nama, fee_per_kg )
         `)
@@ -286,6 +298,7 @@ export default function KwitansiMitraPage() {
             total_nilai_bersih_snapshot, status_transaksi_snapshot,
             berat_netto_snapshot, potongan_snapshot, berat_dibayar_snapshot,
             pakai_sewa_armada_snapshot, biaya_sewa_armada_snapshot,
+            dana_operasional_trip_snapshot, dana_operasional_dibayar_mitra_snapshot,
             tarif_sewa_angkut_per_kg_snapshot, biaya_sewa_armada_standar_snapshot,
             selisih_sewa_armada_historis_snapshot, metode_sewa_armada_snapshot,
             transaksi:transaksi_mitra (
@@ -424,6 +437,8 @@ export default function KwitansiMitraPage() {
           totalBeratDibayar: 0,
           totalNilaiBersih: 0,
           totalPanjar: 0,
+          totalSewaArmadaKotor: 0,
+          totalDanaOperasionalTrip: 0,
         });
       } else {
         const group = groups.get(safeId);
@@ -440,12 +455,15 @@ export default function KwitansiMitraPage() {
       const group = ensureGroup(row);
       const totalNilaiBersih = resolveTotalNilaiBersihMitra(row);
       const sewaArmada = resolveBiayaSewaArmada(row);
+      const danaOperasionalTrip = resolveDanaOperasionalTrip(row);
 
       group.rows.push(row);
       group.totalBeratNetto += resolveBeratNettoPabrik(row);
       group.totalBeratDibayar += resolveBeratDibayar(row);
       group.totalNilaiBersih += totalNilaiBersih;
+      group.totalSewaArmadaKotor += resolveBiayaSewaArmadaKotor(row);
       group.totalSewaArmada = (group.totalSewaArmada || 0) + sewaArmada;
+      group.totalDanaOperasionalTrip += danaOperasionalTrip;
     });
 
     panjarRows.forEach((row) => {
@@ -483,7 +501,12 @@ export default function KwitansiMitraPage() {
   const currentTotalBeratDibayar = kwitansiGroups.reduce((sum, group) => sum + group.totalBeratDibayar, 0);
   const currentTotalNilaiBersih = kwitansiGroups.reduce((sum, group) => sum + group.totalNilaiBersih, 0);
   const currentTotalPanjar = kwitansiGroups.reduce((sum, group) => sum + group.totalPanjar, 0);
+  const displayTotalSewaArmadaKotor = kwitansiGroups.reduce((sum, group) => sum + (group.totalSewaArmadaKotor || 0), 0);
   const currentTotalSewaArmada = kwitansiGroups.reduce((sum, group) => sum + (group.totalSewaArmada || 0), 0);
+  const displayTotalDanaOperasionalTrip = kwitansiGroups.reduce(
+    (sum, group) => sum + (group.totalDanaOperasionalTrip || 0),
+    0,
+  );
   const displayTotalBeratNetto = isShowingPaidSnapshot
     ? toNumber(payment?.total_berat_netto ?? payment?.total_tonase)
     : currentTotalBeratNetto;
@@ -547,6 +570,8 @@ export default function KwitansiMitraPage() {
     totalBeratDibayar: displayTotalBeratDibayar,
     totalNilaiBersih: displayTotalNilaiBersih,
     totalPanjar: displayTotalPanjar,
+    totalSewaArmadaKotor: displayTotalSewaArmadaKotor,
+    totalDanaOperasional: displayTotalDanaOperasionalTrip,
     totalSewaArmada: displayTotalSewaArmada,
     sisaBersih,
   });
@@ -930,13 +955,35 @@ export default function KwitansiMitraPage() {
                     <span>Total Nilai Bersih TBS</span>
                     <strong className="table-mono">{formatRupiah(displayTotalNilaiBersih)}</strong>
                   </div>
+                  {displayTotalSewaArmadaKotor > 0 && (
+                    <div>
+                      <span>
+                        Sewa Armada Kotor
+                        <span style={{ display: 'block', fontSize: 10, color: 'var(--text-tertiary)', marginTop: 2, fontWeight: 'normal', border: 'none', padding: 0, background: 'transparent' }}>
+                          Berat netto x tarif sewa Mitra/kg
+                        </span>
+                      </span>
+                      <strong className="table-mono">{formatRupiah(displayTotalSewaArmadaKotor)}</strong>
+                    </div>
+                  )}
+                  {displayTotalDanaOperasionalTrip > 0 && (
+                    <div>
+                      <span>
+                        Dana Operasional Dibayar Mitra ke Sopir
+                        <span style={{ display: 'block', fontSize: 10, color: 'var(--text-tertiary)', marginTop: 2, fontWeight: 'normal', border: 'none', padding: 0, background: 'transparent' }}>
+                          Sudah diserahkan sebelum berangkat; tidak keluar dari kas CB
+                        </span>
+                      </span>
+                      <strong className="table-mono">- {formatRupiah(displayTotalDanaOperasionalTrip)}</strong>
+                    </div>
+                  )}
                   {displayTotalSewaArmada > 0 && (
                     kwitansiGroups.length > 1
                       ? kwitansiGroups.filter(g => (g.totalSewaArmada || 0) > 0).map(g => {
                           return (
                             <div key={g.mitraId}>
                               <span>
-                                Potongan Sewa Armada CB
+                                Potongan Akhir Sewa Armada CB
                                 <span style={{ fontSize: 10, color: 'var(--text-tertiary)', display: 'block', fontWeight: 400 }}>{g.label}</span>
                                 <span style={{ display: 'block', fontSize: 10, color: 'var(--text-tertiary)', marginTop: 2, fontWeight: 'normal', border: 'none', padding: 0, background: 'transparent' }}>
                                   {getSewaFormulaLabel(g.rows)}
@@ -949,7 +996,7 @@ export default function KwitansiMitraPage() {
                       : (
                             <div>
                               <span>
-                                Potongan Sewa Armada CB
+                                Potongan Akhir Sewa Armada CB
                                 <span style={{ display: 'block', fontSize: 10, color: 'var(--text-tertiary)', marginTop: 2, fontWeight: 'normal', border: 'none', padding: 0, background: 'transparent' }}>
                                   {getSewaFormulaLabel(kwitansiRows)}
                                 </span>
@@ -1398,7 +1445,7 @@ export default function KwitansiMitraPage() {
                     <div className="table-mono" style={{ fontWeight: 800, color: 'var(--color-danger)' }}>{formatRupiah(displayTotalPanjar)}</div>
                   </div>
                   <div className="card" style={{ padding: 14, borderRadius: 8 }}>
-                    <div className="text-tertiary" style={{ fontSize: 12 }}>Potongan Sewa Armada</div>
+                    <div className="text-tertiary" style={{ fontSize: 12 }}>Potongan Akhir Sewa Armada</div>
                     <div className="table-mono" style={{ fontWeight: 800, color: 'var(--color-danger)' }}>{formatRupiah(displayTotalSewaArmada)}</div>
                   </div>
                   <div className="card" style={{ padding: 14, borderRadius: 8 }}>
