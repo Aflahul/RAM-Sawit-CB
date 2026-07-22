@@ -35,17 +35,36 @@ assert.equal(
 
 const calculation = kalkulasiTransaksiMitra(transaction);
 
-assert.equal(calculation.sewaArmadaTotal, 1_639_500);
 assert.equal(calculation.danaOperasionalTrip, 750_000);
+assert.equal(
+  calculation.biayaSewaArmadaKotor,
+  1_639_500,
+  'Sewa kotor tetap harus tersedia sebagai dasar audit laporan armada.',
+);
+assert.equal(
+  calculation.sewaArmadaTotal,
+  889_500,
+  'Potongan akhir sewa harus berupa sewa kotor dikurangi Dana Operasional yang dibayar Mitra.',
+);
 assert.equal(
   calculation.marginArmadaSetelahDanaTrip,
   889_500,
-  'Margin armada harus memperhitungkan Dana Trip tanpa mengubah hak mitra dua kali.',
+  'Sewa bersih CB sama dengan potongan akhir sewa setelah Dana Operasional.',
 );
 assert.equal(
   calculation.totalBersihSetelahSewaArmada,
   calculation.totalNilaiBersih - calculation.sewaArmadaTotal,
-  'Dana Trip dibayar terpisah dan tidak boleh dipotong lagi dari kwitansi mitra.',
+  'Kwitansi hanya boleh mengurangi potongan akhir sewa, bukan sewa kotor.',
+);
+
+const calculationWithLargeOperationalFund = kalkulasiTransaksiMitra({
+  ...transaction,
+  dana_operasional_trip_snapshot: 2_000_000,
+});
+assert.equal(
+  calculationWithLargeOperationalFund.sewaArmadaTotal,
+  0,
+  'Potongan akhir sewa tidak boleh menjadi negatif ketika Dana Operasional melebihi sewa kotor.',
 );
 
 console.log('operational_fund_hotfix_js_ok');

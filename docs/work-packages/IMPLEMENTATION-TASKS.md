@@ -1258,3 +1258,22 @@ Acceptance:
 - [x] Tambahkan smoke test rollback `supabase/tests/armada_cb_controls_rollback.sql`.
 
 Hasil rekonsiliasi remote setelah migration: 11 trip aktif Armada CB, terdiri dari 2 trip dengan sewa dan Dana serta 9 trip lama tanpa keduanya yang ditandai perlu review. Tidak ada trip yang ditandai sudah membayar Dana pada kelompok ini.
+
+### P0 Hotfix - Dana Operasional Dibayar Langsung Mitra (22 Juli 2026)
+
+Keputusan pada bagian 15-16 Juli yang menyebut Dana Operasional sebagai tagihan/biaya Kas CB telah digantikan oleh [`BDR-20260722-002`](../decisions/business/BDR-20260722-002-dana-operasional-dibayar-mitra.md).
+
+- [x] `TASK-HOTFIX-ARMADA-001` Ubah formula menjadi `max((Berat Netto × Tarif Sewa Mitra/kg) - Dana Operasional, 0)`.
+- [x] `TASK-HOTFIX-ARMADA-002` Tampilkan sewa kotor, Dana dibayar Mitra, dan potongan akhir pada form tambah/edit.
+- [x] `TASK-HOTFIX-ARMADA-003` Bekukan ketiga nilai dan sumber dana pada item kwitansi baru tanpa mengubah kwitansi lama.
+- [x] `TASK-HOTFIX-ARMADA-004` Hentikan tagihan, biaya, tombol bayar, dan kas keluar Dana Trip untuk skema baru.
+- [x] `TASK-HOTFIX-ARMADA-005` Ubah laporan armada menjadi sewa kotor, Dana dari Mitra, sewa bersih CB, biaya CB lain, dan margin.
+- [x] `TASK-HOTFIX-ARMADA-006` Tambahkan regresi JS dan SQL rollback untuk angka 10.930 kg × Rp150 - Rp750.000.
+
+Acceptance:
+
+- [x] Potongan akhir sewa adalah Rp889.500 dari sewa kotor Rp1.639.500 dan Dana Rp750.000.
+- [x] Nominal pembayaran Mitra contoh adalah Rp29.327.940 tanpa kas keluar Dana Operasional tambahan.
+- [x] Tidak ada `hutang_ledger` aktif atau `biaya_operasional` baru untuk Dana Operasional langsung.
+- [x] Transaksi/kwitansi yang sudah dibayar dengan skema lama tetap dapat diaudit dan tidak di-backfill.
+- [x] Tidak ada layanan Supabase berbayar atau komponen berbiaya yang ditambahkan.

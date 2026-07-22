@@ -1,5 +1,6 @@
--- Regresi S1: edit transaksi dengan checkbox Dana Trip tetap aktif harus
--- memperbaiki snapshot Rp750.000 yang sebelumnya tersimpan sebagai nol.
+-- Regresi S1: Dana Operasional Rp750.000 dibayar langsung oleh Mitra.
+-- Potongan akhir sewa harus Rp1.639.500 - Rp750.000 = Rp889.500,
+-- tanpa utang, biaya operasional, atau arus kas CB baru.
 -- Seluruh fixture dibatalkan pada akhir pengujian.
 BEGIN;
 
@@ -64,6 +65,7 @@ INSERT INTO public.transaksi_mitra (
   tarif_sewa_angkut_per_kg_snapshot, biaya_sewa_armada_per_kg,
   biaya_sewa_armada_kotor, biaya_sewa_armada_total,
   dana_operasional_trip_snapshot, total_biaya_sopir_cb_snapshot,
+  dana_operasional_dibayar_mitra,
   created_by
 ) VALUES (
   '00000000-0000-4000-8000-00000000f004', '2026-07-22',
@@ -76,9 +78,25 @@ INSERT INTO public.transaksi_mitra (
   30528960, 311520, 30217440,
   true, true, true, true,
   150, 150, 1639500, 1639500,
-  0, 0,
+  0, 0, true,
   '00000000-0000-4000-8000-00000000f001'
 );
+
+INSERT INTO public.hutang_ledger (
+  id, pihak_type, sopir_id, tanggal, tipe, sumber, jumlah,
+  legacy_source_table, legacy_source_id, keterangan, created_by
+) VALUES (
+  '00000000-0000-4000-8000-00000000f006', 'sopir',
+  '00000000-0000-4000-8000-00000000f003', '2026-07-22',
+  'debit', 'operasional', 750000, 'tagihan_sopir_cb',
+  '00000000-0000-4000-8000-00000000f004',
+  'Tagihan lama yang harus dibatalkan oleh keputusan Owner',
+  '00000000-0000-4000-8000-00000000f001'
+);
+
+UPDATE public.transaksi_mitra
+SET tagihan_sopir_ledger_id = '00000000-0000-4000-8000-00000000f006'
+WHERE id = '00000000-0000-4000-8000-00000000f004';
 
 SET LOCAL session_replication_role = origin;
 SELECT set_config(
@@ -90,7 +108,10 @@ SELECT set_config(
 DO $test$
 DECLARE
   v_row public.transaksi_mitra;
-  v_tagihan numeric;
+  v_payment public.pembayaran_mitra_kwitansi;
+  v_item public.pembayaran_mitra_kwitansi_item%ROWTYPE;
+  v_kas_amount numeric(15,2);
+  v_count integer;
 BEGIN
   SELECT * INTO v_row
   FROM public.update_transaksi_mitra_controlled(
@@ -109,49 +130,84 @@ BEGIN
       v_row.dana_operasional_trip_snapshot;
   END IF;
 
-  SELECT jumlah INTO v_tagihan
-  FROM public.hutang_ledger
-  WHERE id = v_row.tagihan_sopir_ledger_id
-    AND status = 'aktif';
-
-  IF v_tagihan <> 750000 THEN
+  IF v_row.dana_operasional_dibayar_mitra IS DISTINCT FROM true
+     OR v_row.biaya_sewa_armada_kotor <> 1639500
+     OR v_row.biaya_sewa_armada_total <> 889500 THEN
     RAISE EXCEPTION
-      'REGRESSION: tagihan Dana Trip %, expected 750000.',
-      COALESCE(v_tagihan, 0);
+      'REGRESSION: sewa kotor %, Dana %, potongan akhir %, expected 1639500 - 750000 = 889500.',
+      v_row.biaya_sewa_armada_kotor,
+      v_row.dana_operasional_trip_snapshot,
+      v_row.biaya_sewa_armada_total;
   END IF;
 
-  INSERT INTO public.pembayaran_mitra_kwitansi (
-    id, master_mitra_id, periode_dari, periode_sampai,
-    transaksi_snapshot_json, panjar_snapshot_json, created_by
-  ) VALUES (
-    '00000000-0000-4000-8000-00000000f005',
+  IF v_row.tagihan_sopir_ledger_id IS NOT NULL THEN
+    RAISE EXCEPTION 'REGRESSION: transaksi masih memiliki tagihan Dana Trip %.', v_row.tagihan_sopir_ledger_id;
+  END IF;
+
+  SELECT count(*) INTO v_count
+  FROM public.hutang_ledger
+  WHERE legacy_source_table = 'tagihan_sopir_cb'
+    AND legacy_source_id = v_row.id
+    AND status = 'aktif';
+
+  IF v_count <> 0 THEN
+    RAISE EXCEPTION 'REGRESSION: tagihan Dana Trip aktif masih tersisa.';
+  END IF;
+
+  SELECT * INTO v_payment
+  FROM public.create_pembayaran_mitra_kwitansi(
     '00000000-0000-4000-8000-00000000f002',
-    '2026-07-22', '2026-07-22', '[]'::jsonb, '[]'::jsonb,
-    '00000000-0000-4000-8000-00000000f001'
+    '2026-07-22',
+    '2026-07-22',
+    'tunai',
+    'Regresi sumber Dana Operasional langsung dari Mitra',
+    null,
+    null
   );
 
-  INSERT INTO public.pembayaran_mitra_kwitansi_item (
-    pembayaran_id, transaksi_mitra_id, master_mitra_id, tanggal,
-    tonase_snapshot, berat_netto_snapshot, potongan_snapshot,
-    berat_dibayar_snapshot, pakai_sewa_armada_snapshot,
-    biaya_sewa_armada_snapshot, harga_bersih_per_kg_snapshot,
-    total_nilai_bersih_snapshot
-  ) VALUES (
-    '00000000-0000-4000-8000-00000000f005',
-    '00000000-0000-4000-8000-00000000f004',
-    '00000000-0000-4000-8000-00000000f002', '2026-07-22',
-    10930, 10930, 546, 10384, true, 1639500, 2910, 30217440
-  );
+  IF v_payment.total_sewa_armada <> 889500
+     OR v_payment.nominal_dibayar <> 29327940 THEN
+    RAISE EXCEPTION
+      'REGRESSION: total kwitansi salah (sewa akhir %, kas keluar %), expected 889500 dan 29327940.',
+      v_payment.total_sewa_armada,
+      v_payment.nominal_dibayar;
+  END IF;
 
-  SELECT dana_operasional_trip_snapshot INTO v_tagihan
+  SELECT * INTO v_item
   FROM public.pembayaran_mitra_kwitansi_item
-  WHERE pembayaran_id = '00000000-0000-4000-8000-00000000f005'
+  WHERE pembayaran_id = v_payment.id
     AND transaksi_mitra_id = '00000000-0000-4000-8000-00000000f004';
 
-  IF v_tagihan <> 750000 THEN
+  IF v_item.dana_operasional_trip_snapshot <> 750000
+     OR v_item.dana_operasional_dibayar_mitra_snapshot IS DISTINCT FROM true
+     OR v_item.biaya_sewa_armada_standar_snapshot <> 1639500
+     OR v_item.biaya_sewa_armada_snapshot <> 889500 THEN
     RAISE EXCEPTION
-      'REGRESSION: snapshot Dana Trip pada item kwitansi %, expected 750000.',
-      COALESCE(v_tagihan, 0);
+      'REGRESSION: snapshot kwitansi salah (kotor %, Dana %, akhir %).',
+      v_item.biaya_sewa_armada_standar_snapshot,
+      v_item.dana_operasional_trip_snapshot,
+      v_item.biaya_sewa_armada_snapshot;
+  END IF;
+
+  SELECT count(*) INTO v_count
+  FROM public.biaya_operasional
+  WHERE transaksi_mitra_id = v_row.id
+    AND kategori = 'dana_operasional_trip'
+    AND status <> 'dibatalkan';
+
+  IF v_count <> 0 THEN
+    RAISE EXCEPTION 'REGRESSION: Dana Operasional langsung tercatat sebagai biaya Kas CB.';
+  END IF;
+
+  SELECT jumlah INTO v_kas_amount
+  FROM public.kas_ledger
+  WHERE pembayaran_mitra_kwitansi_id = v_payment.id
+    AND status = 'aktif';
+
+  IF v_kas_amount <> 29327940 THEN
+    RAISE EXCEPTION
+      'REGRESSION: Kas CB keluar %, expected hanya pembayaran Mitra 29327940.',
+      COALESCE(v_kas_amount, 0);
   END IF;
 END;
 $test$;

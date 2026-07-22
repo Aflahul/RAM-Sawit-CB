@@ -194,7 +194,9 @@ export default function FormPengirimanModal({ open, onClose, onSuccess, initialD
     const sewaArmada = {
       pakaiSewaArmada: isSewa.pakaiSewaArmada,
       biayaSewaArmadaKotor: isSewa.biayaSewaArmadaKotor,
-      biayaSewaArmadaTotal: isSewa.biayaSewaArmadaTotal,
+      biayaSewaArmadaTotal: isSewa.pakaiSewaArmada
+        ? Math.max(0, isSewa.biayaSewaArmadaKotor - danaOperasionalTrip)
+        : 0,
     };
 
     const totalBersihMitra = totalNilaiBersih - sewaArmada.biayaSewaArmadaTotal;
@@ -212,7 +214,7 @@ export default function FormPengirimanModal({ open, onClose, onSuccess, initialD
       totalBersihMitra,
       ...sewaArmada,
     };
-  }, [form.berat_netto, form.potongan_pabrik, form.mitra_fee, form.kenakan_sewa_armada_cb, form.tarif_sewa_angkut, isSelectedArmadaCB, latestHarga]);
+  }, [form.berat_netto, form.potongan_pabrik, form.mitra_fee, form.kenakan_sewa_armada_cb, form.tarif_sewa_angkut, isSelectedArmadaCB, danaOperasionalTrip, latestHarga]);
 
   const beratNettoNum = kalkulasi.beratNetto;
   const potonganNum = kalkulasi.potongan;
@@ -796,9 +798,9 @@ export default function FormPengirimanModal({ open, onClose, onSuccess, initialD
                 style={{ marginTop: 3 }}
               />
               <span>
-                <strong>Buat Dana Operasional Trip</strong>
+                <strong>Dana Operasional Dibayar Mitra ke Sopir</strong>
                 <span className="text-sm text-tertiary" style={{ display: 'block' }}>
-                  {formatRupiah(form.dana_operasional_trip)} untuk satu kali jalan
+                  {formatRupiah(form.dana_operasional_trip)} diserahkan sebelum armada berangkat
                 </span>
               </span>
             </label>
@@ -966,9 +968,9 @@ export default function FormPengirimanModal({ open, onClose, onSuccess, initialD
 
             {kalkulasi.pakaiSewaArmada && (
               <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, marginBottom: 6 }}>
-                <span style={{ color: 'var(--text-tertiary)', fontSize: 14 }}>Sewa Armada CB:</span>
-                <span style={{ fontWeight: 600, color: 'var(--color-danger)', textAlign: 'right' }}>
-                  - {formatRupiah(kalkulasi.biayaSewaArmadaTotal)}
+                <span style={{ color: 'var(--text-tertiary)', fontSize: 14 }}>Sewa Armada Kotor:</span>
+                <span style={{ fontWeight: 600, textAlign: 'right' }}>
+                  {formatRupiah(kalkulasi.biayaSewaArmadaKotor)}
                   <div style={{ fontSize: 12, color: 'var(--text-tertiary)', fontWeight: 400 }}>
                     ({formatRupiah(form.tarif_sewa_angkut)}/kg netto)
                   </div>
@@ -978,12 +980,21 @@ export default function FormPengirimanModal({ open, onClose, onSuccess, initialD
 
             {isSelectedArmadaCB && form.catat_dana_operasional_trip && (
               <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, marginBottom: 6 }}>
-                <span style={{ color: 'var(--text-tertiary)', fontSize: 14 }}>Dana Operasional Trip:</span>
-                <span style={{ fontWeight: 600, textAlign: 'right' }}>
-                  {formatRupiah(danaOperasionalTrip)}
+                <span style={{ color: 'var(--text-tertiary)', fontSize: 14 }}>Dana Dibayar Mitra ke Sopir:</span>
+                <span style={{ fontWeight: 600, color: 'var(--color-info)', textAlign: 'right' }}>
+                  - {formatRupiah(danaOperasionalTrip)}
                   <div style={{ fontSize: 12, color: 'var(--text-tertiary)', fontWeight: 400 }}>
-                    Dibayar satu kali jalan; sudah termasuk solar, makan, dan bagian sopir
+                    Tidak keluar dari kas CB
                   </div>
+                </span>
+              </div>
+            )}
+
+            {kalkulasi.pakaiSewaArmada && (
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, marginBottom: 6 }}>
+                <span style={{ color: 'var(--text-tertiary)', fontSize: 14, fontWeight: 700 }}>Potongan Akhir Sewa:</span>
+                <span style={{ fontWeight: 700, color: 'var(--color-danger)', textAlign: 'right' }}>
+                  - {formatRupiah(kalkulasi.biayaSewaArmadaTotal)}
                 </span>
               </div>
             )}
@@ -1006,7 +1017,7 @@ export default function FormPengirimanModal({ open, onClose, onSuccess, initialD
                 {formatRupiah(kalkulasi.totalBersihMitra)}
                 <div style={{ fontSize: 13, fontWeight: 500 }}>
                   ({formatRupiah(kalkulasi.hargaBersih)}/kg bersih
-                  {kalkulasi.pakaiSewaArmada ? ' dipotong armada' : ''})
+                  {kalkulasi.pakaiSewaArmada ? ' dikurangi potongan akhir sewa' : ''})
                 </div>
               </span>
             </div>

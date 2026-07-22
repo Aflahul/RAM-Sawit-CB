@@ -15,7 +15,7 @@ const QUERY_LIMIT = 500;
 const KATEGORI = [
   { value: 'solar', label: '⛽ Solar / BBM' },
   { value: 'gaji_sopir', label: '👤 Gaji Sopir' },
-  { value: 'dana_operasional_trip', label: 'Dana Operasional Trip Armada CB' },
+  { value: 'dana_operasional_trip', label: 'Dana Operasional Trip Armada CB (riwayat lama)', legacyOnly: true },
   { value: 'kuli', label: '💪 Kuli Bongkar' },
   { value: 'retribusi', label: '📋 Retribusi' },
   { value: 'perawatan', label: '🔧 Perawatan Kendaraan' },
@@ -243,7 +243,7 @@ export default function BiayaPage() {
                   <label className="form-label form-label-required">Kategori</label>
                   <select className="form-input form-select" value={form.kategori}
                     onChange={e => setForm({ ...form, kategori: e.target.value })}>
-                    {KATEGORI.map(k => <option key={k.value} value={k.value}>{k.label}</option>)}
+                    {KATEGORI.filter(k => !k.legacyOnly).map(k => <option key={k.value} value={k.value}>{k.label}</option>)}
                   </select>
                 </div>
                 <div className="form-group">

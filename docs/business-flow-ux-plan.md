@@ -739,3 +739,23 @@ Audit duplikasi isi halaman, keputusan navigasi, dan rekomendasi tindak lanjut U
 Sawit CB sudah punya fondasi sistem bisnis yang kuat untuk Fase 2 minimum. Langkah terbaik berikutnya adalah mengubah orientasi aplikasi dari "kumpulan modul berdasarkan fase implementasi" menjadi "workflow harian bisnis RAM sawit". Fokusnya: role-safe, ledger-first, audit-ready, settlement-ready, dan bukti transaksi yang rapi.
 
 Jika rencana ini diikuti, website akan bergerak dari aplikasi pencatatan operasional menjadi sistem business management internal yang lebih disiplin, mudah dipakai admin, dan lebih aman untuk keputusan owner.
+
+## 14. Koreksi Alur Dana Operasional - 22 Juli 2026
+
+Keputusan terbaru Owner pada [`BDR-20260722-002`](./decisions/business/BDR-20260722-002-dana-operasional-dibayar-mitra.md) menggantikan alur **Buat/Bayar Dana Trip** dari Kas CB untuk transaksi baru.
+
+Alur pengguna yang berlaku:
+
+1. Admin memilih Mitra dan Armada CB; layar menampilkan tarif sewa serta Dana Operasional sesuai Mitra.
+2. UI menjelaskan bahwa Dana Operasional dibayar langsung oleh Mitra kepada sopir sebelum berangkat.
+3. Ringkasan input menampilkan `Sewa Kotor − Dana Operasional = Potongan Akhir Sewa` sebelum disimpan.
+4. Kwitansi menampilkan ketiga angka tersebut dan mengurangi hak Mitra hanya dengan Potongan Akhir Sewa.
+5. Buku Kas tidak menampilkan Dana Operasional langsung sebagai kas keluar CB.
+6. Laporan Armada menampilkan sumber dana secara eksplisit dan tidak menyediakan aksi **Bayar Dana Trip** untuk skema baru.
+
+UX guardrail:
+
+- Jangan memakai label “Belum Dibayar” untuk Dana Operasional langsung.
+- Jangan menyembunyikan Sewa Kotor; angka ini diperlukan untuk audit formula.
+- Jangan mengurangi Dana Operasional dua kali dari hak Mitra.
+- Dokumen lunas selalu membaca snapshot saat diterbitkan.
