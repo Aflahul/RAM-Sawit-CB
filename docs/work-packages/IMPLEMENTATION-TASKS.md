@@ -471,6 +471,12 @@ Untuk menjaga integritas data operasional MVP (Tahap 1) yang sudah mulai digunak
 3. Migrasi ke *Production* wajib berupa *Non-Destructive Migration* (hanya menambah tabel/kolom, tidak menghapus/mengubah struktur tabel MVP yang sudah berjalan).
 4. Lakukan *Backup* database *Production* di Supabase sebelum me-release Tahap 2.
 
+Kontrol environment P0:
+
+- [x] `next dev` fail-closed ketika target Supabase bukan loopback sehingga `.env.local` production tidak dapat dipakai tanpa sengaja.
+- [x] `npm run dev:local` mengambil API URL dan publishable/anon key lokal, mengosongkan credential sensitif dari environment proses/file, dan berhenti bila config masih melihat secret aktif.
+- [x] `TEST-QA-006` mencakup target hosted ditolak, target loopback diterima, sanitasi environment aktual, guard secret aktif, serta smoke login/redirect pengguna tanpa sesi pada launcher lokal.
+
 Langkah selanjutnya adalah mengunci **P0-0 - Fondasi Keamanan Produksi** terlebih dahulu, lalu melanjutkan modul Tahap 2 berdasarkan gate bisnis: lokal, kas, Pinjaman/Panjar universal, settlement, dan laporan.
 
 Stack:

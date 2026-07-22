@@ -2,10 +2,11 @@
 
 | Metadata | Nilai |
 | --- | --- |
-| Status | Draft; wajib direhearsal di staging sebelum digunakan di production |
+| Status | Local scoped drill passed 20 Juli 2026; hosted isolated restore rehearsal tetap wajib sebelum production |
 | Pemilik | Data/Security Owner |
 | Approver | Product Owner dan QA/Release Owner |
 | Terkait | `TASK-SEC-002`, `TASK-QA-003` |
+| Bukti lokal | [P0 Local Audit Restore Drill](../evidence/p0-local-audit-restore-2026-07-20.md) |
 
 ## Tujuan
 
@@ -56,3 +57,7 @@ ulang histori audit operasional.
 Rollback wajib dilakukan jika checksum tidak cocok, jumlah baris berbeda tanpa
 penjelasan yang disetujui, trigger gagal diaktifkan kembali, atau negative test
 tidak lulus. Jangan melanjutkan dengan exception manual pada production.
+
+## Batas Drill Lokal
+
+Drill lokal memulihkan schema aplikasi `public`, dependency `auth`/`storage`, dan satu fixture sintetis audit ke database sementara pada container Supabase lokal. Hasil tersebut membuktikan prosedur logical restore, rekonsiliasi checksum, pengaktifan ulang trigger, dan negative mutation test dapat diulang. Hasil ini tidak membuktikan kemampuan backup hosted, PITR, pemulihan Storage object, actual RPO/RTO production, atau recovery dari snapshot production yang representatif.

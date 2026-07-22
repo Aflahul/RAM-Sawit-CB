@@ -30,7 +30,9 @@
 | [`ux-ui-audit.md`](ux-ui-audit.md) | Register dan hasil audit UX/UI seluruh halaman | In Review | UX/UI | Product Owner | Halaman, task flow, komponen, content, atau temuan berubah |
 | [`page-flow-control-audit-2026-07-16.md`](page-flow-control-audit-2026-07-16.md) | Baseline audit flow bisnis dan kontrol | Baseline aktif | Product/BA | Product Owner | Ditinjau sampai baseline pengganti diterbitkan |
 | [`security-release-audit-2026-07-17.md`](security-release-audit-2026-07-17.md) | Baseline security dan keputusan GO/NO-GO | Baseline aktif | Data/Security dan QA | Engineering Lead | Security, Auth, database, supply chain, atau release gate berubah |
-| [`work-packages/p0-security-release-remediation.md`](work-packages/p0-security-release-remediation.md) | Task, AC, TEST, dependency, dan DoD program remediasi P0 | Draft/Blocked | Engineering Lead | Product Owner + Data/Security + QA | Owner/evidence/status task berubah |
+| [`work-packages/p0-security-release-remediation.md`](work-packages/p0-security-release-remediation.md) | Task, AC, TEST, dependency, dan DoD program remediasi P0 | Draft/Blocked/No-Go production | Engineering Lead belum ditetapkan | Product Owner + Data/Security + QA | Owner/evidence/status task berubah |
+| [`releases/R-SEC-01-2026-07-20.md`](releases/R-SEC-01-2026-07-20.md) | Status gate terpadu untuk kandidat containment P0 | Preparing/No-Go | Release Owner belum ditetapkan | Engineering + QA + Data/Security + Product Owner | Gate, commit, evidence, approval, atau keputusan berubah |
+| [`releases/R-SEC-01-zero-cost-production-plan.md`](releases/R-SEC-01-zero-cost-production-plan.md) | Urutan backup, rehearsal, MFA, migration, deploy, dan recovery tanpa biaya Supabase tambahan | Preparing/No-Go | Engineering + Release | Product Owner + Data/Security + QA | Constraint biaya, recovery target, atau urutan production berubah |
 | [`runbooks/audit-log-restore.md`](runbooks/audit-log-restore.md) | Prosedur pemulihan audit log yang append-only | Draft; rehearsal wajib | Data/Security Owner | Product Owner + QA/Release | Kontrol audit, backup, atau restore berubah |
 | [`evidence-retention-policy.md`](evidence-retention-policy.md) | Jadwal, akses, legal hold, dan disposal bukti | Draft | Product Owner + Data/Security | Accounting/Legal + QA | Kebutuhan legal, system of record, atau kategori evidence berubah |
 | [`ai-specialist-collaboration.md`](ai-specialist-collaboration.md) | Protokol panel spesialis dan koreksi silang | In Review | Engineering Lead | Product Owner | Model kolaborasi atau gate review berubah |
@@ -71,7 +73,7 @@ Dokumen historis tidak boleh digunakan sendirian untuk menyimpulkan kondisi prod
 | --- | --- | --- | --- |
 | `DOC-001` | PRD mencampur aturan aktif, addendum, baseline historis, dan status implementasi | P1 | Bentuk PRD aktif yang ringkas; pindahkan kronologi ke arsip dan BDR |
 | `DOC-002` | Task list memuat checklist lama dan baru untuk kontrol yang sama | P1 | Pindahkan item selesai/lama ke arsip per rilis; pertahankan backlog aktif |
-| `DOC-003` | Status release gate pada audit dan task dapat berbeda | P0 | Satu release checklist per calon rilis dengan bukti dan approver |
+| `DOC-003` | Status release gate pada audit dan task dapat berbeda | P0 | Mitigated: release checklist aktif `R-SEC-01` dibuat; jaga sinkron setiap gate/evidence berubah |
 | `DOC-004` | Requirement, temuan, task, test, dan commit belum memakai ID konsisten | P1 | Terapkan pola ID dari Tata Kelola Audit mulai work package berikutnya |
 | `DOC-005` | Keputusan bisnis/arsitektur belum memiliki BDR/ADR terpisah | P2 | Mulai BDR/ADR untuk keputusan material berikutnya; migrasikan keputusan lama saat disentuh |
 

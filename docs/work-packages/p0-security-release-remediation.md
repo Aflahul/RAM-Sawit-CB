@@ -3,7 +3,7 @@
 | Field | Nilai |
 | --- | --- |
 | Program | `PROGRAM-SEC-001` |
-| Status | Draft/Blocked; belum Ready sampai owner manusia, staging, dan reviewer tersedia |
+| Status | Draft/Blocked / No-Go production; implementasi dan staging proof tersedia, tetapi named owners, recovery, MFA/AAL2, rehearsal clone production, dan approval release lintas peran belum lengkap |
 | Target release | `R-SEC-01` containment dan proof; fitur finansial baru tetap No-Go |
 | Prioritas | P0 |
 | Kelas risiko | KR3; TASK-DATA-001 dan koreksi production tertentu dapat menjadi KR4 |
@@ -11,6 +11,7 @@
 | Engineering Lead | Belum ditetapkan dengan nama |
 | Data/Security reviewer | Belum ditetapkan dengan nama |
 | QA/Release reviewer | Belum ditetapkan dengan nama |
+| Independent code reviewer | `afikafiranti`; GitHub `APPROVED` pada commit `cc96dbb` tanggal 20 Juli 2026; increment setelah SHA tersebut wajib direview ulang |
 | Baseline | [Audit Security dan Kesiapan Rilis](../security-release-audit-2026-07-17.md) |
 | Proses | [SOP Pengembangan](../development-sop.md) |
 
@@ -48,19 +49,21 @@ Scope tidak masuk:
 
 | Task | Audit | Pri/KR | Accountable role | Target | Status |
 | --- | --- | --- | --- | --- | --- |
-| `TASK-SEC-001` Batasi pembacaan data sensitif | `AUD-SEC-20260717-001` | P0/KR3 | Data/Security Owner | R-SEC-01 | Verified (via 20260718171659_p0_secure_dto_views_and_read_revoke) |
-| `TASK-SEC-002` Kunci audit trail | `AUD-SEC-20260717-002` | P0/KR3 | Data/Security Owner | R-SEC-01 | Verified (via 20260718004159_p0_secure_audit_and_api) |
-| `TASK-SEC-003` Hardening privilege dan RPC | `AUD-SEC-20260717-003` | P0/KR3 | Data/Security Owner | R-SEC-01 | Verified (via 20260718000001_p0_revoke_direct_api_transaksi) |
-| `TASK-SEC-004` Auth dan role fail-closed | `AUD-SEC-20260717-004` | P0/KR3 | Data/Security Owner | R-SEC-01 | Verified (via 20260718161015_p0_fail_closed_role) |
-| `TASK-SEC-005` Feature gate modul beku | `AUD-SEC-20260717-005` | P0/KR3 | Engineering Lead | R-SEC-01 | Verified (via 20260718010013_p0_feature_gate_coming_soon) |
-| `TASK-SEC-006` Snapshot transaksi dihitung server | `AUD-SEC-20260717-006` | P0/KR3 | Engineering + Data/Security | R-SEC-01 | Verified (via 20260718010011_p0_server_authoritative_snapshots) |
-| `TASK-BIZ-001` Maker-checker finansial | `AUD-BIZ-20260717-001` | P0/KR3 | Product Owner | R-SEC-01 | Blocked keputusan BDR |
-| `TASK-QA-001` Required CI dan supply chain | `AUD-QA-20260717-001` | P0/KR3 | QA/Release Owner | R-SEC-01 | Draft/Blocked |
-| `TASK-DATA-001` Upgrade rehearsal dan backfill proof | `AUD-DATA-20260717-001` | P0/KR3-4 | Data Owner | R-SEC-01 | Verified (via perbaikan baseline Docker lokal) |
-| `TASK-QA-002` Deterministic financial/security test | `AUD-QA-20260717-002` | P0/KR3 | QA Owner | R-SEC-01 | Draft/Blocked |
-| `TASK-QA-003` RPO/RTO dan restore drill | `AUD-QA-20260717-003` | P0/KR3 | QA/Release + Data Owner | R-SEC-01 | Blocked capability/approval |
+| `TASK-SEC-001` Batasi pembacaan data sensitif | `AUD-SEC-20260717-001` | P0/KR3 | Data/Security Owner | R-SEC-01 | Implemented and staging-verified; per-finding closure sign-off pending |
+| `TASK-SEC-002` Kunci audit trail | `AUD-SEC-20260717-002` | P0/KR3 | Data/Security Owner | R-SEC-01 | Implemented and staging-verified; per-finding closure sign-off pending |
+| `TASK-SEC-003` Hardening privilege dan RPC | `AUD-SEC-20260717-003` | P0/KR3 | Data/Security Owner | R-SEC-01 | Implemented and staging-verified; per-finding closure sign-off pending |
+| `TASK-SEC-004` Auth dan role fail-closed | `AUD-SEC-20260717-004` | P0/KR3 | Data/Security Owner | R-SEC-01 | Partial: signup/password/reauth and fail-closed proof pass; MFA/AAL2 plus plan-dependent session controls pending |
+| `TASK-SEC-005` Feature gate modul beku | `AUD-SEC-20260717-005` | P0/KR3 | Engineering Lead | R-SEC-01 | Implemented and staging smoke-tested; security/UX/accessibility closure pending |
+| `TASK-SEC-006` Snapshot transaksi dihitung server | `AUD-SEC-20260717-006` | P0/KR3 | Engineering + Data/Security | R-SEC-01 | Implemented and staging-verified; per-finding closure sign-off pending |
+| `TASK-BIZ-001` Maker-checker finansial | `AUD-BIZ-20260717-001` | P0/KR3 | Product Owner | R-SEC-01 | Implemented and staging-verified; Product Owner/UAT approval pending |
+| `TASK-QA-001` Required CI dan supply chain | `AUD-QA-20260717-001` | P0/KR3 | QA/Release Owner | R-SEC-01 | Technical controls active: required CI, CodeQL, Gitleaks, dependency gate, and strict branch protection pass at `cc96dbb` |
+| `TASK-DATA-001` Upgrade rehearsal dan backfill proof | `AUD-DATA-20260717-001` | P0/KR3-4 | Data Owner | R-SEC-01 | Clean install and fresh staging 15/15 pass; representative production-clone upgrade proof pending |
+| `TASK-QA-002` Deterministic financial/security test | `AUD-QA-20260717-002` | P0/KR3 | QA Owner | R-SEC-01 | Deterministic local/staging, concurrency, UI smoke, and print/export gates pass; formal QA closure pending |
+| `TASK-QA-003` RPO/RTO dan restore drill | `AUD-QA-20260717-003` | P0/KR3 | QA/Release + Data Owner | R-SEC-01 | Partial: local scoped audit restore passes; zero-cost production logical backup, salinan off-site/Storage, Docker production-clone restore, serta actual RPO/RTO pending; PITR dan isolated hosted drill sengaja tidak dipakai karena tidak tersedia dalam jalur biaya nol |
 | `TASK-QA-004` Observability, incident, retention | `AUD-QA-20260717-004` | P1/KR2-3 | Engineering Lead | Setelah containment; scope-dependent | Draft |
-| `TASK-UX-001` UX lock route Coming Soon | `AUD-UX-20260717-001` | P0/KR3 | UX/UI Reviewer | Bersama TASK-SEC-005 | Verified (Navigasi disembunyikan) |
+| `TASK-UX-001` UX lock route Coming Soon | `AUD-UX-20260717-001` | P0/KR3 | UX/UI Reviewer | Bersama TASK-SEC-005 | Implemented locally; accessibility reviewer pending |
+
+Evidence implementasi dan staging saat ini: [Rehearsal P0 19 Juli 2026](../evidence/p0-local-rehearsal-2026-07-19.md). Review PR independen telah tersedia pada commit final, tetapi status `Verified` per temuan tetap memerlukan closure evidence dan verifier yang sesuai domain. Status release terpadu dicatat pada [Release Checklist R-SEC-01](../releases/R-SEC-01-2026-07-20.md).
 
 ## 4. Acceptance dan Test Contract
 
@@ -82,7 +85,7 @@ Scope tidak masuk:
 
 Artefak implementasi yang menunggu rehearsal staging:
 
-- migration [`20260717045357_p0_secure_data_api_and_audit_log.sql`](../../supabase/migrations/20260717045357_p0_secure_data_api_and_audit_log.sql);
+- migration [`20260718004159_p0_secure_audit_and_api.sql`](../../supabase/migrations/20260718004159_p0_secure_audit_and_api.sql);
 - smoke test rollback [`p0_security_containment_rollback.sql`](../../supabase/tests/p0_security_containment_rollback.sql);
 - [runbook restore audit log](../runbooks/audit-log-restore.md).
 
@@ -151,13 +154,15 @@ Artefak implementasi yang menunggu rehearsal staging:
 - `AC-QA-004`: fixture sintetis/staging tidak memilih transaksi production secara acak.
 - `AC-QA-005`: suite mencakup formula boundary, authorization negative, concurrency, retry, idempotency, reversal, snapshot, ledger, print/export, dan error network sesuai risiko.
 - `AC-QA-006`: test destruktif tidak dapat diarahkan ke production dan target environment dibuktikan sebelum run.
+- `AC-QA-010`: development interaktif fail-closed bila target Supabase bukan loopback; launcher lokal hanya mengambil API URL dan publishable/anon key dari Supabase Docker, mengosongkan credential sensitif dari environment proses/file, dan config guard menolak nilai sensitif yang masih aktif.
 - `TEST-QA-003`: repeated run dari fixture bersih memberikan hasil sama.
 - `TEST-QA-004`: double-click/retry/concurrent payment tidak menggandakan uang atau audit event.
+- `TEST-QA-006`: unit test membuktikan URL hosted ditolak, URL loopback diterima, environment file hanya dibaca nama variabelnya, credential diwariskan/dimuat dikosongkan, dan config guard menolak secret aktif; smoke launcher membuktikan target lokal serta flow login/redirect pengguna tanpa sesi.
 
 ### TASK-QA-003: Recovery proof
 
 - `AC-QA-007`: Product Owner/Engineering Lead menyetujui RPO/RTO numerik melalui BDR.
-- `AC-QA-008`: kemampuan backup/PITR serta recovery DB dan Storage memenuhi target yang disetujui.
+- `AC-QA-008`: logical backup terenkripsi, salinan off-site/Storage, serta recovery DB dan Storage melalui clone Docker memenuhi target RPO/RTO yang disetujui; PITR hanya dapat dipertimbangkan sebagai keputusan biaya terpisah.
 - `AC-QA-009`: restore dilakukan ke project terisolasi dan lulus rekonsiliasi saldo, ledger, snapshot, role, row count, serta file bukti.
 - `TEST-REC-001`: restore drill mencatat actual RPO/RTO, operator, target, checksum/row count, hasil, dan reviewer.
 

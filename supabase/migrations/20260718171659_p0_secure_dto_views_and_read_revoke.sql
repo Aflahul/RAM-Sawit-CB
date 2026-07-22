@@ -1,7 +1,7 @@
-﻿BEGIN;
+BEGIN;
 
 -- 1. Cabut hak baca (SELECT) admin_operasional dari tabel-tabel sensitif
-DO $ $
+DO $$
 DECLARE
   v_table text;
 BEGIN
@@ -28,9 +28,10 @@ BEGIN
     );
   END LOOP;
 END;
-$ $;
+$$;
 
-CREATE OR REPLACE VIEW public.v_master_mitra_operasional AS
+CREATE OR REPLACE VIEW public.v_master_mitra_operasional
+WITH (security_barrier = true) AS
 SELECT
     id,
     kode,
@@ -39,12 +40,14 @@ SELECT
     no_hp,
     aktif,
     tipe_mitra,
-    tipe_kendaraan_default,
-    created_at,
-    updated_at
-FROM public.master_mitra;
+    created_at
+FROM public.master_mitra
+WHERE (SELECT public.has_app_role(
+  ARRAY['owner', 'super_admin', 'admin_keuangan', 'admin_operasional']
+));
 
-CREATE OR REPLACE VIEW public.v_transaksi_mitra_operasional AS
+CREATE OR REPLACE VIEW public.v_transaksi_mitra_operasional
+WITH (security_barrier = true) AS
 SELECT
     id,
     tanggal,
@@ -89,7 +92,10 @@ SELECT
     upah_sopir_cb_snapshot,
     uang_jalan_sopir_cb_snapshot,
     total_biaya_sopir_cb_snapshot
-FROM public.transaksi_mitra;
+FROM public.transaksi_mitra
+WHERE (SELECT public.has_app_role(
+  ARRAY['owner', 'super_admin', 'admin_keuangan', 'admin_operasional']
+));
 
 GRANT SELECT ON public.v_master_mitra_operasional TO authenticated;
 GRANT SELECT ON public.v_transaksi_mitra_operasional TO authenticated;

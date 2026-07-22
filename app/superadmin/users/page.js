@@ -8,6 +8,11 @@ import { Pencil, Search, Users, X } from 'lucide-react';
 import { paginateRows } from '@/lib/pagination-utils';
 import { getNextSort, sortRows } from '@/lib/sort-utils';
 import { getRoleLabel } from '@/lib/roles';
+import {
+  PASSWORD_HTML_PATTERN,
+  PASSWORD_MIN_LENGTH,
+  PASSWORD_REQUIREMENTS_MESSAGE,
+} from '@/lib/password-policy.mjs';
 import { createUserAction, updateUserAction, getUsersAction } from './actions';
 
 const TABLE_PAGE_SIZE = 20;
@@ -249,7 +254,7 @@ export default function UserManagementPage() {
               <div className="modal-body">
                 {!editingId && (
                   <div style={{ padding: 12, backgroundColor: 'rgba(240, 165, 0, 0.1)', color: 'var(--color-warning)', borderRadius: 8, marginBottom: 16, fontSize: 13 }}>
-                    <strong>Penting:</strong> Pembuatan akun ini akan mendaftarkan kredensial login secara permanen. Password minimal 6 karakter.
+                    <strong>Penting:</strong> Pembuatan akun ini akan mendaftarkan kredensial login secara permanen. {PASSWORD_REQUIREMENTS_MESSAGE}
                   </div>
                 )}
                 
@@ -281,13 +286,16 @@ export default function UserManagementPage() {
                     <div className="form-group">
                       <label className="form-label form-label-required">Password</label>
                       <input
-                        type="text"
+                        type="password"
                         required
-                        minLength={6}
+                        minLength={PASSWORD_MIN_LENGTH}
+                        pattern={PASSWORD_HTML_PATTERN}
+                        title="Minimal 12 karakter dengan huruf kecil, huruf besar, angka, dan simbol"
+                        autoComplete="new-password"
                         className="form-input"
                         value={formUser.password}
                         onChange={e => setFormUser(prev => ({ ...prev, password: e.target.value }))}
-                        placeholder="Minimal 6 karakter"
+                        placeholder="Minimal 12 karakter + Aa1!"
                       />
                     </div>
                   </>

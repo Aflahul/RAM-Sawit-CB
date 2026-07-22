@@ -2,6 +2,7 @@ import { spawn, execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { createClient } from '@supabase/supabase-js';
 import { chromium } from 'playwright';
+import { sanitizeLocalDevelopmentEnvironment } from './lib/local-supabase-environment.mjs';
 
 const execFileAsync = promisify(execFile);
 const stagingRef = 'mfxyeybmjpcdckajfjen';
@@ -163,20 +164,42 @@ async function cleanupFixture() {
   if (failures.length > 0) throw new Error(`Cleanup gagal: ${failures.join('; ')}`);
 }
 
+function createAppEnvironment(publishableKey) {
+  return {
+    ...sanitizeLocalDevelopmentEnvironment(process.env),
+    NODE_ENV: 'production',
+    NEXT_PUBLIC_SUPABASE_URL: stagingUrl,
+    NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: publishableKey,
+    NEXT_PUBLIC_SUPABASE_ANON_KEY: publishableKey,
+    SUPABASE_SERVICE_ROLE_KEY: '',
+    VERCEL_OIDC_TOKEN: '',
+  };
+}
+
+async function buildApp(publishableKey) {
+  try {
+    await execFileAsync(process.execPath, [
+      'node_modules/next/dist/bin/next', 'build',
+    ], {
+      cwd: process.cwd(),
+      windowsHide: true,
+      env: createAppEnvironment(publishableKey),
+      timeout: 120_000,
+      maxBuffer: 10 * 1024 * 1024,
+    });
+  } catch (error) {
+    const output = [error.stdout, error.stderr].filter(Boolean).join('\n');
+    throw new Error(`Build Next staging gagal: ${output.slice(-4000) || error.message}`);
+  }
+}
+
 async function startApp(publishableKey) {
   appProcess = spawn(process.execPath, [
-    'node_modules/next/dist/bin/next', 'dev', '-p', String(appPort), '-H', '127.0.0.1',
+    'node_modules/next/dist/bin/next', 'start', '-p', String(appPort), '-H', '127.0.0.1',
   ], {
     cwd: process.cwd(),
     windowsHide: true,
-    env: {
-      ...process.env,
-      NEXT_PUBLIC_SUPABASE_URL: stagingUrl,
-      NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: publishableKey,
-      NEXT_PUBLIC_SUPABASE_ANON_KEY: publishableKey,
-      SUPABASE_SERVICE_ROLE_KEY: '',
-      VERCEL_OIDC_TOKEN: '',
-    },
+    env: createAppEnvironment(publishableKey),
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   let output = '';
@@ -270,6 +293,7 @@ const finalizationErrors = [];
 try {
   const { publishableKey, serviceKey } = await getStagingKeys();
   await createFixture(serviceKey);
+  await buildApp(publishableKey);
   await startApp(publishableKey);
   result = await reproduce();
 } catch (error) {

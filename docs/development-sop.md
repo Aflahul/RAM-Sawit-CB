@@ -98,7 +98,7 @@ Kedua track berjalan paralel, tetapi item tidak boleh masuk Delivery hanya karen
 - Tim maksimal memiliki satu perubahan `KR3`/`KR4` yang sedang dipersiapkan untuk production pada waktu yang sama.
 - Lane expedite hanya untuk `P0` atau insiden `S0`/`S1`.
 - Item yang terblokir tidak disembunyikan dengan memulai banyak pekerjaan baru. Catat blocker, owner, dan tanggal tindak lanjut.
-- Branch yang melewati tiga hari kerja harus ditinjau untuk dipecah atau disinkronkan ulang dengan `main`.
+- Branch yang melewati tiga hari kerja harus ditinjau untuk dipecah atau disinkronkan ulang dengan branch asalnya: `dev` untuk pekerjaan normal dan `main` untuk hotfix production.
 
 ### 4.3 Kelas Risiko Perubahan
 
@@ -197,7 +197,7 @@ Sebelum `Ready`, reviewer memastikan:
 Implementer:
 
 1. bekerja pada branch dan file yang ditetapkan;
-2. menyinkronkan `main` tanpa menghapus perubahan pihak lain;
+2. menyinkronkan branch target (`dev` untuk pekerjaan normal, `main` untuk hotfix/release) tanpa menghapus perubahan pihak lain;
 3. membuat perubahan paling kecil yang memenuhi acceptance;
 4. menjalankan test sedini mungkin, bukan menunggu PR selesai;
 5. memperbarui work package jika asumsi atau risiko berubah;
@@ -375,8 +375,11 @@ Untuk transaksi uang, maker-checker minimum adalah:
 
 ### 10.1 Branch
 
-- `main` adalah branch rilis dan harus selalu dapat dibangun.
-- Direct push ke `main` dilarang kecuali emergency yang tercatat. Branch protection harus digunakan bila tersedia.
+- `main` adalah branch production/release, tetap menjadi default branch repository, dan harus selalu sesuai dengan commit aplikasi yang layak production.
+- `dev` adalah branch integrasi seluruh pengembangan normal. Fitur, perbaikan non-emergency, UX/UI, dokumentasi, dan perubahan Supabase dimulai dari `dev` dan kembali melalui PR ke `dev`.
+- Promosi ke production hanya melalui PR release dari `dev` ke `main` setelah work package berstatus siap, seluruh gate relevan lulus, UAT/approval tersedia, dan urutan deploy aplikasi/database telah disetujui.
+- Hotfix insiden production dibuat dari `main` dengan pola `hotfix/*`, ditujukan langsung ke `main`, lalu commit `main` hasil hotfix wajib disinkronkan kembali ke `dev` melalui PR agar perbaikan tidak hilang pada release berikutnya.
+- Direct push ke `main` dan `dev` dilarang. Keduanya wajib memakai branch protection, required checks, dan conversation resolution. PR ke `main` wajib memiliki minimal satu approval independen. Branch protection `dev` tidak mewajibkan approval, tetapi kebutuhan reviewer berdasarkan kelas risiko pada Bagian 10.4 tetap berlaku dan tidak boleh dianggap gugur hanya karena GitHub mengizinkan merge. Override `main` hanya untuk emergency yang tercatat dan wajib direview retrospektif.
 - Format branch:
 
 ```text
@@ -389,7 +392,7 @@ spike/TASK-DOMAIN-NNN-ringkas
 ```
 
 - Branch pendek dan fokus. Jangan membawa perubahan unrelated atau membatalkan perubahan pihak lain.
-- Sinkronkan dengan `main` sebelum final review dan selesaikan konflik dengan memahami kedua perubahan.
+- Branch normal dibuat dari dan disinkronkan dengan `dev` sebelum final review. Hanya `hotfix/*` dibuat dari dan disinkronkan dengan `main`.
 
 ### 10.2 Commit
 
@@ -406,7 +409,7 @@ Commit harus membangun satu cerita review. Jangan mencampur formatting massal, g
 
 ### 10.3 Pull Request
 
-Semua perubahan ke `main` memakai [PR Template](../.github/pull_request_template.md). PR wajib menjelaskan:
+Semua perubahan ke `dev` atau `main` memakai [PR Template](../.github/pull_request_template.md). PR wajib menjelaskan:
 
 - masalah dan hasil, bukan hanya daftar file;
 - traceability `BR/FLOW/AC/AUD/BDR/ADR/TASK/TEST`;
@@ -438,7 +441,7 @@ Reviewer memeriksa:
 
 ### 10.5 Merge
 
-- Squash merge adalah default agar history `main` ringkas. Merge commit boleh untuk rangkaian yang perlu dipertahankan dengan alasan jelas.
+- Squash merge adalah default agar history `dev` dan `main` ringkas. Merge commit boleh untuk rangkaian yang perlu dipertahankan dengan alasan jelas.
 - Jangan merge dengan gate merah, review unresolved, migration drift, atau dokumentasi kontrak yang tertinggal.
 - Hapus branch setelah merge dan tautkan commit final ke work package/release record.
 
@@ -481,7 +484,7 @@ Reviewer memeriksa:
 - Versi baru harus ditinjau changelog, compatibility, license, dan security advisory. Upgrade major memerlukan ADR/verification plan.
 - Jalankan `npm ci` pada environment bersih untuk memverifikasi lockfile.
 - Jalankan `npm audit --omit=dev` dan secret/dependency scan yang disetujui. Temuan critical/high adalah release blocker kecuali exception `S1` disetujui Product Owner, Data/Security, dan QA dengan mitigasi serta expiry; temuan `S0` tidak dapat dikecualikan.
-- CI target wajib menjalankan lint, build, test, secret scan, dependency audit, migration lint, dan lockfile integrity. Sampai CI tersedia, hasil gate dicatat manual dan `main` tidak boleh diperlakukan seolah required checks sudah aktif.
+- CI untuk PR ke `dev` dan `main` wajib menjalankan lint, build, test, secret scan, dependency audit, migration lint, dan lockfile integrity. Sampai CI tersedia, hasil gate dicatat manual dan branch target tidak boleh diperlakukan seolah required checks sudah aktif.
 - Jangan commit `.env*`, `.vercel/`, `.stitch/`, `.agents/`, build output, dump, atau data produksi.
 - Hanya URL dan publishable key Supabase boleh digunakan pada `NEXT_PUBLIC_*`. Secret/service role key tidak boleh berada di browser.
 
@@ -730,7 +733,7 @@ Keduanya hanya dijalankan pada staging/linked database yang dipilih secara ekspl
 
 Smoke test baseline memilih data bisnis yang tersedia secara nondeterministik. Karena itu keduanya belum menjadi fixture deterministik dan tidak boleh menjadi satu-satunya bukti release. Work package finansial harus menambahkan fixture staging terisolasi, negative Data API/RPC test, concurrency/retry/idempotency, formula batas, serta rekonsiliasi ledger/snapshot sesuai scope.
 
-Repository belum memiliki test runner unit/integration JavaScript, automated E2E, atau GitHub Actions pada baseline SOP. Sampai otomatisasi tersedia:
+Repository memiliki Node test runner, Playwright staging gate, serta GitHub Actions untuk lint/build/dependency/security/database gate. Automated E2E lintas role dan workflow bisnis secara menyeluruh belum tersedia. Untuk test manual atau scope yang belum terotomasi:
 
 - hasil manual wajib menyimpan raw output dengan `TEST-*`, commit SHA, waktu UTC, environment, executor, role/data, expected, actual, dan reviewer independen;
 - ketiadaan pipeline bukan alasan melewati lint/build/test;
@@ -1028,12 +1031,12 @@ Metric delivery pendukung: lead time, cycle time, throughput, blocked time, reop
 
 SOP ini disusun dari baseline repository 17 Juli 2026:
 
-- aplikasi internal Next.js 16.2.10, React 19.2.4, JavaScript/JSX, Supabase JS 2.110.2, `@supabase/ssr` 0.12.0, dan Supabase CLI 2.109.1;
-- `npm` dengan `package-lock.json`; `main` adalah branch rilis;
+- aplikasi internal Next.js 16.2.11, React 19.2.4, JavaScript/JSX, Supabase JS 2.110.2, `@supabase/ssr` 0.12.0, dan Supabase CLI 2.109.1;
+- `npm` dengan `package-lock.json`; `dev` adalah branch integrasi dan `main` adalah branch production/rilis;
 - Vercel dan Supabase hosted adalah target deployment menurut spesifikasi teknis;
 - model database memakai 54 imperative migration dan dua SQL smoke test rollback;
 - PostgreSQL lokal major 17; Data API mengekspos `public`/`graphql_public` dengan limit lokal 1.000 row;
-- repository belum memiliki CI, test runner unit JavaScript, automated E2E, atau observability khusus;
+- repository memiliki required CI, Node test runner, dan Playwright staging gate; automated E2E menyeluruh dan observability khusus belum tersedia;
 - `supabase/seed.sql` belum ada walaupun seeding aktif pada konfigurasi lokal;
 - audit security/release 17 Juli 2026 berstatus NO-GO untuk fitur finansial baru dan memiliki temuan `P0`/`S0-S1` Open; status tersebut hanya berubah melalui bukti verifikasi dan release checklist baru;
 - dua SQL smoke test rollback saat ini memakai pemilihan data yang nondeterministik dan hanya boleh menjadi bukti tambahan di staging;

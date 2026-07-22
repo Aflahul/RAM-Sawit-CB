@@ -2,6 +2,9 @@
 
 Jelaskan masalah, hasil yang dicapai, dan alasan perubahan.
 
+- Target branch: `dev` untuk pekerjaan normal; `main` hanya untuk PR release dari `dev` atau `hotfix/*` production.
+- [ ] Branch asal dan target mengikuti aturan pada SOP Pengembangan.
+
 ## Traceability
 
 - Requirement/flow: `BR-*`, `FLOW-*`, `AC-*`
@@ -58,4 +61,3 @@ Cantumkan perintah, hasil penting, dan tautan bukti:
 - [ ] UX/UI bila workflow/tampilan berubah
 - [ ] Data/Security bila uang, schema, role, atau RLS berubah
 - [ ] QA/Release untuk keputusan go/no-go
-
