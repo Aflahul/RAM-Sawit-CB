@@ -3,8 +3,11 @@ name: Production Hotfix Gates
 on:
   push:
     branches:
-      - hotfix/production-mitra-history
-      - hotfix/production-operational-fund-receipt
+      - 'hotfix/**'
+      - 'sync/**'
+      - 'chore/sync-**'
+      - 'fix/**'
+      - 'release/**'
   workflow_dispatch:
 
 concurrency:
