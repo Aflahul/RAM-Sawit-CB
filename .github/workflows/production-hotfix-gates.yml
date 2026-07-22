@@ -117,12 +117,21 @@ jobs:
           fi
 
           exit "$reset_status"
-      - name: Apply hotfix migration after the known main replay blocker
+      - name: Rehearse hotfix from the verified production baseline
         if: steps.start.outputs.ready == 'false'
         run: |
-          docker exec -i supabase_db_RAM-Sawit-CB \
-            psql -U postgres -d postgres -v ON_ERROR_STOP=1 -f - \
-            < supabase/migrations/20260722150000_hotfix_operational_fund_snapshot_receipt.sql
+          mkdir -p /tmp/production-hotfix/supabase/migrations
+          cp supabase/config.toml /tmp/production-hotfix/supabase/config.toml
+          cp supabase/migrations/00000000000000_baseline.sql \
+            /tmp/production-hotfix/supabase/migrations/
+          cp supabase/migrations/20260722150000_hotfix_operational_fund_snapshot_receipt.sql \
+            /tmp/production-hotfix/supabase/migrations/
+          npx supabase start \
+            --workdir /tmp/production-hotfix \
+            -x edge-runtime,imgproxy,logflare,mailpit,realtime,storage-api,studio,vector
+          docker exec supabase_db_RAM-Sawit-CB \
+            psql -U postgres -d postgres -v ON_ERROR_STOP=1 -Atc \
+            "select dana_operasional_trip_snapshot from public.pembayaran_mitra_kwitansi_item limit 0;"
       - name: Run rollback regression tests
         if: steps.reset.outputs.ready == 'true'
         run: |
