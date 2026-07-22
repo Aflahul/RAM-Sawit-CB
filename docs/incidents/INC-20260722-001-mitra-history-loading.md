@@ -29,6 +29,7 @@ Reproduksi aman pada staging memakai user dan transaksi sintetis menunjukkan dua
 | 22 Jul 2026 | AI implementer | Probe production read-only `limit=0` memastikan kedua view tidak tersedia | Response `PGRST205`; tidak mengambil row production |
 | 22 Jul 2026 | AI implementer | Forward-fix mengembalikan kontrak tabel production dan menambahkan cleanup loading melalui `finally` | Diff hotfix |
 | 22 Jul 2026 | AI implementer | Reproduksi staging hijau: row terlihat, modal Edit terbuka, loading hilang, runtime error 0, residue 0 | `npm run test:mitra-history:staging` |
+| 22 Jul 2026 | AI implementer | Gate lokal menemukan clean reset baseline `main` berhenti pada migration `20260718010012` karena kolom `pengaturan_bisnis.keterangan` tidak ada; hotfix dipastikan tidak memiliki diff `supabase/` | Supabase Docker lokal; `git diff origin/main...HEAD -- supabase/` |
 
 ## Containment
 
@@ -61,6 +62,15 @@ Reproduksi aman pada staging memakai user dan transaksi sintetis menunjukkan dua
 | Repro staging sebelum fix | Menangkap loading menggantung | Red: loading true, row false, HTTP 400, page error | Harness staging sintetis | AI self-check; review manusia pending |
 | Repro staging setelah fix | Riwayat dan koreksi siap | Green: row true, modal Edit true, loading false, runtime error 0, residue 0 | `npm run test:mitra-history:staging` | AI self-check; review manusia pending |
 | Probe production `limit=0` | Tidak mengambil row | Kedua view mengembalikan `PGRST205` | Read-only Data API probe | AI self-check |
+| Clean reset database lokal | Migration production dapat direplay | Blocked oleh kegagalan baseline `main` pada `20260718010012`; bukan perubahan hotfix | Supabase Docker lokal | Remediasi penuh terisolasi di PR #5; review manusia pending |
+
+### Pengecualian Gate Emergency yang Menunggu Approval
+
+- Diff hotfix terhadap `origin/main` pada direktori `supabase/` wajib kosong; perubahan schema, migration, RLS, RPC, atau data membuat gate gagal.
+- Job database hotfix hanya menoleransi pasangan error baseline yang exact: migration `20260718010012_p0_maker_checker_pinjaman_panjar.sql` dan kolom `pengaturan_bisnis.keterangan` yang tidak ada. Error lain tetap gagal.
+- Status job tersebut bukan klaim bahwa migration history production sudah clean. Remediasi clean reset dan regression suite penuh tetap berada pada PR #5 menuju `dev`, lalu hanya boleh dipromosikan ke `main` melalui release terpisah.
+- Audit dependency hotfix menunjukkan nol critical dan empat high pada dependency production yang sudah ada. Hotfix memblokir critical; remediasi dependency high tetap terisolasi pada PR #5 agar emergency UI tidak bercampur dengan upgrade dependency.
+- Pengecualian ini belum sah sampai reviewer/release operator manusia menyetujui PR #6; branch protection tetap mewajibkan satu approval independen.
 
 - [ ] Saldo, ledger, snapshot, kwitansi, pembayaran, dan row transaksi salah direkonsiliasi setelah owner mengidentifikasi record melalui UI.
 - [ ] Role owner dan route production diuji kembali setelah deploy.
