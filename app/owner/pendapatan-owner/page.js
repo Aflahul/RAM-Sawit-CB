@@ -86,7 +86,12 @@ export default function PendapatanOwnerPage() {
         harga_pabrik_per_kg, fee_owner_per_kg, harga_bersih_per_kg,
         total_fee_owner, total_nilai_bersih, plat_nomor,
         berat_netto_pabrik_kg, potongan_pabrik_kg, berat_dibayar_kg,
-        pakai_sewa_armada_bl, biaya_sewa_armada_total,
+        menggunakan_armada_cb_snapshot, pakai_sewa_armada_bl,
+        kenakan_sewa_armada_cb, catat_dana_operasional_trip,
+        dana_operasional_dibayar_mitra, dana_operasional_trip_snapshot,
+        total_biaya_sopir_cb_snapshot, biaya_sopir_dibayar_at,
+        tarif_sewa_angkut_per_kg_snapshot, biaya_sewa_armada_per_kg,
+        biaya_sewa_armada_kotor, biaya_sewa_armada_total, status,
         sopir_aktual_nama, sopir_default_nama,
         master_mitra ( kode, alamat, nama, tipe_mitra, fee_per_kg )
       `)
