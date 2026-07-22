@@ -9,6 +9,7 @@ import { exportToExcel } from '@/lib/export';
 import { canApproveCorrections, canManageFinance, canViewProfit, normalizeRole } from '@/lib/roles';
 import { supabase } from '@/lib/supabase';
 import {
+  isDanaOperasionalDibayarMitra,
   resolveBiayaSewaArmada,
   resolveBiayaSewaArmadaKotor,
   resolveDanaOperasionalTrip,
@@ -299,9 +300,11 @@ export default function LaporanArmadaCBPage() {
         sewa_armada_bersih: resolveBiayaSewaArmada(row),
       } : {}),
       dana_operasional_trip: resolveDanaOperasionalTrip(row),
-      sumber_dana_operasional: row.biaya_sopir_dibayar_at
-        ? 'Legacy - pernah dibayar Kas CB'
-        : row.catat_dana_operasional_trip ? 'Dibayar langsung Mitra ke Sopir' : 'Tidak ada Dana Operasional',
+      sumber_dana_operasional: isDanaOperasionalDibayarMitra(row)
+        ? 'Sudah dibayar Mitra sebelum berangkat'
+        : row.biaya_sopir_dibayar_at
+          ? 'Legacy - pernah dibayar Kas CB'
+          : 'Tidak ada Dana Operasional',
       perlu_review: row.armada_cb_perlu_review ? 'Ya' : 'Tidak',
     }));
     const columns = [
@@ -484,7 +487,8 @@ export default function LaporanArmadaCBPage() {
               <tr><td colSpan={canSeeMargin ? 9 : 7}>Belum ada trip Armada CB pada periode ini.</td></tr>
             ) : transactions.map(row => {
               const driverCost = resolveDanaOperasionalTrip(row);
-              const paid = Boolean(row.biaya_sopir_dibayar_at);
+              const directPaidByMitra = isDanaOperasionalDibayarMitra(row);
+              const legacyPaidByCb = Boolean(row.biaya_sopir_dibayar_at) && !directPaidByMitra;
               return (
                 <tr key={row.id}>
                   <td>{formatDateDisplay(row.tanggal)}</td>
@@ -501,12 +505,12 @@ export default function LaporanArmadaCBPage() {
                   </td>
                   {canSeeMargin && <td className="table-mono text-success" style={{ textAlign: 'right' }}>{formatRupiah(resolveBiayaSewaArmada(row))}</td>}
                   <td>
-                    <span className={`badge ${paid ? 'badge-warning' : row.armada_cb_perlu_review ? 'badge-warning' : driverCost > 0 ? 'badge-success' : 'badge-neutral'}`}>
-                      {paid ? 'Legacy: Kas CB' : row.armada_cb_perlu_review ? 'Perlu Cek' : !row.catat_dana_operasional_trip ? 'Tanpa Dana' : driverCost > 0 ? 'Langsung dari Mitra' : 'Tarif Kosong'}
+                    <span className={`badge ${legacyPaidByCb ? 'badge-warning' : row.armada_cb_perlu_review ? 'badge-warning' : driverCost > 0 ? 'badge-success' : 'badge-neutral'}`}>
+                      {legacyPaidByCb ? 'Legacy: Kas CB' : row.armada_cb_perlu_review ? 'Perlu Cek' : !row.catat_dana_operasional_trip ? 'Tanpa Dana' : driverCost > 0 ? 'Sudah Dibayar Mitra' : 'Tarif Kosong'}
                     </span>
                   </td>
                   <td>
-                    {canCancelPay && paid && (
+                    {canCancelPay && legacyPaidByCb && (
                       <button className="btn btn-ghost btn-sm" onClick={() => setCancelPayTarget(row)} title="Batalkan pembayaran Dana Trip">
                         <RotateCcw size={14} /> Batal Bayar
                       </button>

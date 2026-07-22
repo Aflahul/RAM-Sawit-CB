@@ -55,6 +55,8 @@ jobs:
           mapfile -t changed_files < <(git diff --name-only origin/main...HEAD -- supabase/)
           expected_files=(
             "supabase/migrations/20260722150000_hotfix_operational_fund_snapshot_receipt.sql"
+            "supabase/migrations/20260722180334_reconcile_direct_mitra_operational_fund.sql"
+            "supabase/tests/operational_fund_cash_reconciliation_rollback.sql"
             "supabase/tests/operational_fund_edit_regression_rollback.sql"
           )
 
@@ -126,6 +128,8 @@ jobs:
             /tmp/production-hotfix/supabase/migrations/
           cp supabase/migrations/20260722150000_hotfix_operational_fund_snapshot_receipt.sql \
             /tmp/production-hotfix/supabase/migrations/
+          cp supabase/migrations/20260722180334_reconcile_direct_mitra_operational_fund.sql \
+            /tmp/production-hotfix/supabase/migrations/
           npx supabase start \
             --workdir /tmp/production-hotfix \
             -x edge-runtime,imgproxy,logflare,mailpit,realtime,storage-api,studio,vector
@@ -142,9 +146,13 @@ jobs:
       - name: Run targeted rollback regression after the known main replay blocker
         if: steps.start.outputs.ready == 'false'
         run: |
-          docker exec -i supabase_db_RAM-Sawit-CB \
-            psql -U postgres -d postgres -v ON_ERROR_STOP=1 -f - \
-            < supabase/tests/operational_fund_edit_regression_rollback.sql
+          for test_file in \
+            supabase/tests/operational_fund_edit_regression_rollback.sql \
+            supabase/tests/operational_fund_cash_reconciliation_rollback.sql; do
+            docker exec -i supabase_db_RAM-Sawit-CB \
+              psql -U postgres -d postgres -v ON_ERROR_STOP=1 -f - \
+              < "$test_file"
+          done
       - name: Lint database schema
         run: npx supabase db lint --local --level error --fail-on error
       - name: Block Supabase security advisor errors
