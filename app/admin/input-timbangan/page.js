@@ -174,6 +174,7 @@ export default function AdminInputTimbangan() {
     setLoading(true);
     setErrorMsg('');
 
+    try {
     let transaksiQuery = supabase
       .from('v_transaksi_mitra_operasional')
       .select(`
@@ -332,8 +333,13 @@ export default function AdminInputTimbangan() {
         master_mitra: mitraMap.get(sopir.mitra_id) || null,
       })));
     }
-
-    setLoading(false);
+    } catch (error) {
+      console.error('Gagal memuat riwayat pengiriman mitra:', error);
+      setErrorMsg(error instanceof Error ? error.message : 'Riwayat pengiriman gagal dimuat.');
+      setTransaksi([]);
+    } finally {
+      setLoading(false);
+    }
   }, [dateFrom, dateTo, statusFilter]);
 
   useEffect(() => {

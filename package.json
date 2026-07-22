@@ -14,7 +14,8 @@
     "test:p0:print-export:staging": "node scripts/test-p0-print-export.mjs",
     "test:password-policy": "node --test tests/password-policy.test.mjs",
     "test:local-env": "node --test tests/local-supabase-environment.test.mjs",
-    "test:local-app": "node scripts/test-local-app-smoke.mjs"
+    "test:local-app": "node scripts/test-local-app-smoke.mjs",
+    "test:mitra-history:staging": "node scripts/repro-mitra-history-staging.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.0",
