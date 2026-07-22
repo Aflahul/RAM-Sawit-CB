@@ -379,7 +379,7 @@ Untuk transaksi uang, maker-checker minimum adalah:
 - `dev` adalah branch integrasi seluruh pengembangan normal. Fitur, perbaikan non-emergency, UX/UI, dokumentasi, dan perubahan Supabase dimulai dari `dev` dan kembali melalui PR ke `dev`.
 - Promosi ke production hanya melalui PR release dari `dev` ke `main` setelah work package berstatus siap, seluruh gate relevan lulus, UAT/approval tersedia, dan urutan deploy aplikasi/database telah disetujui.
 - Hotfix insiden production dibuat dari `main` dengan pola `hotfix/*`, ditujukan langsung ke `main`, lalu commit `main` hasil hotfix wajib disinkronkan kembali ke `dev` melalui PR agar perbaikan tidak hilang pada release berikutnya.
-- Direct push ke `main` dan `dev` dilarang. Keduanya wajib memakai branch protection, required checks, conversation resolution, dan minimal satu approval independen. Override hanya untuk emergency yang tercatat dan wajib direview retrospektif.
+- Direct push ke `main` dan `dev` dilarang. Keduanya wajib memakai branch protection, required checks, dan conversation resolution. PR ke `main` wajib memiliki minimal satu approval independen. Branch protection `dev` tidak mewajibkan approval, tetapi kebutuhan reviewer berdasarkan kelas risiko pada Bagian 10.4 tetap berlaku dan tidak boleh dianggap gugur hanya karena GitHub mengizinkan merge. Override `main` hanya untuk emergency yang tercatat dan wajib direview retrospektif.
 - Format branch:
 
 ```text
